@@ -1,0 +1,52 @@
+body{
+font-family:Arial;
+background:#f4f6f9;
+padding:20px;
+}
+
+h2{color:#222}
+
+input,button{
+padding:12px;
+margin:5px 0;
+width:100%;
+max-width:400px;
+}
+
+button{
+background:black;
+color:white;
+border:none;
+}
+
+table{
+width:100%;
+border-collapse:collapse;
+background:white;
+margin-top:20px;
+}
+
+table th,table td{
+border:1px solid #ddd;
+padding:10px;
+text-align:center;
+}
+
+/* MOBILE */
+@media(max-width:700px){
+
+table,thead,tbody,tr,td,th{
+display:block;
+}
+
+tr{
+margin-bottom:15px;
+border:1px solid #ccc;
+padding:10px;
+}
+
+td{
+text-align:left;
+border:none;
+}
+}
