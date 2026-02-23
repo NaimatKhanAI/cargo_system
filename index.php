@@ -15,6 +15,15 @@ $error = "Pehle sahi login karein.";
 }
 }
 
+if(isset($_POST['account'])){
+if($canChooseOption){
+header("location:account.php");
+exit();
+}else{
+$error = "Pehle sahi login karein.";
+}
+}
+
 if(isset($_POST['login'])){
 $u=$_POST['user'];
 $p=$_POST['pass'];
@@ -38,9 +47,7 @@ $error = "Wrong login";
 <button name="login" type="submit">Login</button>
 <div id="optionWrap" style="<?php echo $canChooseOption ? 'display:block;' : 'display:none;'; ?>">
 <button name="guest" type="submit">Guest</button>
-<button type="button">Account</button>
-<button type="button">Feed</button>
-<button type="button">Haleeb</button>
+<button name="account" type="submit">Account</button>
 </div>
 </form>
 <?php if($error!=""){ ?>

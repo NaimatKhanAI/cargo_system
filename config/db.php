@@ -25,6 +25,16 @@ tender INT,
 profit INT
 )");
 
+$conn->query("CREATE TABLE IF NOT EXISTS account_entries(
+id INT AUTO_INCREMENT PRIMARY KEY,
+entry_date DATE,
+category VARCHAR(20),
+entry_type VARCHAR(10),
+amount DECIMAL(12,2),
+note VARCHAR(255),
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)");
+
 $check=$conn->query("SELECT * FROM users WHERE username='admin'");
 if($check->num_rows==0){
 $conn->query("INSERT INTO users(username,password) VALUES('admin','1234')");
