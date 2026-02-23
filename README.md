@@ -55,3 +55,15 @@ C:\xampp\php\php.exe C:\xampp\php\composer.phar install --no-dev --ignore-platfo
 Phir ye file exist karni chahiye:
 
 `dompdf/vendor/autoload.php`
+
+## Live Access with ngrok
+
+If Apache runs on port 80:
+
+```powershell
+ngrok http 80
+```
+
+Example live URL:
+
+`https://32e4-160-30-109-81.ngrok-free.app/cargo_system/index.php`

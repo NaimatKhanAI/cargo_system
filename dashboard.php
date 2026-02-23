@@ -9,6 +9,17 @@ include 'config/db.php';
 
 $total = $conn->query("SELECT SUM(profit) as t FROM bilty")->fetch_assoc();
 $total_profit = $total['t'] ? $total['t'] : 0;
+
+$import_message = "";
+if (isset($_GET['import'])) {
+if ($_GET['import'] === 'success') {
+$ins = isset($_GET['ins']) ? (int)$_GET['ins'] : 0;
+$skip = isset($_GET['skip']) ? (int)$_GET['skip'] : 0;
+$import_message = "Import completed. Inserted: $ins, Skipped: $skip";
+} elseif ($_GET['import'] === 'error') {
+$import_message = "Import failed. Please upload a valid CSV file.";
+}
+}
 ?>
 
 <!DOCTYPE html>
@@ -36,6 +47,8 @@ color:white;
 text-decoration:none;
 margin:5px;
 display:inline-block;
+border:none;
+cursor:pointer;
 }
 
 .profit-box{
@@ -44,6 +57,22 @@ color:#fff;
 padding:15px;
 margin:15px 0;
 font-size:20px;
+}
+
+.import-wrap{
+display:inline-block;
+margin:5px;
+}
+
+.import-wrap input[type="file"]{
+max-width:220px;
+}
+
+.status-msg{
+background:#eaf7ea;
+border:1px solid #8bc48b;
+padding:10px;
+margin:10px 0;
 }
 </style>
 
@@ -55,9 +84,18 @@ font-size:20px;
 <div>
 <a class="btn" href="add_bilty.php">+ Add Bilty</a>
 <a class="btn" href="search.php">Search</a>
+<a class="btn" href="export_bilty.php">Export CSV</a>
+<form class="import-wrap" action="import_bilty.php" method="post" enctype="multipart/form-data">
+<input type="file" name="csv_file" accept=".csv" required>
+<button class="btn" type="submit">Import CSV</button>
+</form>
 <a class="btn" href="logout.php">Logout</a>
 </div>
 </div>
+
+<?php if($import_message!=""){ ?>
+<div class="status-msg"><?php echo htmlspecialchars($import_message); ?></div>
+<?php } ?>
 
 <div class="profit-box">
 Total Profit: Rs <?php echo $total_profit; ?>
