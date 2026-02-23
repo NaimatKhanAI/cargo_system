@@ -11,6 +11,60 @@ $allowedCategories = ['feed', 'haleeb', 'loan'];
 $allowedTypes = ['debit', 'credit'];
 $msg = '';
 $err = '';
+$formEntryDate = date('Y-m-d');
+$formCategory = 'feed';
+$formEntryType = 'debit';
+$formAmount = '';
+$formNote = '';
+$editingId = 0;
+
+if(isset($_GET['delete_id'])){
+$deleteId = (int)$_GET['delete_id'];
+if($deleteId > 0){
+$deleteStmt = $conn->prepare("DELETE FROM account_entries WHERE id=?");
+$deleteStmt->bind_param("i", $deleteId);
+$deleteStmt->execute();
+$deleteStmt->close();
+$msg = 'Entry deleted.';
+}
+}
+
+if(isset($_POST['update_entry'])){
+$editingId = isset($_POST['edit_id']) ? (int)$_POST['edit_id'] : 0;
+$entryDate = isset($_POST['entry_date']) ? $_POST['entry_date'] : date('Y-m-d');
+$category = isset($_POST['category']) ? strtolower(trim($_POST['category'])) : '';
+$entryType = isset($_POST['entry_type']) ? strtolower(trim($_POST['entry_type'])) : '';
+$amount = isset($_POST['amount']) ? (float)$_POST['amount'] : 0;
+$note = isset($_POST['note']) ? trim($_POST['note']) : '';
+
+$formEntryDate = $entryDate;
+$formCategory = $category;
+$formEntryType = $entryType;
+$formAmount = $amount > 0 ? (string)$amount : '';
+$formNote = $note;
+
+if($editingId <= 0){
+$err = 'Invalid entry id.';
+} elseif(!in_array($category, $allowedCategories, true)){
+$err = 'Invalid category.';
+} elseif(!in_array($entryType, $allowedTypes, true)){
+$err = 'Invalid entry type.';
+} elseif($amount <= 0){
+$err = 'Amount must be greater than 0.';
+} else {
+$stmt = $conn->prepare("UPDATE account_entries SET entry_date=?, category=?, entry_type=?, amount=?, note=? WHERE id=?");
+$stmt->bind_param("sssdsi", $entryDate, $category, $entryType, $amount, $note, $editingId);
+$stmt->execute();
+$stmt->close();
+$msg = 'Entry updated.';
+$editingId = 0;
+$formEntryDate = date('Y-m-d');
+$formCategory = 'feed';
+$formEntryType = 'debit';
+$formAmount = '';
+$formNote = '';
+}
+}
 
 if(isset($_POST['add_entry'])){
 $entryDate = isset($_POST['entry_date']) ? $_POST['entry_date'] : date('Y-m-d');
@@ -39,10 +93,24 @@ if(!in_array($cat, array_merge(['all'], $allowedCategories), true)){
 $cat = 'all';
 }
 
-$where = "";
-if($cat !== 'all'){
-$safeCat = $conn->real_escape_string($cat);
-$where = " WHERE category='$safeCat'";
+if(isset($_GET['edit_id']) && !isset($_POST['update_entry'])){
+$requestedEditId = (int)$_GET['edit_id'];
+if($requestedEditId > 0){
+$editStmt = $conn->prepare("SELECT id, entry_date, category, entry_type, amount, note FROM account_entries WHERE id=? LIMIT 1");
+$editStmt->bind_param("i", $requestedEditId);
+$editStmt->execute();
+$editRes = $editStmt->get_result();
+if($editRes->num_rows > 0){
+$editRow = $editRes->fetch_assoc();
+$editingId = (int)$editRow['id'];
+$formEntryDate = $editRow['entry_date'];
+$formCategory = $editRow['category'];
+$formEntryType = $editRow['entry_type'];
+$formAmount = (string)$editRow['amount'];
+$formNote = $editRow['note'];
+}
+$editStmt->close();
+}
 }
 
 $totalSql = "SELECT 
@@ -52,6 +120,7 @@ FROM account_entries";
 $totals = $conn->query($totalSql)->fetch_assoc();
 $totalDebit = $totals['total_debit'] ? $totals['total_debit'] : 0;
 $totalCredit = $totals['total_credit'] ? $totals['total_credit'] : 0;
+$netBalance = (float)$totalCredit - (float)$totalDebit;
 
 $categoryTotals = [];
 $catTotalsSql = "SELECT category,
@@ -64,7 +133,14 @@ while($r = $catResult->fetch_assoc()){
 $categoryTotals[$r['category']] = $r;
 }
 
-$entries = $conn->query("SELECT * FROM account_entries".$where." ORDER BY entry_date DESC, id DESC");
+if($cat === 'all'){
+$entries = $conn->query("SELECT * FROM account_entries ORDER BY entry_date DESC, id DESC");
+} else {
+$entryStmt = $conn->prepare("SELECT * FROM account_entries WHERE category=? ORDER BY entry_date DESC, id DESC");
+$entryStmt->bind_param("s", $cat);
+$entryStmt->execute();
+$entries = $entryStmt->get_result();
+}
 ?>
 <!DOCTYPE html>
 <html>
@@ -125,21 +201,27 @@ border:1px solid #ddd;
 <?php } ?>
 
 <div class="panel">
-<h3>Add Entry</h3>
+<h3><?php echo $editingId > 0 ? 'Edit Entry' : 'Add Entry'; ?></h3>
 <form method="post">
-<input type="date" name="entry_date" value="<?php echo date('Y-m-d'); ?>" required>
+<input type="date" name="entry_date" value="<?php echo htmlspecialchars($formEntryDate); ?>" required>
 <select name="category" required>
-<option value="feed">Feed</option>
-<option value="haleeb">Haleeb</option>
-<option value="loan">Loan</option>
+<option value="feed" <?php echo $formCategory === 'feed' ? 'selected' : ''; ?>>Feed</option>
+<option value="haleeb" <?php echo $formCategory === 'haleeb' ? 'selected' : ''; ?>>Haleeb</option>
+<option value="loan" <?php echo $formCategory === 'loan' ? 'selected' : ''; ?>>Loan</option>
 </select>
 <select name="entry_type" required>
-<option value="debit">Debit</option>
-<option value="credit">Credit</option>
+<option value="debit" <?php echo $formEntryType === 'debit' ? 'selected' : ''; ?>>Debit</option>
+<option value="credit" <?php echo $formEntryType === 'credit' ? 'selected' : ''; ?>>Credit</option>
 </select>
-<input type="number" step="0.01" min="0.01" name="amount" placeholder="Amount" required>
-<input type="text" name="note" placeholder="Note (optional)">
+<input type="number" step="0.01" min="0.01" name="amount" placeholder="Amount" value="<?php echo htmlspecialchars($formAmount); ?>" required>
+<input type="text" name="note" placeholder="Note (optional)" value="<?php echo htmlspecialchars($formNote); ?>">
+<?php if($editingId > 0){ ?>
+<input type="hidden" name="edit_id" value="<?php echo (int)$editingId; ?>">
+<button class="btn" type="submit" name="update_entry">Update Entry</button>
+<a class="btn" href="account.php?cat=<?php echo urlencode($cat); ?>">Cancel Edit</a>
+<?php }else{ ?>
 <button class="btn" type="submit" name="add_entry">Save Entry</button>
+<?php } ?>
 </form>
 </div>
 
@@ -156,6 +238,7 @@ border:1px solid #ddd;
 <div class="grid">
 <div class="sum"><b>Total Debit:</b> Rs <?php echo number_format((float)$totalDebit, 2); ?></div>
 <div class="sum"><b>Total Credit:</b> Rs <?php echo number_format((float)$totalCredit, 2); ?></div>
+<div class="sum"><b>Net Balance (Credit - Debit):</b> Rs <?php echo number_format((float)$netBalance, 2); ?></div>
 </div>
 </div>
 
@@ -165,11 +248,13 @@ border:1px solid #ddd;
 <?php foreach($allowedCategories as $c){ 
 $d = isset($categoryTotals[$c]) ? $categoryTotals[$c]['debit_total'] : 0;
 $cr = isset($categoryTotals[$c]) ? $categoryTotals[$c]['credit_total'] : 0;
+$n = (float)$cr - (float)$d;
 ?>
 <div class="sum">
 <b><?php echo ucfirst($c); ?></b><br>
 Debit: Rs <?php echo number_format((float)$d, 2); ?><br>
-Credit: Rs <?php echo number_format((float)$cr, 2); ?>
+Credit: Rs <?php echo number_format((float)$cr, 2); ?><br>
+Net: Rs <?php echo number_format((float)$n, 2); ?>
 </div>
 <?php } ?>
 </div>
@@ -182,6 +267,7 @@ Credit: Rs <?php echo number_format((float)$cr, 2); ?>
 <th>Type</th>
 <th>Amount</th>
 <th>Note</th>
+<th>Action</th>
 </tr>
 <?php while($row = $entries->fetch_assoc()){ ?>
 <tr>
@@ -190,8 +276,13 @@ Credit: Rs <?php echo number_format((float)$cr, 2); ?>
 <td><?php echo htmlspecialchars(ucfirst($row['entry_type'])); ?></td>
 <td>Rs <?php echo number_format((float)$row['amount'], 2); ?></td>
 <td><?php echo htmlspecialchars($row['note']); ?></td>
+<td>
+<a class="btn" href="account.php?cat=<?php echo urlencode($cat); ?>&edit_id=<?php echo (int)$row['id']; ?>">Edit</a>
+<a class="btn" href="account.php?cat=<?php echo urlencode($cat); ?>&delete_id=<?php echo (int)$row['id']; ?>" onclick="return confirm('Delete this entry?')">Delete</a>
+</td>
 </tr>
 <?php } ?>
 </table>
+<?php if(isset($entryStmt)){ $entryStmt->close(); } ?>
 </body>
 </html>
