@@ -13,14 +13,20 @@ exit();
 }
 
 function normalize_header_token($v){
-$v = strtolower(trim((string)$v));
+$v = (string)$v;
+$v = preg_replace('/^\xEF\xBB\xBF/u', '', $v);
+$v = str_replace("\xC2\xA0", ' ', $v);
+$v = strtolower(trim($v));
 $v = preg_replace('/\s+/', ' ', $v);
 $v = str_replace(['.', '(', ')'], '', $v);
 return $v;
 }
 
 function normalize_date_token($v){
-$v = strtolower(trim((string)$v));
+$v = (string)$v;
+$v = preg_replace('/^\xEF\xBB\xBF/u', '', $v);
+$v = str_replace("\xC2\xA0", ' ', $v);
+$v = strtolower(trim($v));
 $v = str_replace(['.', '-', ' '], '/', $v);
 $v = preg_replace('#/+#', '/', $v);
 $parts = explode('/', $v);
@@ -33,6 +39,42 @@ if($d === ''){ $d = '0'; }
 return $m . '/' . $d . '/' . $y;
 }
 return $v;
+}
+
+function resolve_column_key_for_header($header, $columns){
+$hNorm = normalize_header_token($header);
+$hDate = normalize_date_token($header);
+$bestKey = '';
+$bestScore = PHP_INT_MAX;
+
+foreach($columns as $c){
+$labelNorm = normalize_header_token($c['column_label']);
+$labelDate = normalize_date_token($c['column_label']);
+$keyNorm = normalize_header_token($c['column_key']);
+$keyDate = normalize_date_token($c['column_key']);
+
+$score = null;
+if($labelNorm === $hNorm || $labelDate === $hDate){
+$score = 0; // prefer label matches
+} elseif($keyNorm === $hNorm || $keyDate === $hDate){
+$score = 10; // fallback: key match
+} else {
+continue;
+}
+
+if((int)$c['is_hidden'] === 1){
+$score += 100; // visible columns first
+}
+$score += ((int)$c['display_order']) * 2;
+$score += (int)$c['id'];
+
+if($score < $bestScore){
+$bestScore = $score;
+$bestKey = (string)$c['column_key'];
+}
+}
+
+return $bestKey;
 }
 
 $tmpName = $_FILES['csv_file']['tmp_name'];
@@ -53,34 +95,21 @@ $headers = array_values(array_map(function($h){
 return trim((string)$h);
 }, $headers));
 
-$normToKey = [];
-$dateToKey = [];
-$colRes = $conn->query("SELECT column_key, column_label FROM rate_list_columns WHERE is_deleted=0 ORDER BY display_order ASC, id ASC");
+$columns = [];
+$colRes = $conn->query("SELECT id, column_key, column_label, is_hidden, display_order FROM rate_list_columns WHERE is_deleted=0 ORDER BY is_hidden ASC, display_order ASC, id ASC");
 while($colRes && $c = $colRes->fetch_assoc()){
-$key = (string)$c['column_key'];
-$label = (string)$c['column_label'];
+$columns[] = $c;
+}
 
-$kNorm = normalize_header_token($key);
-$lNorm = normalize_header_token($label);
-if($kNorm !== '' && !isset($normToKey[$kNorm])){ $normToKey[$kNorm] = $key; }
-if($lNorm !== '' && !isset($normToKey[$lNorm])){ $normToKey[$lNorm] = $key; }
-
-$kDate = normalize_date_token($key);
-$lDate = normalize_date_token($label);
-if($kDate !== '' && !isset($dateToKey[$kDate])){ $dateToKey[$kDate] = $key; }
-if($lDate !== '' && !isset($dateToKey[$lDate])){ $dateToKey[$lDate] = $key; }
+if(count($columns) === 0){
+fclose($handle);
+header("location:rate_list.php?import=error&reason=no_columns");
+exit();
 }
 
 $headerDefs = [];
 foreach($headers as $idx => $h){
-$n = normalize_header_token($h);
-$d = normalize_date_token($h);
-$mappedKey = '';
-if(isset($normToKey[$n])){
-$mappedKey = $normToKey[$n];
-} elseif(isset($dateToKey[$d])){
-$mappedKey = $dateToKey[$d];
-}
+$mappedKey = resolve_column_key_for_header($h, $columns);
 $headerDefs[$idx] = ['column_key' => $mappedKey];
 }
 

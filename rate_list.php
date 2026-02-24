@@ -44,7 +44,12 @@ $ins = isset($_GET['ins']) ? (int)$_GET['ins'] : 0;
 $skip = isset($_GET['skip']) ? (int)$_GET['skip'] : 0;
 $msg = "Import completed. Inserted: $ins, Skipped: $skip";
 } elseif($_GET['import'] === 'error'){
+$reason = isset($_GET['reason']) ? trim((string)$_GET['reason']) : '';
+if($reason === 'no_columns'){
+$err = 'Import failed. No active Rate List columns found. Add columns first, then import.';
+} else {
 $err = 'Import failed. Please upload a valid CSV file.';
+}
 }
 }
 
