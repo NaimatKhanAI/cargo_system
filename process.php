@@ -110,6 +110,19 @@ $v = str_replace(['.', '(', ')'], '', $v);
 return $v;
 }
 
+function slugify_label_to_key($label){
+$key = strtolower(trim((string)$label));
+$key = preg_replace('/[^a-z0-9]+/', '_', $key);
+$key = trim($key, '_');
+if($key === ''){
+$key = 'column';
+}
+if(strpos($key, 'custom_') !== 0){
+$key = 'custom_' . $key;
+}
+return $key;
+}
+
 function call_openai_table_extract($apiKey, $visionModel, $dataUrl, $promptText, $maxTokens = 3000){
 $payload = [
 "model"=>$visionModel,
@@ -163,33 +176,64 @@ return $m . '/' . $d . '/' . $y;
 return $v;
 }
 
-function find_header_index($headers, $aliases){
-$normalized = [];
-foreach($headers as $idx => $h){
-$base = normalize_header($h);
-$normalized[$idx] = $base;
+function next_display_order($conn){
+$row = $conn->query("SELECT COALESCE(MAX(display_order),0) AS m FROM rate_list_columns")->fetch_assoc();
+return ((int)$row['m']) + 1;
 }
 
-foreach($aliases as $alias){
-$aliasBase = normalize_header($alias);
-foreach($normalized as $idx => $val){
-if($val === $aliasBase){
-return $idx;
+function find_existing_column_by_label($conn, $label){
+$norm = normalize_header($label);
+$dateNorm = normalize_dateish($label);
+$res = $conn->query("SELECT id, column_key, column_label, is_deleted FROM rate_list_columns ORDER BY id ASC");
+while($res && $r = $res->fetch_assoc()){
+$lbl = (string)$r['column_label'];
+if(normalize_header($lbl) === $norm || normalize_dateish($lbl) === $dateNorm){
+return $r;
 }
 }
-}
-
-// date-like alias match (handles 01/01/2026 vs 1/1/2026 etc.)
-foreach($aliases as $alias){
-$aliasDate = normalize_dateish($alias);
-foreach($headers as $idx => $h){
-if(normalize_dateish($h) === $aliasDate){
-return $idx;
-}
-}
-}
-
 return null;
+}
+
+function ensure_column_for_header($conn, $header){
+$header = trim((string)$header);
+if($header === ''){
+return ['column_key' => ''];
+}
+
+$existing = find_existing_column_by_label($conn, $header);
+if($existing){
+$key = (string)$existing['column_key'];
+if((int)$existing['is_deleted'] === 1){
+$upd = $conn->prepare("UPDATE rate_list_columns SET is_deleted=0, is_hidden=0 WHERE id=?");
+$id = (int)$existing['id'];
+$upd->bind_param("i", $id);
+$upd->execute();
+$upd->close();
+}
+return ['column_key' => $key];
+}
+
+$baseKey = slugify_label_to_key($header);
+$key = $baseKey;
+$suffix = 1;
+while(true){
+$chk = $conn->prepare("SELECT id FROM rate_list_columns WHERE column_key=? LIMIT 1");
+$chk->bind_param("s", $key);
+$chk->execute();
+$exists = $chk->get_result()->num_rows > 0;
+$chk->close();
+if(!$exists){ break; }
+$suffix++;
+$key = $baseKey . '_' . $suffix;
+}
+
+$ord = next_display_order($conn);
+$ins = $conn->prepare("INSERT INTO rate_list_columns(column_key, column_label, is_hidden, is_deleted, display_order, is_base) VALUES(?, ?, 0, 0, ?, 0)");
+$ins->bind_param("ssi", $key, $header, $ord);
+$ins->execute();
+$ins->close();
+
+return ['column_key' => $key];
 }
 
 for ($i = 0; $i < $count; $i++) {
@@ -337,6 +381,13 @@ fputcsv($fp, []);
 
 fputcsv($fp, $headers);
 
+$headerDefs = [];
+foreach($headers as $h){
+$headerDefs[] = ensure_column_for_header($conn, $h);
+}
+
+$insStmt = $conn->prepare("INSERT INTO image_processed_rates(source_file, source_image_path, sr_no, station_english, station_urdu, rate1, rate2, extra_data) VALUES(?, ?, ?, ?, ?, ?, ?, ?)");
+
 foreach($rows as $row){
 if(!is_array($row)){
 continue;
@@ -347,30 +398,38 @@ return is_scalar($v) ? (string)$v : "";
 }, $normalized);
 $normalized = array_slice(array_pad($normalized, count($headers), ""), 0, count($headers));
 fputcsv($fp, $normalized);
-$rowsWritten++;
 
-// Save required columns in DB if exact columns are available in extracted headers.
-$idxSr = find_header_index($headers, ['sr', 'sr.', 'sr no', 'serial', 'serial no']);
-$idxEng = find_header_index($headers, ['station english', 'station (english)', 'english station']);
-$idxUrdu = find_header_index($headers, ['station urdu', 'station (urdu)', 'urdu station']);
-$idxR1 = find_header_index($headers, ['rate1', 'rate 1', 'rate_1', '1/1/2026', '01/01/2026', '1-1-2026', '01-01-2026']);
-$idxR2 = find_header_index($headers, ['rate2', 'rate 2', 'rate_2', '1/2/2026', '01/02/2026', '1-2-2026', '01-02-2026']);
+$base = [
+'sr_no' => '',
+'station_english' => '',
+'station_urdu' => '',
+'rate1' => '',
+'rate2' => '',
+];
+$extra = [];
 
-if($idxSr !== null || $idxEng !== null || $idxUrdu !== null || $idxR1 !== null || $idxR2 !== null){
-$srVal = $idxSr !== null && isset($normalized[$idxSr]) ? $normalized[$idxSr] : "";
-$engVal = $idxEng !== null && isset($normalized[$idxEng]) ? $normalized[$idxEng] : "";
-$urduVal = $idxUrdu !== null && isset($normalized[$idxUrdu]) ? $normalized[$idxUrdu] : "";
-$r1Val = $idxR1 !== null && isset($normalized[$idxR1]) ? $normalized[$idxR1] : "";
-$r2Val = $idxR2 !== null && isset($normalized[$idxR2]) ? $normalized[$idxR2] : "";
+foreach($headerDefs as $colIdx => $def){
+$val = isset($normalized[$colIdx]) ? $normalized[$colIdx] : '';
+if($def['column_key'] !== '' && array_key_exists($def['column_key'], $base)){
+$base[$def['column_key']] = $val;
+} elseif($def['column_key'] !== ''){
+$extra[$def['column_key']] = $val;
+}
+}
 
-$insStmt = $conn->prepare("INSERT INTO image_processed_rates(source_file, source_image_path, sr_no, station_english, station_urdu, rate1, rate2) VALUES(?, ?, ?, ?, ?, ?, ?)");
-$insStmt->bind_param("sssssss", $name, $sourceImageRelPath, $srVal, $engVal, $urduVal, $r1Val, $r2Val);
+if($base['sr_no'] === '' && $base['station_english'] === '' && $base['station_urdu'] === '' && $base['rate1'] === '' && $base['rate2'] === '' && empty(array_filter($extra, function($v){ return $v !== ''; }))){
+continue;
+}
+
+$extraJson = empty($extra) ? '' : json_encode($extra, JSON_UNESCAPED_UNICODE);
+$insStmt->bind_param("ssssssss", $name, $sourceImageRelPath, $base['sr_no'], $base['station_english'], $base['station_urdu'], $base['rate1'], $base['rate2'], $extraJson);
 if($insStmt->execute()){
 $dbRowsSaved++;
+$rowsWritten++;
 }
+}
+
 $insStmt->close();
-}
-}
 
 js("setStatus($i,'Done');");
 $progress = intval((($i+1)/$count) * 100);

@@ -7,75 +7,6 @@ exit();
 
 include 'config/db.php';
 
-function normalize_header_token($v){
-$v = strtolower(trim((string)$v));
-$v = preg_replace('/\s+/', ' ', $v);
-$v = str_replace(['.', '(', ')'], '', $v);
-return $v;
-}
-
-function normalize_date_token($v){
-$v = strtolower(trim((string)$v));
-$v = str_replace(['.', '-', ' '], '/', $v);
-$v = preg_replace('#/+#', '/', $v);
-$parts = explode('/', $v);
-if(count($parts) === 3){
-$m = ltrim($parts[0], '0');
-$d = ltrim($parts[1], '0');
-$y = $parts[2];
-if($m === ''){ $m = '0'; }
-if($d === ''){ $d = '0'; }
-return $m . '/' . $d . '/' . $y;
-}
-return $v;
-}
-
-function match_alias($value, $aliases){
-$base = normalize_header_token($value);
-foreach($aliases as $alias){
-if($base === normalize_header_token($alias)){
-return true;
-}
-}
-
-$dateBase = normalize_date_token($value);
-foreach($aliases as $alias){
-if($dateBase === normalize_date_token($alias)){
-return true;
-}
-}
-return false;
-}
-
-function infer_base_key_from_column($columnKey, $columnLabel){
-$key = strtolower(trim((string)$columnKey));
-$label = trim((string)$columnLabel);
-
-$keyProbe = $key;
-if(strpos($keyProbe, 'custom_') === 0){
-$keyProbe = substr($keyProbe, 7);
-}
-$keyProbe = str_replace('_', ' ', $keyProbe);
-$candidates = [$key, $keyProbe, $label];
-
-$aliases = [
-'sr_no' => ['sr_no', 'sr', 'sr.', 'sr no', 'serial', 'serial no'],
-'station_english' => ['station_english', 'station english', 'station (english)', 'english station'],
-'station_urdu' => ['station_urdu', 'station urdu', 'station (urdu)', 'urdu station'],
-'rate1' => ['rate1', 'rate 1', 'rate_1', '1/1/2026', '01/01/2026', '1-1-2026', '01-01-2026'],
-'rate2' => ['rate2', 'rate 2', 'rate_2', '1/2/2026', '01/02/2026', '1-2-2026', '01-02-2026'],
-];
-
-foreach($aliases as $baseKey => $list){
-foreach($candidates as $candidate){
-if(match_alias($candidate, $list)){
-return $baseKey;
-}
-}
-}
-return null;
-}
-
 function slugify_label_to_key($label){
 $key = strtolower(trim($label));
 $key = preg_replace('/[^a-z0-9]+/', '_', $key);
@@ -122,28 +53,6 @@ $label = isset($_POST['new_column_label']) ? trim($_POST['new_column_label']) : 
 if($label === ''){
 $err = 'Column name required.';
 } else {
-$baseMatch = infer_base_key_from_column('', $label);
-if($baseMatch !== null){
-$chkBase = $conn->prepare("SELECT id FROM rate_list_columns WHERE column_key=? LIMIT 1");
-$chkBase->bind_param("s", $baseMatch);
-$chkBase->execute();
-$baseRes = $chkBase->get_result();
-if($baseRes && $baseRes->num_rows > 0){
-$updBase = $conn->prepare("UPDATE rate_list_columns SET column_label=?, is_hidden=0, is_deleted=0 WHERE column_key=?");
-$updBase->bind_param("ss", $label, $baseMatch);
-$updBase->execute();
-$updBase->close();
-} else {
-$maxOrderRes = $conn->query("SELECT COALESCE(MAX(display_order),0) AS m FROM rate_list_columns")->fetch_assoc();
-$nextOrder = ((int)$maxOrderRes['m']) + 1;
-$insBase = $conn->prepare("INSERT INTO rate_list_columns(column_key, column_label, is_hidden, is_deleted, display_order, is_base) VALUES(?, ?, 0, 0, ?, 1)");
-$insBase->bind_param("ssi", $baseMatch, $label, $nextOrder);
-$insBase->execute();
-$insBase->close();
-}
-$chkBase->close();
-$msg = 'Base column restored/added.';
-} else {
 $baseKey = slugify_label_to_key($label);
 $key = $baseKey;
 $suffix = 1;
@@ -165,7 +74,6 @@ $ins->bind_param("ssi", $key, $label, $nextOrder);
 $ins->execute();
 $ins->close();
 $msg = 'New column added.';
-}
 }
 }
 
@@ -220,12 +128,9 @@ $extra = [];
 
 foreach($activeCols as $c){
 $key = $c['column_key'];
-$mappedBase = infer_base_key_from_column($key, $c['column_label']);
 $field = 'col_' . $key;
 $val = isset($_POST[$field]) ? trim($_POST[$field]) : '';
-if($mappedBase !== null && array_key_exists($mappedBase, $base)){
-$base[$mappedBase] = $val;
-} elseif(array_key_exists($key, $base)){
+if(array_key_exists($key, $base)){
 $base[$key] = $val;
 } else {
 $extra[$key] = $val;
@@ -441,10 +346,8 @@ if(is_array($decoded)){ $extra = $decoded; }
 <form method="post">
 <?php foreach($visibleColumns as $c){
 $key = $c['column_key'];
-$mappedBase = infer_base_key_from_column($key, $c['column_label']);
 $val = '';
 if(array_key_exists($key, $r)){ $val = (string)$r[$key]; }
-elseif($mappedBase !== null && array_key_exists($mappedBase, $r)){ $val = (string)$r[$mappedBase]; }
 elseif(isset($extra[$key])){ $val = (string)$extra[$key]; }
 ?>
 <td><input type="text" name="col_<?php echo htmlspecialchars($key); ?>" value="<?php echo htmlspecialchars($val); ?>"></td>
@@ -464,10 +367,8 @@ elseif(isset($extra[$key])){ $val = (string)$extra[$key]; }
 <tr>
 <?php foreach($visibleColumns as $c){
 $key = $c['column_key'];
-$mappedBase = infer_base_key_from_column($key, $c['column_label']);
 $val = '';
 if(array_key_exists($key, $r)){ $val = (string)$r[$key]; }
-elseif($mappedBase !== null && array_key_exists($mappedBase, $r)){ $val = (string)$r[$mappedBase]; }
 elseif(isset($extra[$key])){ $val = (string)$extra[$key]; }
 ?>
 <td><?php echo htmlspecialchars($val); ?></td>
