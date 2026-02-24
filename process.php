@@ -7,6 +7,7 @@ exit();
 
 require_once __DIR__ . '/config/env.php';
 load_env_file(__DIR__ . '/.env');
+include 'config/db.php';
 
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
@@ -81,6 +82,10 @@ $outDir = __DIR__ . "/output";
 if(!is_dir($outDir)){
 mkdir($outDir, 0777, true);
 }
+$imgDir = $outDir . "/source_images";
+if(!is_dir($imgDir)){
+mkdir($imgDir, 0777, true);
+}
 
 $fileName = "image_extract_" . date("Ymd_His") . ".csv";
 $file = "output/" . $fileName;
@@ -89,11 +94,64 @@ $fp = fopen($fullPath,'w');
 fwrite($fp, "\xEF\xBB\xBF");
 
 $rowsWritten = 0;
+$dbRowsSaved = 0;
 $errors = [];
 
 function js($s){
 echo "<script>".$s."</script>";
 flush();
+}
+
+function normalize_header($v){
+$v = strtolower(trim((string)$v));
+$v = preg_replace('/\s+/', ' ', $v);
+$v = str_replace(['.', '(', ')'], '', $v);
+return $v;
+}
+
+function normalize_dateish($v){
+$v = strtolower(trim((string)$v));
+$v = str_replace(['.', '-', ' '], '/', $v);
+$v = preg_replace('#/+#', '/', $v);
+$parts = explode('/', $v);
+if(count($parts) === 3){
+$m = ltrim($parts[0], '0');
+$d = ltrim($parts[1], '0');
+$y = $parts[2];
+if($m === ''){ $m = '0'; }
+if($d === ''){ $d = '0'; }
+return $m . '/' . $d . '/' . $y;
+}
+return $v;
+}
+
+function find_header_index($headers, $aliases){
+$normalized = [];
+foreach($headers as $idx => $h){
+$base = normalize_header($h);
+$normalized[$idx] = $base;
+}
+
+foreach($aliases as $alias){
+$aliasBase = normalize_header($alias);
+foreach($normalized as $idx => $val){
+if($val === $aliasBase){
+return $idx;
+}
+}
+}
+
+// date-like alias match (handles 01/01/2026 vs 1/1/2026 etc.)
+foreach($aliases as $alias){
+$aliasDate = normalize_dateish($alias);
+foreach($headers as $idx => $h){
+if(normalize_dateish($h) === $aliasDate){
+return $idx;
+}
+}
+}
+
+return null;
 }
 
 for ($i = 0; $i < $count; $i++) {
@@ -116,9 +174,26 @@ js("setStatus($i,'Invalid file'); logLine('Image ".($i+1).": invalid mime type')
 continue;
 }
 
+$ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+if($ext === '' || !preg_match('/^[a-z0-9]+$/', $ext)){
+$ext = 'jpg';
+}
+$safeBase = preg_replace('/[^a-zA-Z0-9_-]/', '_', pathinfo($name, PATHINFO_FILENAME));
+if($safeBase === ''){
+$safeBase = 'image';
+}
+$savedName = $safeBase . '_' . date('Ymd_His') . '_' . $i . '.' . $ext;
+$savedPath = $imgDir . '/' . $savedName;
+$sourceImageRelPath = 'output/source_images/' . $savedName;
+if(!move_uploaded_file($tmp, $savedPath)){
+$errors[] = "Could not save source image for image ".($i+1);
+js("setStatus($i,'Save failed'); logLine('Image ".($i+1).": source image save failed');");
+continue;
+}
+
 js("setStatus($i,'Extracting'); logLine('Image ".($i+1).": sending to OpenAI');");
 
-$img = base64_encode(file_get_contents($tmp));
+$img = base64_encode(file_get_contents($savedPath));
 $data = [
 "model"=>"gpt-4o-mini",
 "messages"=>[
@@ -225,6 +300,28 @@ return is_scalar($v) ? (string)$v : "";
 $normalized = array_slice(array_pad($normalized, count($headers), ""), 0, count($headers));
 fputcsv($fp, $normalized);
 $rowsWritten++;
+
+// Save required columns in DB if exact columns are available in extracted headers.
+$idxSr = find_header_index($headers, ['sr', 'sr.', 'sr no', 'serial', 'serial no']);
+$idxEng = find_header_index($headers, ['station english', 'station (english)', 'english station']);
+$idxUrdu = find_header_index($headers, ['station urdu', 'station (urdu)', 'urdu station']);
+$idxR1 = find_header_index($headers, ['1/1/2026', '01/01/2026', '1-1-2026', '01-01-2026']);
+$idxR2 = find_header_index($headers, ['1/2/2026', '01/02/2026', '1-2-2026', '01-02-2026']);
+
+if($idxSr !== null || $idxEng !== null || $idxUrdu !== null || $idxR1 !== null || $idxR2 !== null){
+$srVal = $idxSr !== null && isset($normalized[$idxSr]) ? $normalized[$idxSr] : "";
+$engVal = $idxEng !== null && isset($normalized[$idxEng]) ? $normalized[$idxEng] : "";
+$urduVal = $idxUrdu !== null && isset($normalized[$idxUrdu]) ? $normalized[$idxUrdu] : "";
+$r1Val = $idxR1 !== null && isset($normalized[$idxR1]) ? $normalized[$idxR1] : "";
+$r2Val = $idxR2 !== null && isset($normalized[$idxR2]) ? $normalized[$idxR2] : "";
+
+$insStmt = $conn->prepare("INSERT INTO image_processed_rates(source_file, source_image_path, sr_no, station_english, station_urdu, rate_2026_01_01, rate_2026_01_02) VALUES(?, ?, ?, ?, ?, ?, ?)");
+$insStmt->bind_param("sssssss", $name, $sourceImageRelPath, $srVal, $engVal, $urduVal, $r1Val, $r2Val);
+if($insStmt->execute()){
+$dbRowsSaved++;
+}
+$insStmt->close();
+}
 }
 
 js("setStatus($i,'Done');");
@@ -239,8 +336,10 @@ echo "<script>
 var final=document.getElementById('final');
 final.innerHTML = '<div style=\"margin-top:16px;\">'
 + '<div class=\"muted\">Rows written: ".$rowsWritten."</div>'
++ '<div class=\"muted\">Rows saved in DB: ".$dbRowsSaved."</div>'
 + '<div style=\"margin-top:10px;\">'
 + '<a class=\"button\" href=\"".$file."\" download>Download Excel CSV</a>'
++ '<a class=\"secondary\" href=\"rate_list.php\">Rate List</a>'
 + '<a class=\"secondary\" href=\"process_img.php\">Convert Another</a>'
 + '</div></div>';
 </script>";

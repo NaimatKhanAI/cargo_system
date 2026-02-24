@@ -35,6 +35,15 @@ $error = "Pehle sahi login karein.";
 }
 }
 
+if(isset($_POST['rate_list'])){
+if($canChooseOption){
+header("location:rate_list.php");
+exit();
+}else{
+$error = "Pehle sahi login karein.";
+}
+}
+
 if(isset($_POST['dashboard'])){
 if($canChooseOption){
 $_SESSION['user'] = $pendingUser !== '' ? $pendingUser : 'User';
@@ -138,7 +147,7 @@ color:#222;
 }
 .option-grid{
 display:grid;
-grid-template-columns:repeat(2,minmax(100px,1fr));
+grid-template-columns:repeat(3,minmax(100px,1fr));
 gap:10px;
 }
 .option-btn{
@@ -185,6 +194,7 @@ grid-template-columns:1fr;
 <button class="option-btn" name="dashboard" type="submit">Cargo Dashboard</button>
 <button class="option-btn" name="account" type="submit">Account Ledger</button>
 <button class="option-btn" name="process_img" type="submit">Process Image</button>
+<button class="option-btn" name="rate_list" type="submit">Rate List</button>
 <button class="option-btn" name="guest" type="submit">Guest Mode</button>
 </div>
 </div>

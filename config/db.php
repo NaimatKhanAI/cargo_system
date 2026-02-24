@@ -16,6 +16,7 @@ password VARCHAR(50)
 
 $conn->query("CREATE TABLE IF NOT EXISTS bilty(
 id INT AUTO_INCREMENT PRIMARY KEY,
+sr_no VARCHAR(50),
 date DATE,
 vehicle VARCHAR(50),
 bilty_no VARCHAR(50),
@@ -30,6 +31,11 @@ profit INT
 $colCheck = $conn->query("SHOW COLUMNS FROM bilty LIKE 'party'");
 if($colCheck && $colCheck->num_rows === 0){
 $conn->query("ALTER TABLE bilty ADD party VARCHAR(100) AFTER bilty_no");
+}
+
+$srColCheck = $conn->query("SHOW COLUMNS FROM bilty LIKE 'sr_no'");
+if($srColCheck && $srColCheck->num_rows === 0){
+$conn->query("ALTER TABLE bilty ADD sr_no VARCHAR(50) AFTER id");
 }
 
 $origFreightColCheck = $conn->query("SHOW COLUMNS FROM bilty LIKE 'original_freight'");
@@ -57,6 +63,23 @@ $conn->query("ALTER TABLE account_entries ADD amount_mode VARCHAR(10) NOT NULL D
 $biltyColCheck = $conn->query("SHOW COLUMNS FROM account_entries LIKE 'bilty_id'");
 if($biltyColCheck && $biltyColCheck->num_rows === 0){
 $conn->query("ALTER TABLE account_entries ADD bilty_id INT NULL AFTER amount_mode");
+}
+
+$conn->query("CREATE TABLE IF NOT EXISTS image_processed_rates(
+id INT AUTO_INCREMENT PRIMARY KEY,
+source_file VARCHAR(255),
+source_image_path VARCHAR(255),
+sr_no VARCHAR(50),
+station_english VARCHAR(255),
+station_urdu VARCHAR(255),
+rate_2026_01_01 VARCHAR(100),
+rate_2026_01_02 VARCHAR(100),
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)");
+
+$sourceImgColCheck = $conn->query("SHOW COLUMNS FROM image_processed_rates LIKE 'source_image_path'");
+if($sourceImgColCheck && $sourceImgColCheck->num_rows === 0){
+$conn->query("ALTER TABLE image_processed_rates ADD source_image_path VARCHAR(255) AFTER source_file");
 }
 
 // Best-effort backfill for legacy data where freight was reduced after payments.

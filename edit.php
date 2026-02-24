@@ -3,6 +3,7 @@ include 'config/db.php';
 $id=$_GET['id'];
 
 if(isset($_POST['update'])){
+$sr=isset($_POST['sr_no']) ? trim($_POST['sr_no']) : '';
 $d=$_POST['date'];
 $v=$_POST['vehicle'];
 $b=$_POST['bilty'];
@@ -12,7 +13,7 @@ $f=$_POST['freight'];
 $t=$_POST['tender'];
 $p=$t-$f;
 
-$conn->query("UPDATE bilty SET date='$d',vehicle='$v',bilty_no='$b',
+$conn->query("UPDATE bilty SET sr_no='$sr',date='$d',vehicle='$v',bilty_no='$b',
 party='$party',location='$l',freight='$f',original_freight='$f',tender='$t',profit='$p' WHERE id=$id");
 header("location:dashboard.php");
 }
@@ -122,6 +123,10 @@ max-width:none;
 
 <form method="post">
 <div class="grid">
+<div class="field">
+<label for="sr_no">SR No</label>
+<input id="sr_no" name="sr_no" value="<?=htmlspecialchars($row['sr_no'] ?? '')?>" required>
+</div>
 <div class="field">
 <label for="date">Date</label>
 <input id="date" type="date" name="date" value="<?=htmlspecialchars($row['date'] ? $row['date'] : date('Y-m-d'))?>" required>

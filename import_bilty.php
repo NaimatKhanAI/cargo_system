@@ -24,7 +24,7 @@ $inserted = 0;
 $skipped = 0;
 $lineNo = 0;
 
-$stmt = $conn->prepare("INSERT INTO bilty(date, vehicle, bilty_no, party, location, freight, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?)");
+$stmt = $conn->prepare("INSERT INTO bilty(sr_no, date, vehicle, bilty_no, party, location, freight, original_freight, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
 
 while(($data = fgetcsv($handle)) !== false){
 $lineNo++;
@@ -60,6 +60,13 @@ continue;
 $date = $data[$offset];
 $vehicle = isset($data[$offset + 1]) ? $data[$offset + 1] : "";
 $biltyNo = isset($data[$offset + 2]) ? $data[$offset + 2] : "";
+$srNo = "";
+
+if($offset >= 2){
+$srNo = isset($data[$offset - 1]) ? $data[$offset - 1] : "";
+} elseif($offset === 1 && isset($data[0]) && !is_numeric($data[0])){
+$srNo = $data[0];
+}
 
 if($remaining >= 8){
 $party = isset($data[$offset + 3]) ? $data[$offset + 3] : "";
@@ -89,7 +96,7 @@ $freight = (int)$freight;
 $tender = (int)$tender;
 $profit = is_numeric($profit) ? (int)$profit : ($tender - $freight);
 
-$stmt->bind_param("sssssiii", $date, $vehicle, $biltyNo, $party, $location, $freight, $tender, $profit);
+$stmt->bind_param("ssssssiiii", $srNo, $date, $vehicle, $biltyNo, $party, $location, $freight, $freight, $tender, $profit);
 if($stmt->execute()){
 $inserted++;
 } else {

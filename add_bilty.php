@@ -90,6 +90,10 @@ max-width:none;
 <form action="save_bilty.php" method="post">
 <div class="grid">
 <div class="field">
+<label for="sr_no">SR No</label>
+<input id="sr_no" name="sr_no" placeholder="Enter SR no" required>
+</div>
+<div class="field">
 <label for="date">Date</label>
 <input id="date" type="date" name="date" value="<?php echo $today; ?>" required>
 </div>

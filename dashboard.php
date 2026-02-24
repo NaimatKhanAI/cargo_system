@@ -121,6 +121,7 @@ text-align:center;
 <a class="btn" href="search.php">Search</a>
 <a class="btn" href="account.php">Account Ledger</a>
 <a class="btn" href="process_img.php">Process Image</a>
+<a class="btn" href="rate_list.php">Rate List</a>
 <a class="btn" href="export_bilty.php">Export CSV</a>
 <form class="import-wrap" action="import_bilty.php" method="post" enctype="multipart/form-data">
 <input type="file" name="csv_file" accept=".csv" required>
@@ -143,6 +144,7 @@ Total Profit: Rs <?php echo $total_profit; ?>
 
 <table>
 <tr>
+<th>SR.</th>
 <th>Date</th>
 <th>Vehicle</th>
 <th>Bilty</th>
@@ -159,6 +161,7 @@ $result = $conn->query("SELECT *, (tender - freight) AS calc_profit FROM bilty O
 
 while($row = $result->fetch_assoc()){
 echo "<tr>
+<td>{$row['sr_no']}</td>
 <td>{$row['date']}</td>
 <td>{$row['vehicle']}</td>
 <td>{$row['bilty_no']}</td>
