@@ -64,7 +64,8 @@ $err = 'Pay amount must be greater than 0.';
 } elseif($payAmount > $remainingFreight){
 $err = 'Pay amount cannot be more than remaining freight.';
 } else {
-$note = $formNote !== '' ? $formNote : ("Bilty #" . $row['bilty_no'] . " payment");
+$baseNote = "Bilty #" . $row['bilty_no'];
+$note = $formNote !== '' ? ($baseNote . " - " . $formNote) : $baseNote;
 
 $conn->begin_transaction();
 try{
