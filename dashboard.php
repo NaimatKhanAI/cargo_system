@@ -7,7 +7,7 @@ exit();
 
 include 'config/db.php';
 
-$total = $conn->query("SELECT SUM(profit) as t FROM bilty")->fetch_assoc();
+$total = $conn->query("SELECT SUM(tender - freight) as t FROM bilty")->fetch_assoc();
 $total_profit = $total['t'] ? $total['t'] : 0;
 
 $import_message = "";
@@ -18,6 +18,15 @@ $skip = isset($_GET['skip']) ? (int)$_GET['skip'] : 0;
 $import_message = "Import completed. Inserted: $ins, Skipped: $skip";
 } elseif ($_GET['import'] === 'error') {
 $import_message = "Import failed. Please upload a valid CSV file.";
+}
+}
+
+$pay_message = "";
+if (isset($_GET['pay'])) {
+if ($_GET['pay'] === 'success') {
+$pay_message = "Payment posted and freight updated.";
+} elseif ($_GET['pay'] === 'error') {
+$pay_message = "Payment failed. Please try again.";
 }
 }
 ?>
@@ -89,14 +98,14 @@ text-decoration:none;
 .icon-edit{
 background:#000;
 }
-.icon-delete{
-background:#c62828;
-}
 .icon-pdf{
 background:#1565c0;
 }
+.icon-pay{
+background:#2e7d32;
+}
 .col-action{
-width:64px;
+width:100px;
 white-space:nowrap;
 text-align:center;
 }
@@ -123,6 +132,9 @@ text-align:center;
 <?php if($import_message!=""){ ?>
 <div class="status-msg"><?php echo htmlspecialchars($import_message); ?></div>
 <?php } ?>
+<?php if($pay_message!=""){ ?>
+<div class="status-msg"><?php echo htmlspecialchars($pay_message); ?></div>
+<?php } ?>
 
 <div class="profit-box">
 Total Profit: Rs <?php echo $total_profit; ?>
@@ -142,7 +154,7 @@ Total Profit: Rs <?php echo $total_profit; ?>
 </tr>
 
 <?php
-$result = $conn->query("SELECT * FROM bilty ORDER BY id DESC");
+$result = $conn->query("SELECT *, (tender - freight) AS calc_profit FROM bilty ORDER BY id DESC");
 
 while($row = $result->fetch_assoc()){
 echo "<tr>
@@ -153,8 +165,9 @@ echo "<tr>
 <td>{$row['location']}</td>
 <td>Rs {$row['freight']}</td>
 <td>Rs {$row['tender']}</td>
-<td><b>Rs {$row['profit']}</b></td>
+<td><b>Rs {$row['calc_profit']}</b></td>
 <td class='col-action'>
+<a class='btn icon-btn icon-pay' href='pay_now.php?id={$row['id']}' title='Pay Now' aria-label='Pay Now'>&#8377;</a>
 <a class='btn icon-btn icon-edit' href='edit.php?id={$row['id']}' title='Edit' aria-label='Edit'>&#9998;</a>
 <a class='btn icon-btn icon-pdf' href='pdf.php?id={$row['id']}' target='_blank' title='PDF' aria-label='PDF'>&#128196;</a>
 </td>

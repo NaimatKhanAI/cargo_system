@@ -87,7 +87,7 @@ continue;
 
 $freight = (int)$freight;
 $tender = (int)$tender;
-$profit = is_numeric($profit) ? (int)$profit : ($freight - $tender);
+$profit = is_numeric($profit) ? (int)$profit : ($tender - $freight);
 
 $stmt->bind_param("sssssiii", $date, $vehicle, $biltyNo, $party, $location, $freight, $tender, $profit);
 if($stmt->execute()){
