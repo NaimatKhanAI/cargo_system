@@ -1,4 +1,146 @@
-<?php $today = date('Y-m-d'); ?>
+<?php
+include 'config/db.php';
+
+function normalize_date_label_local($v){
+  $v = strtolower(trim((string)$v));
+  $v = str_replace(['.', '-', ' '], '/', $v);
+  $v = preg_replace('#/+#', '/', $v);
+  $parts = explode('/', $v);
+  if(count($parts) === 3){
+    $m = ltrim($parts[0], '0');
+    $d = ltrim($parts[1], '0');
+    $y = trim($parts[2]);
+    if($m === ''){ $m = '0'; }
+    if($d === ''){ $d = '0'; }
+    return $m . '/' . $d . '/' . $y;
+  }
+  return $v;
+}
+
+function normalize_header_local($v){
+  $v = strtolower(trim((string)$v));
+  $v = preg_replace('/\s+/', ' ', $v);
+  $v = str_replace(['.', '(', ')'], '', $v);
+  return $v;
+}
+
+function canonical_sr_local($v){
+  $v = strtolower(trim((string)$v));
+  return preg_replace('/[^a-z0-9]/', '', $v);
+}
+
+function parse_rate_to_number_local($v){
+  $v = trim((string)$v);
+  if($v === ''){
+    return null;
+  }
+  $clean = preg_replace('/[^0-9.\-]/', '', $v);
+  if($clean === '' || $clean === '-' || $clean === '.'){
+    return null;
+  }
+  if(!is_numeric($clean)){
+    return null;
+  }
+  return (float)$clean;
+}
+
+if(isset($_GET['lookup_tender']) && $_GET['lookup_tender'] === '1'){
+  header('Content-Type: application/json; charset=utf-8');
+
+  $sr = isset($_GET['sr_no']) ? trim((string)$_GET['sr_no']) : '';
+  if($sr === ''){
+    echo json_encode(['ok' => false, 'message' => 'SR No is required']);
+    exit();
+  }
+
+  $targetLabel = '1/1/2026';
+  $targetNorm = normalize_date_label_local($targetLabel);
+  $targetKey = 'rate1';
+  $srKeys = ['sr_no'];
+
+  $colRes = $conn->query("SELECT column_key, column_label, is_deleted FROM rate_list_columns ORDER BY display_order ASC, id ASC");
+  while($colRes && $c = $colRes->fetch_assoc()){
+    if((int)$c['is_deleted'] === 1){
+      continue;
+    }
+    $key = isset($c['column_key']) ? (string)$c['column_key'] : '';
+    $lbl = isset($c['column_label']) ? (string)$c['column_label'] : '';
+    $lblNorm = normalize_header_local($lbl);
+
+    if(in_array($lblNorm, ['sr', 'sr no', 'serial', 'serial no', 'serial number'], true) && $key !== ''){
+      if(!in_array($key, $srKeys, true)){
+        $srKeys[] = $key;
+      }
+    }
+
+    if(normalize_date_label_local($lbl) === $targetNorm){
+      $targetKey = $key;
+      break;
+    }
+  }
+
+  $srCanon = canonical_sr_local($sr);
+  $rowsRes = $conn->query("SELECT sr_no, rate1, rate2, extra_data FROM image_processed_rates ORDER BY id DESC");
+  $row = null;
+  while($rowsRes && $r = $rowsRes->fetch_assoc()){
+    $candidates = [];
+    $candidates[] = isset($r['sr_no']) ? (string)$r['sr_no'] : '';
+
+    $extra = json_decode((string)$r['extra_data'], true);
+    if(is_array($extra)){
+      foreach($srKeys as $k){
+        if(isset($extra[$k])){
+          $candidates[] = (string)$extra[$k];
+        }
+      }
+    }
+
+    foreach($candidates as $cand){
+      if($srCanon !== '' && canonical_sr_local($cand) === $srCanon){
+        $row = $r;
+        break 2;
+      }
+    }
+  }
+
+  if(!$row){
+    echo json_encode(['ok' => false, 'message' => 'SR not found in rate list']);
+    exit();
+  }
+
+  $rateValue = '';
+  if(array_key_exists($targetKey, $row)){
+    $rateValue = (string)$row[$targetKey];
+  } else {
+    $extra = json_decode((string)$row['extra_data'], true);
+    if(is_array($extra) && isset($extra[$targetKey])){
+      $rateValue = (string)$extra[$targetKey];
+    }
+  }
+
+  $numericRate = parse_rate_to_number_local($rateValue);
+  if($numericRate === null){
+    echo json_encode([
+      'ok' => false,
+      'message' => 'Rate not found in 1/1/2026 column for this SR',
+      'rate_raw' => $rateValue
+    ]);
+    exit();
+  }
+
+  echo json_encode([
+    'ok' => true,
+    'column_label' => $targetLabel,
+    'column_key' => $targetKey,
+    'sr_no' => $sr,
+    'rate_raw' => $rateValue,
+    'rate' => $numericRate
+  ]);
+  exit();
+}
+
+$today = date('Y-m-d');
+?>
 <!DOCTYPE html>
 <html>
 <head>
@@ -56,6 +198,11 @@ background:#fafafa;
 margin-top:16px;
 display:flex;
 justify-content:flex-end;
+}
+.help{
+margin-top:8px;
+font-size:12px;
+color:#6b7280;
 }
 .actions button{
 max-width:180px;
@@ -120,6 +267,7 @@ max-width:none;
 <div class="field">
 <label for="tender">Tender</label>
 <input id="tender" type="number" name="tender" placeholder="Tender amount" min="0" required>
+<div id="tender_help" class="help"></div>
 </div>
 </div>
 
@@ -129,5 +277,67 @@ max-width:none;
 </form>
 </div>
 </div>
+<script>
+(function(){
+  var srInput = document.getElementById('sr_no');
+  var tenderInput = document.getElementById('tender');
+  var help = document.getElementById('tender_help');
+  if(!srInput || !tenderInput || !help){
+    return;
+  }
+
+  var reqId = 0;
+  var timer = null;
+
+  function setHelp(text, color){
+    help.textContent = text || '';
+    help.style.color = color || '#6b7280';
+  }
+
+  function lookupTender(){
+    var sr = (srInput.value || '').trim();
+    if(sr === ''){
+      setHelp('', '#6b7280');
+      return;
+    }
+
+    reqId++;
+    var currentReq = reqId;
+    setHelp('Checking rate list...', '#2563eb');
+
+    fetch('add_bilty.php?lookup_tender=1&sr_no=' + encodeURIComponent(sr), {
+      headers: { 'Accept': 'application/json' }
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if(currentReq !== reqId){
+        return;
+      }
+      if(data && data.ok){
+        tenderInput.value = data.rate;
+        setHelp('Tender auto-filled from ' + data.column_label + ' column.', '#15803d');
+      } else {
+        setHelp((data && data.message) ? data.message : 'Rate not found.', '#b91c1c');
+      }
+    })
+    .catch(function(){
+      if(currentReq !== reqId){
+        return;
+      }
+      setHelp('Unable to fetch rate right now.', '#b91c1c');
+    });
+  }
+
+  function scheduleLookup(){
+    if(timer){
+      clearTimeout(timer);
+    }
+    timer = setTimeout(lookupTender, 250);
+  }
+
+  srInput.addEventListener('input', scheduleLookup);
+  srInput.addEventListener('blur', lookupTender);
+})();
+</script>
 </body>
 </html>
