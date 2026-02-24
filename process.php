@@ -379,7 +379,8 @@ if($i > 0){
 fputcsv($fp, []);
 }
 
-fputcsv($fp, $headers);
+$csvHeaders = array_merge(['A'], $headers);
+fputcsv($fp, $csvHeaders);
 
 $headerDefs = [];
 foreach($headers as $h){
@@ -388,6 +389,7 @@ $headerDefs[] = ensure_column_for_header($conn, $h);
 
 $insStmt = $conn->prepare("INSERT INTO image_processed_rates(source_file, source_image_path, sr_no, station_english, station_urdu, rate1, rate2, extra_data) VALUES(?, ?, ?, ?, ?, ?, ?, ?)");
 
+$serialNo = 1;
 foreach($rows as $row){
 if(!is_array($row)){
 continue;
@@ -397,7 +399,9 @@ $normalized = array_map(function($v){
 return is_scalar($v) ? (string)$v : "";
 }, $normalized);
 $normalized = array_slice(array_pad($normalized, count($headers), ""), 0, count($headers));
-fputcsv($fp, $normalized);
+$csvRow = array_merge([(string)$serialNo], $normalized);
+fputcsv($fp, $csvRow);
+$serialNo++;
 
 $base = [
 'sr_no' => '',
