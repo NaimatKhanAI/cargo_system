@@ -119,6 +119,13 @@ is_base TINYINT(1) DEFAULT 1,
 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )");
 
+$conn->query("CREATE TABLE IF NOT EXISTS app_settings(
+id INT AUTO_INCREMENT PRIMARY KEY,
+setting_key VARCHAR(100) UNIQUE,
+setting_value TEXT,
+updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+)");
+
 // Legacy migration: normalize old keys and remove any base-lock.
 $conn->query("UPDATE rate_list_columns SET column_key='rate1' WHERE column_key='rate_2026_01_01'");
 $conn->query("UPDATE rate_list_columns SET column_key='rate2' WHERE column_key='rate_2026_01_02'");
