@@ -148,7 +148,11 @@ $creditAccount = $modeTotals['credit_account'] ? $modeTotals['credit_account'] :
 $categoryTotals = [];
 $catTotalsSql = "SELECT category,
 SUM(CASE WHEN entry_type='debit' THEN amount ELSE 0 END) AS debit_total,
-SUM(CASE WHEN entry_type='credit' THEN amount ELSE 0 END) AS credit_total
+SUM(CASE WHEN entry_type='credit' THEN amount ELSE 0 END) AS credit_total,
+SUM(CASE WHEN entry_type='debit' AND amount_mode='cash' THEN amount ELSE 0 END) AS debit_cash,
+SUM(CASE WHEN entry_type='debit' AND amount_mode='account' THEN amount ELSE 0 END) AS debit_account,
+SUM(CASE WHEN entry_type='credit' AND amount_mode='cash' THEN amount ELSE 0 END) AS credit_cash,
+SUM(CASE WHEN entry_type='credit' AND amount_mode='account' THEN amount ELSE 0 END) AS credit_account
 FROM account_entries
 GROUP BY category";
 $catResult = $conn->query($catTotalsSql);
@@ -322,12 +326,20 @@ grid-template-columns:1fr;
 <?php foreach($allowedCategories as $c){ 
 $d = isset($categoryTotals[$c]) ? $categoryTotals[$c]['debit_total'] : 0;
 $cr = isset($categoryTotals[$c]) ? $categoryTotals[$c]['credit_total'] : 0;
+$dCash = isset($categoryTotals[$c]) ? $categoryTotals[$c]['debit_cash'] : 0;
+$dAccount = isset($categoryTotals[$c]) ? $categoryTotals[$c]['debit_account'] : 0;
+$cCash = isset($categoryTotals[$c]) ? $categoryTotals[$c]['credit_cash'] : 0;
+$cAccount = isset($categoryTotals[$c]) ? $categoryTotals[$c]['credit_account'] : 0;
 $n = (float)$cr - (float)$d;
 ?>
 <div class="sum">
 <b><?php echo ucfirst($c); ?></b><br>
 Debit: Rs <?php echo number_format((float)$d, 2); ?><br>
 Credit: Rs <?php echo number_format((float)$cr, 2); ?><br>
+Debit (Cash): Rs <?php echo number_format((float)$dCash, 2); ?><br>
+Debit (Account): Rs <?php echo number_format((float)$dAccount, 2); ?><br>
+Credit (Cash): Rs <?php echo number_format((float)$cCash, 2); ?><br>
+Credit (Account): Rs <?php echo number_format((float)$cAccount, 2); ?><br>
 Net: Rs <?php echo number_format((float)$n, 2); ?>
 </div>
 <?php } ?>
