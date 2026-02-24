@@ -133,6 +133,18 @@ $totalDebit = $totals['total_debit'] ? $totals['total_debit'] : 0;
 $totalCredit = $totals['total_credit'] ? $totals['total_credit'] : 0;
 $netBalance = (float)$totalCredit - (float)$totalDebit;
 
+$modeTotalsSql = "SELECT
+SUM(CASE WHEN entry_type='debit' AND amount_mode='cash' THEN amount ELSE 0 END) AS debit_cash,
+SUM(CASE WHEN entry_type='debit' AND amount_mode='account' THEN amount ELSE 0 END) AS debit_account,
+SUM(CASE WHEN entry_type='credit' AND amount_mode='cash' THEN amount ELSE 0 END) AS credit_cash,
+SUM(CASE WHEN entry_type='credit' AND amount_mode='account' THEN amount ELSE 0 END) AS credit_account
+FROM account_entries";
+$modeTotals = $conn->query($modeTotalsSql)->fetch_assoc();
+$debitCash = $modeTotals['debit_cash'] ? $modeTotals['debit_cash'] : 0;
+$debitAccount = $modeTotals['debit_account'] ? $modeTotals['debit_account'] : 0;
+$creditCash = $modeTotals['credit_cash'] ? $modeTotals['credit_cash'] : 0;
+$creditAccount = $modeTotals['credit_account'] ? $modeTotals['credit_account'] : 0;
+
 $categoryTotals = [];
 $catTotalsSql = "SELECT category,
 SUM(CASE WHEN entry_type='debit' THEN amount ELSE 0 END) AS debit_total,
@@ -193,6 +205,14 @@ background:#f7f7f7;
 padding:10px;
 border:1px solid #ddd;
 }
+.totals-grid{
+display:grid;
+grid-template-columns:repeat(3,minmax(180px,1fr));
+gap:10px;
+}
+.totals-full{
+margin-top:10px;
+}
 .icon-btn{
 width:26px;
 height:26px;
@@ -215,6 +235,11 @@ width:40%;
 width:70px;
 white-space:nowrap;
 text-align:center;
+}
+@media(max-width:700px){
+.totals-grid{
+grid-template-columns:1fr;
+}
 }
 </style>
 </head>
@@ -274,11 +299,21 @@ text-align:center;
 
 <div class="panel">
 <h3>Overall Totals</h3>
-<div class="grid">
-<div class="sum"><b>Total Debit:</b> Rs <?php echo number_format((float)$totalDebit, 2); ?></div>
-<div class="sum"><b>Total Credit:</b> Rs <?php echo number_format((float)$totalCredit, 2); ?></div>
-<div class="sum"><b>Net Balance (Credit - Debit):</b> Rs <?php echo number_format((float)$netBalance, 2); ?></div>
+<div class="totals-grid">
+<div class="sum">
+<b>Total Debit:</b> Rs <?php echo number_format((float)$totalDebit, 2); ?><br>
+<b>Total Credit:</b> Rs <?php echo number_format((float)$totalCredit, 2); ?>
 </div>
+<div class="sum">
+<b>Debit (Cash):</b> Rs <?php echo number_format((float)$debitCash, 2); ?><br>
+<b>Debit (Account):</b> Rs <?php echo number_format((float)$debitAccount, 2); ?>
+</div>
+<div class="sum">
+<b>Credit (Cash):</b> Rs <?php echo number_format((float)$creditCash, 2); ?><br>
+<b>Credit (Account):</b> Rs <?php echo number_format((float)$creditAccount, 2); ?>
+</div>
+</div>
+<div class="sum totals-full"><b>Net Balance (Credit - Debit):</b> Rs <?php echo number_format((float)$netBalance, 2); ?></div>
 </div>
 
 <div class="panel">
