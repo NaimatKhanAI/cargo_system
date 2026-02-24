@@ -209,6 +209,53 @@ background:#f7f7f7;
 padding:10px;
 border:1px solid #ddd;
 }
+.cat-card{
+background:#fcfcfc;
+border:1px solid #e4e4e4;
+border-radius:10px;
+padding:12px;
+}
+.cat-title{
+display:block;
+font-size:16px;
+margin-bottom:8px;
+}
+.line{
+display:block;
+padding:6px 8px;
+margin:5px 0;
+border-radius:6px;
+font-size:14px;
+}
+.line-debit{
+background:#ffe9e9;
+color:#9f1d1d;
+}
+.line-credit{
+background:#e8f7ea;
+color:#1f7a35;
+}
+.line-debit-cash{
+background:#fff2f2;
+color:#8f2a2a;
+}
+.line-debit-account{
+background:#ffe3e3;
+color:#7f1f1f;
+}
+.line-credit-cash{
+background:#f1fbf3;
+color:#256f3a;
+}
+.line-credit-account{
+background:#dff4e4;
+color:#145f2f;
+}
+.line-net{
+background:#eef3ff;
+color:#1e3f8a;
+font-weight:700;
+}
 .totals-grid{
 display:grid;
 grid-template-columns:repeat(3,minmax(180px,1fr));
@@ -332,15 +379,15 @@ $cCash = isset($categoryTotals[$c]) ? $categoryTotals[$c]['credit_cash'] : 0;
 $cAccount = isset($categoryTotals[$c]) ? $categoryTotals[$c]['credit_account'] : 0;
 $n = (float)$cr - (float)$d;
 ?>
-<div class="sum">
-<b><?php echo ucfirst($c); ?></b><br>
-Debit: Rs <?php echo number_format((float)$d, 2); ?><br>
-Credit: Rs <?php echo number_format((float)$cr, 2); ?><br>
-Debit (Cash): Rs <?php echo number_format((float)$dCash, 2); ?><br>
-Debit (Account): Rs <?php echo number_format((float)$dAccount, 2); ?><br>
-Credit (Cash): Rs <?php echo number_format((float)$cCash, 2); ?><br>
-Credit (Account): Rs <?php echo number_format((float)$cAccount, 2); ?><br>
-Net: Rs <?php echo number_format((float)$n, 2); ?>
+<div class="cat-card">
+<b class="cat-title"><?php echo ucfirst($c); ?></b>
+<span class="line line-debit">Debit: Rs <?php echo number_format((float)$d, 2); ?></span>
+<span class="line line-credit">Credit: Rs <?php echo number_format((float)$cr, 2); ?></span>
+<span class="line line-debit-cash">Debit (Cash): Rs <?php echo number_format((float)$dCash, 2); ?></span>
+<span class="line line-debit-account">Debit (Account): Rs <?php echo number_format((float)$dAccount, 2); ?></span>
+<span class="line line-credit-cash">Credit (Cash): Rs <?php echo number_format((float)$cCash, 2); ?></span>
+<span class="line line-credit-account">Credit (Account): Rs <?php echo number_format((float)$cAccount, 2); ?></span>
+<span class="line line-net">Net: Rs <?php echo number_format((float)$n, 2); ?></span>
 </div>
 <?php } ?>
 </div>

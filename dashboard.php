@@ -74,6 +74,32 @@ border:1px solid #8bc48b;
 padding:10px;
 margin:10px 0;
 }
+.icon-btn{
+width:28px;
+height:28px;
+display:inline-flex;
+align-items:center;
+justify-content:center;
+padding:0;
+font-size:14px;
+line-height:1;
+margin:0 3px 0 0;
+text-decoration:none;
+}
+.icon-edit{
+background:#000;
+}
+.icon-delete{
+background:#c62828;
+}
+.icon-pdf{
+background:#1565c0;
+}
+.col-action{
+width:64px;
+white-space:nowrap;
+text-align:center;
+}
 </style>
 
 </head>
@@ -112,7 +138,7 @@ Total Profit: Rs <?php echo $total_profit; ?>
 <th>Freight</th>
 <th>Tender</th>
 <th>Profit</th>
-<th>Action</th>
+<th class='col-action'>Action</th>
 </tr>
 
 <?php
@@ -128,10 +154,9 @@ echo "<tr>
 <td>Rs {$row['freight']}</td>
 <td>Rs {$row['tender']}</td>
 <td><b>Rs {$row['profit']}</b></td>
-<td>
-<a class='btn' href='edit.php?id={$row['id']}'>Edit</a>
-<a class='btn' href='delete.php?id={$row['id']}' onclick=\"return confirm('Delete this record?')\">Delete</a>
-<a class='btn' href='pdf.php?id={$row['id']}' target='_blank'>PDF</a>
+<td class='col-action'>
+<a class='btn icon-btn icon-edit' href='edit.php?id={$row['id']}' title='Edit' aria-label='Edit'>&#9998;</a>
+<a class='btn icon-btn icon-pdf' href='pdf.php?id={$row['id']}' target='_blank' title='PDF' aria-label='PDF'>&#128196;</a>
 </td>
 </tr>";
 }
