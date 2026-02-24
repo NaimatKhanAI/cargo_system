@@ -120,6 +120,7 @@ text-align:center;
 <a class="btn" href="add_bilty.php">+ Add Bilty</a>
 <a class="btn" href="search.php">Search</a>
 <a class="btn" href="account.php">Account Ledger</a>
+<a class="btn" href="process_img.php">Process Image</a>
 <a class="btn" href="export_bilty.php">Export CSV</a>
 <form class="import-wrap" action="import_bilty.php" method="post" enctype="multipart/form-data">
 <input type="file" name="csv_file" accept=".csv" required>

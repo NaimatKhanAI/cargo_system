@@ -67,3 +67,16 @@ ngrok http 80
 Example live URL:
 
 `https://32e4-160-30-109-81.ngrok-free.app/cargo_system/index.php`
+
+## Image Processing API Key (.env)
+
+`process_img.php` feature use karne ke liye project root me `.env` file banao:
+
+```powershell
+cd C:\xampp\htdocs\cargo_system
+copy .env.example .env
+```
+
+Phir `.env` me apni key set karo:
+
+`OPENAI_API_KEY=sk-...`
