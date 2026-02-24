@@ -1,3 +1,4 @@
+<?php $today = date('Y-m-d'); ?>
 <!DOCTYPE html>
 <html>
 <head>
@@ -90,7 +91,7 @@ max-width:none;
 <div class="grid">
 <div class="field">
 <label for="date">Date</label>
-<input id="date" type="date" name="date" required>
+<input id="date" type="date" name="date" value="<?php echo $today; ?>" required>
 </div>
 <div class="field">
 <label for="vehicle">Vehicle</label>

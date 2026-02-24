@@ -21,7 +21,7 @@ $row=$conn->query("SELECT * FROM bilty WHERE id=$id")->fetch_assoc();
 ?>
 
 <form method="post">
-<input type="date" name="date" value="<?=$row['date']?>"><br>
+<input type="date" name="date" value="<?=htmlspecialchars($row['date'] ? $row['date'] : date('Y-m-d'))?>"><br>
 <input name="vehicle" value="<?=$row['vehicle']?>"><br>
 <input name="bilty" value="<?=$row['bilty_no']?>"><br>
 <input name="party" value="<?=$row['party']?>"><br>

@@ -9,11 +9,13 @@ include 'config/db.php';
 
 $allowedCategories = ['feed', 'haleeb', 'loan'];
 $allowedTypes = ['debit', 'credit'];
+$allowedModes = ['cash', 'account'];
 $msg = '';
 $err = '';
 $formEntryDate = date('Y-m-d');
 $formCategory = 'feed';
 $formEntryType = 'debit';
+$formAmountMode = 'cash';
 $formAmount = '';
 $formNote = '';
 $editingId = 0;
@@ -34,12 +36,14 @@ $editingId = isset($_POST['edit_id']) ? (int)$_POST['edit_id'] : 0;
 $entryDate = isset($_POST['entry_date']) ? $_POST['entry_date'] : date('Y-m-d');
 $category = isset($_POST['category']) ? strtolower(trim($_POST['category'])) : '';
 $entryType = isset($_POST['entry_type']) ? strtolower(trim($_POST['entry_type'])) : '';
+$amountMode = isset($_POST['amount_mode']) ? strtolower(trim($_POST['amount_mode'])) : '';
 $amount = isset($_POST['amount']) ? (float)$_POST['amount'] : 0;
 $note = isset($_POST['note']) ? trim($_POST['note']) : '';
 
 $formEntryDate = $entryDate;
 $formCategory = $category;
 $formEntryType = $entryType;
+$formAmountMode = $amountMode;
 $formAmount = $amount > 0 ? (string)$amount : '';
 $formNote = $note;
 
@@ -49,11 +53,13 @@ $err = 'Invalid entry id.';
 $err = 'Invalid category.';
 } elseif(!in_array($entryType, $allowedTypes, true)){
 $err = 'Invalid entry type.';
+} elseif(!in_array($amountMode, $allowedModes, true)){
+$err = 'Invalid amount mode.';
 } elseif($amount <= 0){
 $err = 'Amount must be greater than 0.';
 } else {
-$stmt = $conn->prepare("UPDATE account_entries SET entry_date=?, category=?, entry_type=?, amount=?, note=? WHERE id=?");
-$stmt->bind_param("sssdsi", $entryDate, $category, $entryType, $amount, $note, $editingId);
+$stmt = $conn->prepare("UPDATE account_entries SET entry_date=?, category=?, entry_type=?, amount_mode=?, amount=?, note=? WHERE id=?");
+$stmt->bind_param("ssssdsi", $entryDate, $category, $entryType, $amountMode, $amount, $note, $editingId);
 $stmt->execute();
 $stmt->close();
 $msg = 'Entry updated.';
@@ -61,6 +67,7 @@ $editingId = 0;
 $formEntryDate = date('Y-m-d');
 $formCategory = 'feed';
 $formEntryType = 'debit';
+$formAmountMode = 'cash';
 $formAmount = '';
 $formNote = '';
 }
@@ -70,6 +77,7 @@ if(isset($_POST['add_entry'])){
 $entryDate = isset($_POST['entry_date']) ? $_POST['entry_date'] : date('Y-m-d');
 $category = isset($_POST['category']) ? strtolower(trim($_POST['category'])) : '';
 $entryType = isset($_POST['entry_type']) ? strtolower(trim($_POST['entry_type'])) : '';
+$amountMode = isset($_POST['amount_mode']) ? strtolower(trim($_POST['amount_mode'])) : '';
 $amount = isset($_POST['amount']) ? (float)$_POST['amount'] : 0;
 $note = isset($_POST['note']) ? trim($_POST['note']) : '';
 
@@ -77,11 +85,13 @@ if(!in_array($category, $allowedCategories, true)){
 $err = 'Invalid category.';
 } elseif(!in_array($entryType, $allowedTypes, true)){
 $err = 'Invalid entry type.';
+} elseif(!in_array($amountMode, $allowedModes, true)){
+$err = 'Invalid amount mode.';
 } elseif($amount <= 0){
 $err = 'Amount must be greater than 0.';
 } else {
-$stmt = $conn->prepare("INSERT INTO account_entries(entry_date, category, entry_type, amount, note) VALUES(?, ?, ?, ?, ?)");
-$stmt->bind_param("sssds", $entryDate, $category, $entryType, $amount, $note);
+$stmt = $conn->prepare("INSERT INTO account_entries(entry_date, category, entry_type, amount_mode, amount, note) VALUES(?, ?, ?, ?, ?, ?)");
+$stmt->bind_param("ssssds", $entryDate, $category, $entryType, $amountMode, $amount, $note);
 $stmt->execute();
 $stmt->close();
 $msg = 'Entry saved.';
@@ -96,7 +106,7 @@ $cat = 'all';
 if(isset($_GET['edit_id']) && !isset($_POST['update_entry'])){
 $requestedEditId = (int)$_GET['edit_id'];
 if($requestedEditId > 0){
-$editStmt = $conn->prepare("SELECT id, entry_date, category, entry_type, amount, note FROM account_entries WHERE id=? LIMIT 1");
+$editStmt = $conn->prepare("SELECT id, entry_date, category, entry_type, amount_mode, amount, note FROM account_entries WHERE id=? LIMIT 1");
 $editStmt->bind_param("i", $requestedEditId);
 $editStmt->execute();
 $editRes = $editStmt->get_result();
@@ -106,6 +116,7 @@ $editingId = (int)$editRow['id'];
 $formEntryDate = $editRow['entry_date'];
 $formCategory = $editRow['category'];
 $formEntryType = $editRow['entry_type'];
+$formAmountMode = isset($editRow['amount_mode']) && $editRow['amount_mode'] !== '' ? $editRow['amount_mode'] : 'cash';
 $formAmount = (string)$editRow['amount'];
 $formNote = $editRow['note'];
 }
@@ -236,6 +247,10 @@ text-align:center;
 <option value="debit" <?php echo $formEntryType === 'debit' ? 'selected' : ''; ?>>Debit</option>
 <option value="credit" <?php echo $formEntryType === 'credit' ? 'selected' : ''; ?>>Credit</option>
 </select>
+<select name="amount_mode" required>
+<option value="cash" <?php echo $formAmountMode === 'cash' ? 'selected' : ''; ?>>Cash</option>
+<option value="account" <?php echo $formAmountMode === 'account' ? 'selected' : ''; ?>>Account</option>
+</select>
 <input type="number" step="0.01" min="0.01" name="amount" placeholder="Amount" value="<?php echo htmlspecialchars($formAmount); ?>" required>
 <input type="text" name="note" placeholder="Note (optional)" value="<?php echo htmlspecialchars($formNote); ?>">
 <?php if($editingId > 0){ ?>
@@ -289,6 +304,7 @@ Net: Rs <?php echo number_format((float)$n, 2); ?>
 <th>Date</th>
 <th>Category</th>
 <th>Type</th>
+<th>Mode</th>
 <th>Amount</th>
 <th class="col-note">Note</th>
 <th class="col-action">Action</th>
@@ -298,6 +314,7 @@ Net: Rs <?php echo number_format((float)$n, 2); ?>
 <td><?php echo htmlspecialchars($row['entry_date']); ?></td>
 <td><?php echo htmlspecialchars(ucfirst($row['category'])); ?></td>
 <td><?php echo htmlspecialchars(ucfirst($row['entry_type'])); ?></td>
+<td><?php echo htmlspecialchars(ucfirst(isset($row['amount_mode']) && $row['amount_mode'] !== '' ? $row['amount_mode'] : 'cash')); ?></td>
 <td>Rs <?php echo number_format((float)$row['amount'], 2); ?></td>
 <td class="col-note"><?php echo htmlspecialchars($row['note']); ?></td>
 <td class="col-action">

@@ -36,10 +36,16 @@ id INT AUTO_INCREMENT PRIMARY KEY,
 entry_date DATE,
 category VARCHAR(20),
 entry_type VARCHAR(10),
+amount_mode VARCHAR(10),
 amount DECIMAL(12,2),
 note VARCHAR(255),
 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )");
+
+$modeColCheck = $conn->query("SHOW COLUMNS FROM account_entries LIKE 'amount_mode'");
+if($modeColCheck && $modeColCheck->num_rows === 0){
+$conn->query("ALTER TABLE account_entries ADD amount_mode VARCHAR(10) NOT NULL DEFAULT 'cash' AFTER entry_type");
+}
 
 $check=$conn->query("SELECT * FROM users WHERE username='admin'");
 if($check->num_rows==0){

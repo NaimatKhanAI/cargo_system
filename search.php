@@ -1,7 +1,13 @@
+<?php
+$today = date('Y-m-d');
+$d1Val = isset($_POST['d1']) && $_POST['d1'] !== '' ? $_POST['d1'] : $today;
+$d2Val = isset($_POST['d2']) && $_POST['d2'] !== '' ? $_POST['d2'] : $today;
+?>
+
 <h2>Search by date</h2>
 <form method="post">
-<input type="date" name="d1">
-<input type="date" name="d2">
+<input type="date" name="d1" value="<?php echo htmlspecialchars($d1Val); ?>">
+<input type="date" name="d2" value="<?php echo htmlspecialchars($d2Val); ?>">
 <button>Search</button>
 </form>
 
