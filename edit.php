@@ -13,7 +13,7 @@ $t=$_POST['tender'];
 $p=$t-$f;
 
 $conn->query("UPDATE bilty SET date='$d',vehicle='$v',bilty_no='$b',
-party='$party',location='$l',freight='$f',tender='$t',profit='$p' WHERE id=$id");
+party='$party',location='$l',freight='$f',original_freight='$f',tender='$t',profit='$p' WHERE id=$id");
 header("location:dashboard.php");
 }
 

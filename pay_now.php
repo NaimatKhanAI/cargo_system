@@ -42,7 +42,8 @@ $paidRes = $paidStmt->get_result()->fetch_assoc();
 $paidStmt->close();
 
 $paidTotal = $paidRes && $paidRes['paid_total'] ? (float)$paidRes['paid_total'] : 0;
-$remainingFreight = (float)$row['freight'] - $paidTotal;
+$baseFreight = isset($row['original_freight']) && $row['original_freight'] !== null ? (float)$row['original_freight'] : (float)$row['freight'];
+$remainingFreight = $baseFreight - $paidTotal;
 if($remainingFreight < 0){
 $remainingFreight = 0;
 }
@@ -176,7 +177,7 @@ grid-template-columns:1fr;
 <div class="info">
 <div class="box"><b>Vehicle:</b> <?php echo htmlspecialchars($row['vehicle']); ?></div>
 <div class="box"><b>Party:</b> <?php echo htmlspecialchars($row['party']); ?></div>
-<div class="box"><b>Total Freight:</b> Rs <?php echo number_format((float)$row['freight'], 0); ?></div>
+<div class="box"><b>Total Freight:</b> Rs <?php echo number_format((float)$baseFreight, 0); ?></div>
 <div class="box"><b>Paid So Far:</b> Rs <?php echo number_format((float)$paidTotal, 0); ?></div>
 <div class="box"><b>Remaining Freight:</b> Rs <?php echo number_format((float)$remainingFreight, 0); ?></div>
 <div class="box"><b>Tender:</b> Rs <?php echo number_format((float)$row['tender'], 0); ?></div>

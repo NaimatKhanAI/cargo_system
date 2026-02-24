@@ -11,8 +11,8 @@ $t=$_POST['tender'];
 
 $p=$t-$f;
 
-$conn->query("INSERT INTO bilty(date,vehicle,bilty_no,party,location,freight,tender,profit)
-VALUES('$d','$v','$b','$party','$l','$f','$t','$p')");
+$conn->query("INSERT INTO bilty(date,vehicle,bilty_no,party,location,freight,original_freight,tender,profit)
+VALUES('$d','$v','$b','$party','$l','$f','$f','$t','$p')");
 
 header("location:dashboard.php");
 ?>

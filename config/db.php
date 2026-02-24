@@ -22,6 +22,7 @@ bilty_no VARCHAR(50),
 party VARCHAR(100),
 location VARCHAR(100),
 freight INT,
+original_freight INT NULL,
 tender INT,
 profit INT
 )");
@@ -29,6 +30,11 @@ profit INT
 $colCheck = $conn->query("SHOW COLUMNS FROM bilty LIKE 'party'");
 if($colCheck && $colCheck->num_rows === 0){
 $conn->query("ALTER TABLE bilty ADD party VARCHAR(100) AFTER bilty_no");
+}
+
+$origFreightColCheck = $conn->query("SHOW COLUMNS FROM bilty LIKE 'original_freight'");
+if($origFreightColCheck && $origFreightColCheck->num_rows === 0){
+$conn->query("ALTER TABLE bilty ADD original_freight INT NULL AFTER freight");
 }
 
 $conn->query("CREATE TABLE IF NOT EXISTS account_entries(
@@ -52,6 +58,17 @@ $biltyColCheck = $conn->query("SHOW COLUMNS FROM account_entries LIKE 'bilty_id'
 if($biltyColCheck && $biltyColCheck->num_rows === 0){
 $conn->query("ALTER TABLE account_entries ADD bilty_id INT NULL AFTER amount_mode");
 }
+
+// Best-effort backfill for legacy data where freight was reduced after payments.
+$conn->query("UPDATE bilty b
+LEFT JOIN (
+SELECT bilty_id, SUM(amount) AS paid_total
+FROM account_entries
+WHERE bilty_id IS NOT NULL AND entry_type='debit'
+GROUP BY bilty_id
+) p ON p.bilty_id = b.id
+SET b.original_freight = b.freight + COALESCE(p.paid_total, 0)
+WHERE b.original_freight IS NULL");
 
 $check=$conn->query("SELECT * FROM users WHERE username='admin'");
 if($check->num_rows==0){
