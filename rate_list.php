@@ -282,6 +282,27 @@ border:none;
 border-radius:6px;
 cursor:pointer;
 }
+.panel-head{
+display:flex;
+justify-content:space-between;
+align-items:center;
+gap:10px;
+}
+.toggle-btn{
+padding:8px 12px;
+background:#111;
+color:#fff;
+border:none;
+border-radius:6px;
+cursor:pointer;
+}
+.settings-body{
+display:none;
+margin-top:10px;
+}
+.settings-body.open{
+display:block;
+}
 </style>
 </head>
 <body>
@@ -306,7 +327,11 @@ cursor:pointer;
 </div>
 
 <div class="panel">
-<h3 style="margin:0 0 8px;">Column Settings</h3>
+<div class="panel-head">
+<h3 style="margin:0;">Column Settings</h3>
+<button class="toggle-btn" type="button" id="toggle_column_settings" aria-expanded="false" aria-controls="column_settings_body">Open</button>
+</div>
+<div id="column_settings_body" class="settings-body">
 <form method="post" style="margin-bottom:10px;">
 <input type="text" name="new_column_label" placeholder="New column name" style="max-width:260px;">
 <button class="btn" type="submit" name="add_column">Add Column</button>
@@ -328,6 +353,7 @@ cursor:pointer;
 <input type="hidden" id="delete_col_key" name="column_key" value="">
 <button class="btn" type="submit" name="save_columns">Save Column Settings</button>
 </form>
+</div>
 </div>
 
 <table>
@@ -389,5 +415,17 @@ elseif(isset($extra[$key])){ $val = (string)$extra[$key]; }
 <?php } ?>
 <?php } ?>
 </table>
+<script>
+(function(){
+var btn = document.getElementById('toggle_column_settings');
+var body = document.getElementById('column_settings_body');
+if(!btn || !body){ return; }
+btn.addEventListener('click', function(){
+var isOpen = body.classList.toggle('open');
+btn.textContent = isOpen ? 'Close' : 'Open';
+btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+});
+})();
+</script>
 </body>
 </html>
