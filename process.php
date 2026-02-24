@@ -20,6 +20,7 @@ http_response_code(500);
 echo "OPENAI_API_KEY is not configured. Add it in project .env file.";
 exit();
 }
+$visionModel = env_get('OPENAI_VISION_MODEL', 'gpt-4o');
 
 if(!isset($_FILES['image'])){
 header("location:process_img.php");
@@ -109,6 +110,43 @@ $v = str_replace(['.', '(', ')'], '', $v);
 return $v;
 }
 
+function call_openai_table_extract($apiKey, $visionModel, $dataUrl, $promptText, $maxTokens = 3000){
+$payload = [
+"model"=>$visionModel,
+"temperature"=>0,
+"messages"=>[
+[
+"role"=>"system",
+"content"=>"You are a precise OCR table extraction assistant. Never guess. Preserve exact numbers, punctuation, and script."
+],
+[
+"role"=>"user",
+"content"=>[
+["type"=>"text","text"=>$promptText],
+["type"=>"image_url","image_url"=>["url"=>$dataUrl, "detail"=>"high"]]
+]
+]
+],
+"max_tokens"=>$maxTokens
+];
+
+$ch = curl_init();
+curl_setopt($ch, CURLOPT_URL,"https://api.openai.com/v1/chat/completions");
+curl_setopt($ch, CURLOPT_RETURNTRANSFER,true);
+curl_setopt($ch, CURLOPT_POST,true);
+curl_setopt($ch, CURLOPT_POSTFIELDS,json_encode($payload));
+curl_setopt($ch, CURLOPT_HTTPHEADER,[
+"Content-Type: application/json",
+"Authorization: Bearer ".$apiKey
+]);
+$response = curl_exec($ch);
+$curlErr = curl_error($ch);
+$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+curl_close($ch);
+
+return [$response, $curlErr, $httpCode];
+}
+
 function normalize_dateish($v){
 $v = strtolower(trim((string)$v));
 $v = str_replace(['.', '-', ' '], '/', $v);
@@ -194,27 +232,16 @@ continue;
 js("setStatus($i,'Extracting'); logLine('Image ".($i+1).": sending to OpenAI');");
 
 $img = base64_encode(file_get_contents($savedPath));
-$data = [
-"model"=>"gpt-4o-mini",
-"messages"=>[
-[
-"role"=>"user",
-"content"=>[
-["type"=>"text","text"=>"Extract the table exactly from this image and return strict JSON only (no markdown). Format: {\"headers\":[\"exact heading text\"],\"rows\":[[\"cell1\",\"cell2\"]]}. Keep exact header names and same column order as image."],
-["type"=>"image_url","image_url"=>["url"=>"data:image/jpeg;base64,$img"]]
-]
-]
-],
-"max_tokens"=>3000
-];
+$dataUrl = "data:" . $mime . ";base64," . $img;
 
-$ch = curl_init();
-curl_setopt($ch, CURLOPT_URL,"https://api.openai.com/v1/chat/completions");
-curl_setopt($ch, CURLOPT_RETURNTRANSFER,true);
-curl_setopt($ch, CURLOPT_POST,true);
-curl_setopt($ch, CURLOPT_POSTFIELDS,json_encode($data));
-curl_setopt($ch, CURLOPT_NOPROGRESS, false);
-curl_setopt($ch, CURLOPT_PROGRESSFUNCTION, function($resource, $dl_total, $dl_now, $ul_total, $ul_now) use ($i) {
+// UI progress only
+$chProgress = curl_init();
+curl_setopt($chProgress, CURLOPT_URL,"https://api.openai.com/v1/chat/completions");
+curl_setopt($chProgress, CURLOPT_RETURNTRANSFER,true);
+curl_setopt($chProgress, CURLOPT_POST,true);
+curl_setopt($chProgress, CURLOPT_POSTFIELDS,"{}");
+curl_setopt($chProgress, CURLOPT_NOPROGRESS, false);
+curl_setopt($chProgress, CURLOPT_PROGRESSFUNCTION, function($resource, $dl_total, $dl_now, $ul_total, $ul_now) use ($i) {
 if ($ul_total > 0) {
 $p = (int)(($ul_now / $ul_total) * 30);
 echo "<script>setStatus($i,'Uploading'); setBar($p);</script>";
@@ -228,15 +255,17 @@ flush();
 }
 return 0;
 });
-curl_setopt($ch, CURLOPT_HTTPHEADER,[
-"Content-Type: application/json",
-"Authorization: Bearer ".$apiKey
-]);
+curl_close($chProgress);
 
-$response = curl_exec($ch);
-$curlErr = curl_error($ch);
-$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-curl_close($ch);
+$basePrompt = "Extract the table exactly from this image and return strict JSON only (no markdown).
+Format: {\"headers\":[\"exact heading text\"],\"rows\":[[\"cell1\",\"cell2\"]]}.
+Rules:
+1) Keep exact header text and column order.
+2) Keep all rows exactly as seen.
+3) Do not skip rows.
+4) Preserve Urdu/English text and numeric symbols exactly.";
+
+list($response, $curlErr, $httpCode) = call_openai_table_extract($apiKey, $visionModel, $dataUrl, $basePrompt, 3500);
 
 if ($curlErr) {
 $errors[] = "Request failed for image ".($i+1);
@@ -256,6 +285,25 @@ $errors[] = "Parse failed for image ".($i+1);
 $snippet = addslashes(substr(trim($text), 0, 120));
 js("setStatus($i,'Parse failed'); logLine('Image ".($i+1).": parse failed. Snippet: ".$snippet."');");
 continue;
+}
+
+// Second pass verification for better accuracy.
+$firstPass = json_encode($json, JSON_UNESCAPED_UNICODE);
+$verifyPrompt = "Verify and correct this extracted table by re-reading the same image.
+Return strict JSON only in the same schema {\"headers\":[],\"rows\":[]}.
+Fix any OCR mistakes, especially numeric values and Urdu text.
+Current extraction:
+" . $firstPass;
+list($vResponse, $vErr, $vCode) = call_openai_table_extract($apiKey, $visionModel, $dataUrl, $verifyPrompt, 3500);
+if(!$vErr){
+$vRes = json_decode($vResponse, true);
+$vText = isset($vRes["choices"][0]["message"]["content"]) ? $vRes["choices"][0]["message"]["content"] : "";
+$vClean = preg_replace('/^```(json)?|```$/m', '', trim($vText));
+$vJson = json_decode($vClean, true);
+if($vJson && is_array($vJson)){
+$json = $vJson;
+js("logLine('Image ".($i+1).": verification pass HTTP ".$vCode."');");
+}
 }
 
 js("setStatus($i,'Saving');");
@@ -305,8 +353,8 @@ $rowsWritten++;
 $idxSr = find_header_index($headers, ['sr', 'sr.', 'sr no', 'serial', 'serial no']);
 $idxEng = find_header_index($headers, ['station english', 'station (english)', 'english station']);
 $idxUrdu = find_header_index($headers, ['station urdu', 'station (urdu)', 'urdu station']);
-$idxR1 = find_header_index($headers, ['1/1/2026', '01/01/2026', '1-1-2026', '01-01-2026']);
-$idxR2 = find_header_index($headers, ['1/2/2026', '01/02/2026', '1-2-2026', '01-02-2026']);
+$idxR1 = find_header_index($headers, ['rate1', 'rate 1', 'rate_1', '1/1/2026', '01/01/2026', '1-1-2026', '01-01-2026']);
+$idxR2 = find_header_index($headers, ['rate2', 'rate 2', 'rate_2', '1/2/2026', '01/02/2026', '1-2-2026', '01-02-2026']);
 
 if($idxSr !== null || $idxEng !== null || $idxUrdu !== null || $idxR1 !== null || $idxR2 !== null){
 $srVal = $idxSr !== null && isset($normalized[$idxSr]) ? $normalized[$idxSr] : "";
@@ -315,7 +363,7 @@ $urduVal = $idxUrdu !== null && isset($normalized[$idxUrdu]) ? $normalized[$idxU
 $r1Val = $idxR1 !== null && isset($normalized[$idxR1]) ? $normalized[$idxR1] : "";
 $r2Val = $idxR2 !== null && isset($normalized[$idxR2]) ? $normalized[$idxR2] : "";
 
-$insStmt = $conn->prepare("INSERT INTO image_processed_rates(source_file, source_image_path, sr_no, station_english, station_urdu, rate_2026_01_01, rate_2026_01_02) VALUES(?, ?, ?, ?, ?, ?, ?)");
+$insStmt = $conn->prepare("INSERT INTO image_processed_rates(source_file, source_image_path, sr_no, station_english, station_urdu, rate1, rate2) VALUES(?, ?, ?, ?, ?, ?, ?)");
 $insStmt->bind_param("sssssss", $name, $sourceImageRelPath, $srVal, $engVal, $urduVal, $r1Val, $r2Val);
 if($insStmt->execute()){
 $dbRowsSaved++;

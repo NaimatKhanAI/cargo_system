@@ -72,8 +72,9 @@ source_image_path VARCHAR(255),
 sr_no VARCHAR(50),
 station_english VARCHAR(255),
 station_urdu VARCHAR(255),
-rate_2026_01_01 VARCHAR(100),
-rate_2026_01_02 VARCHAR(100),
+rate1 VARCHAR(100),
+rate2 VARCHAR(100),
+extra_data TEXT,
 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )");
 
@@ -81,6 +82,47 @@ $sourceImgColCheck = $conn->query("SHOW COLUMNS FROM image_processed_rates LIKE 
 if($sourceImgColCheck && $sourceImgColCheck->num_rows === 0){
 $conn->query("ALTER TABLE image_processed_rates ADD source_image_path VARCHAR(255) AFTER source_file");
 }
+
+$extraDataColCheck = $conn->query("SHOW COLUMNS FROM image_processed_rates LIKE 'extra_data'");
+if($extraDataColCheck && $extraDataColCheck->num_rows === 0){
+$conn->query("ALTER TABLE image_processed_rates ADD extra_data TEXT AFTER rate2");
+}
+
+$rate1ColCheck = $conn->query("SHOW COLUMNS FROM image_processed_rates LIKE 'rate1'");
+if($rate1ColCheck && $rate1ColCheck->num_rows === 0){
+$conn->query("ALTER TABLE image_processed_rates ADD rate1 VARCHAR(100) AFTER station_urdu");
+}
+
+$rate2ColCheck = $conn->query("SHOW COLUMNS FROM image_processed_rates LIKE 'rate2'");
+if($rate2ColCheck && $rate2ColCheck->num_rows === 0){
+$conn->query("ALTER TABLE image_processed_rates ADD rate2 VARCHAR(100) AFTER rate1");
+}
+
+$oldR1ColCheck = $conn->query("SHOW COLUMNS FROM image_processed_rates LIKE 'rate_2026_01_01'");
+if($oldR1ColCheck && $oldR1ColCheck->num_rows > 0){
+$conn->query("UPDATE image_processed_rates SET rate1 = COALESCE(NULLIF(rate1,''), rate_2026_01_01) WHERE rate_2026_01_01 IS NOT NULL");
+}
+
+$oldR2ColCheck = $conn->query("SHOW COLUMNS FROM image_processed_rates LIKE 'rate_2026_01_02'");
+if($oldR2ColCheck && $oldR2ColCheck->num_rows > 0){
+$conn->query("UPDATE image_processed_rates SET rate2 = COALESCE(NULLIF(rate2,''), rate_2026_01_02) WHERE rate_2026_01_02 IS NOT NULL");
+}
+
+$conn->query("CREATE TABLE IF NOT EXISTS rate_list_columns(
+id INT AUTO_INCREMENT PRIMARY KEY,
+column_key VARCHAR(100) UNIQUE,
+column_label VARCHAR(255),
+is_hidden TINYINT(1) DEFAULT 0,
+is_deleted TINYINT(1) DEFAULT 0,
+display_order INT DEFAULT 0,
+is_base TINYINT(1) DEFAULT 1,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)");
+
+// Legacy migration: normalize old keys and remove any base-lock.
+$conn->query("UPDATE rate_list_columns SET column_key='rate1' WHERE column_key='rate_2026_01_01'");
+$conn->query("UPDATE rate_list_columns SET column_key='rate2' WHERE column_key='rate_2026_01_02'");
+$conn->query("UPDATE rate_list_columns SET is_base=0");
 
 // Best-effort backfill for legacy data where freight was reduced after payments.
 $conn->query("UPDATE bilty b
