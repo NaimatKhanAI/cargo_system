@@ -182,6 +182,29 @@ background:#f7f7f7;
 padding:10px;
 border:1px solid #ddd;
 }
+.icon-btn{
+width:26px;
+height:26px;
+display:inline-flex;
+align-items:center;
+justify-content:center;
+padding:0;
+font-size:14px;
+line-height:1;
+margin:0 2px 0 0;
+text-decoration:none;
+}
+.icon-delete{
+background:#c62828;
+}
+.col-note{
+width:40%;
+}
+.col-action{
+width:70px;
+white-space:nowrap;
+text-align:center;
+}
 </style>
 </head>
 <body>
@@ -219,6 +242,7 @@ border:1px solid #ddd;
 <input type="hidden" name="edit_id" value="<?php echo (int)$editingId; ?>">
 <button class="btn" type="submit" name="update_entry">Update Entry</button>
 <a class="btn" href="account.php?cat=<?php echo urlencode($cat); ?>">Cancel Edit</a>
+<a class="btn icon-btn icon-delete" href="account.php?cat=<?php echo urlencode($cat); ?>&delete_id=<?php echo (int)$editingId; ?>" onclick="return confirm('Delete this entry?')" title="Delete" aria-label="Delete">&#128465;</a>
 <?php }else{ ?>
 <button class="btn" type="submit" name="add_entry">Save Entry</button>
 <?php } ?>
@@ -266,8 +290,8 @@ Net: Rs <?php echo number_format((float)$n, 2); ?>
 <th>Category</th>
 <th>Type</th>
 <th>Amount</th>
-<th>Note</th>
-<th>Action</th>
+<th class="col-note">Note</th>
+<th class="col-action">Action</th>
 </tr>
 <?php while($row = $entries->fetch_assoc()){ ?>
 <tr>
@@ -275,10 +299,9 @@ Net: Rs <?php echo number_format((float)$n, 2); ?>
 <td><?php echo htmlspecialchars(ucfirst($row['category'])); ?></td>
 <td><?php echo htmlspecialchars(ucfirst($row['entry_type'])); ?></td>
 <td>Rs <?php echo number_format((float)$row['amount'], 2); ?></td>
-<td><?php echo htmlspecialchars($row['note']); ?></td>
-<td>
-<a class="btn" href="account.php?cat=<?php echo urlencode($cat); ?>&edit_id=<?php echo (int)$row['id']; ?>">Edit</a>
-<a class="btn" href="account.php?cat=<?php echo urlencode($cat); ?>&delete_id=<?php echo (int)$row['id']; ?>" onclick="return confirm('Delete this entry?')">Delete</a>
+<td class="col-note"><?php echo htmlspecialchars($row['note']); ?></td>
+<td class="col-action">
+<a class="btn icon-btn" href="account.php?cat=<?php echo urlencode($cat); ?>&edit_id=<?php echo (int)$row['id']; ?>" title="Edit" aria-label="Edit">&#9998;</a>
 </td>
 </tr>
 <?php } ?>

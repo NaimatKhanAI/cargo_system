@@ -11,9 +11,9 @@ header('Content-Type: text/csv; charset=utf-8');
 header('Content-Disposition: attachment; filename=bilty_entries_' . date('Y-m-d_H-i-s') . '.csv');
 
 $output = fopen('php://output', 'w');
-fputcsv($output, ['id', 'date', 'vehicle', 'bilty_no', 'location', 'freight', 'tender', 'profit']);
+fputcsv($output, ['id', 'date', 'vehicle', 'bilty_no', 'party', 'location', 'freight', 'tender', 'profit']);
 
-$result = $conn->query("SELECT id, date, vehicle, bilty_no, location, freight, tender, profit FROM bilty ORDER BY id DESC");
+$result = $conn->query("SELECT id, date, vehicle, bilty_no, party, location, freight, tender, profit FROM bilty ORDER BY id DESC");
 
 while($row = $result->fetch_assoc()){
 fputcsv($output, $row);

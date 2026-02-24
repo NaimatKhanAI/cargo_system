@@ -19,11 +19,17 @@ id INT AUTO_INCREMENT PRIMARY KEY,
 date DATE,
 vehicle VARCHAR(50),
 bilty_no VARCHAR(50),
+party VARCHAR(100),
 location VARCHAR(100),
 freight INT,
 tender INT,
 profit INT
 )");
+
+$colCheck = $conn->query("SHOW COLUMNS FROM bilty LIKE 'party'");
+if($colCheck && $colCheck->num_rows === 0){
+$conn->query("ALTER TABLE bilty ADD party VARCHAR(100) AFTER bilty_no");
+}
 
 $conn->query("CREATE TABLE IF NOT EXISTS account_entries(
 id INT AUTO_INCREMENT PRIMARY KEY,

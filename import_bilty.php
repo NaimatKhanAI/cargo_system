@@ -24,7 +24,7 @@ $inserted = 0;
 $skipped = 0;
 $lineNo = 0;
 
-$stmt = $conn->prepare("INSERT INTO bilty(date, vehicle, bilty_no, location, freight, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?)");
+$stmt = $conn->prepare("INSERT INTO bilty(date, vehicle, bilty_no, party, location, freight, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?)");
 
 while(($data = fgetcsv($handle)) !== false){
 $lineNo++;
@@ -42,22 +42,37 @@ continue;
 }
 }
 
-if(count($data) >= 8){
-$date = $data[1];
-$vehicle = $data[2];
-$biltyNo = $data[3];
-$location = $data[4];
-$freight = $data[5];
-$tender = $data[6];
-$profit = $data[7];
+if(preg_match('/^\d{4}-\d{2}-\d{2}$/', $data[0])){
+$offset = 0;
+} elseif(isset($data[1]) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $data[1])){
+$offset = 1;
 } else {
-$date = $data[0];
-$vehicle = $data[1];
-$biltyNo = $data[2];
-$location = $data[3];
-$freight = $data[4];
-$tender = $data[5];
-$profit = isset($data[6]) ? $data[6] : "";
+$skipped++;
+continue;
+}
+
+$remaining = count($data) - $offset;
+if($remaining < 6){
+$skipped++;
+continue;
+}
+
+$date = $data[$offset];
+$vehicle = isset($data[$offset + 1]) ? $data[$offset + 1] : "";
+$biltyNo = isset($data[$offset + 2]) ? $data[$offset + 2] : "";
+
+if($remaining >= 8){
+$party = isset($data[$offset + 3]) ? $data[$offset + 3] : "";
+$location = isset($data[$offset + 4]) ? $data[$offset + 4] : "";
+$freight = isset($data[$offset + 5]) ? $data[$offset + 5] : "";
+$tender = isset($data[$offset + 6]) ? $data[$offset + 6] : "";
+$profit = isset($data[$offset + 7]) ? $data[$offset + 7] : "";
+} else {
+$party = "";
+$location = isset($data[$offset + 3]) ? $data[$offset + 3] : "";
+$freight = isset($data[$offset + 4]) ? $data[$offset + 4] : "";
+$tender = isset($data[$offset + 5]) ? $data[$offset + 5] : "";
+$profit = isset($data[$offset + 6]) ? $data[$offset + 6] : "";
 }
 
 if(!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)){
@@ -74,7 +89,7 @@ $freight = (int)$freight;
 $tender = (int)$tender;
 $profit = is_numeric($profit) ? (int)$profit : ($freight - $tender);
 
-$stmt->bind_param("ssssiii", $date, $vehicle, $biltyNo, $location, $freight, $tender, $profit);
+$stmt->bind_param("sssssiii", $date, $vehicle, $biltyNo, $party, $location, $freight, $tender, $profit);
 if($stmt->execute()){
 $inserted++;
 } else {

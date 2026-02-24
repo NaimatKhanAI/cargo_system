@@ -107,6 +107,7 @@ Total Profit: Rs <?php echo $total_profit; ?>
 <th>Date</th>
 <th>Vehicle</th>
 <th>Bilty</th>
+<th>Party</th>
 <th>Location</th>
 <th>Freight</th>
 <th>Tender</th>
@@ -122,6 +123,7 @@ echo "<tr>
 <td>{$row['date']}</td>
 <td>{$row['vehicle']}</td>
 <td>{$row['bilty_no']}</td>
+<td>{$row['party']}</td>
 <td>{$row['location']}</td>
 <td>Rs {$row['freight']}</td>
 <td>Rs {$row['tender']}</td>
