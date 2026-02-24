@@ -19,6 +19,7 @@ $err = '';
 $today = date('Y-m-d');
 $formDate = $today;
 $formCategory = 'feed';
+$formAmountMode = 'account';
 $formAmount = '';
 $formNote = '';
 
@@ -34,36 +35,43 @@ header("location:dashboard.php?pay=error");
 exit();
 }
 
+$paidStmt = $conn->prepare("SELECT SUM(amount) AS paid_total FROM account_entries WHERE bilty_id=? AND entry_type='debit'");
+$paidStmt->bind_param("i", $id);
+$paidStmt->execute();
+$paidRes = $paidStmt->get_result()->fetch_assoc();
+$paidStmt->close();
+
+$paidTotal = $paidRes && $paidRes['paid_total'] ? (float)$paidRes['paid_total'] : 0;
+$remainingFreight = (float)$row['freight'] - $paidTotal;
+if($remainingFreight < 0){
+$remainingFreight = 0;
+}
+
 if(isset($_POST['pay_now'])){
 $formDate = isset($_POST['entry_date']) ? $_POST['entry_date'] : $today;
 $formCategory = isset($_POST['category']) ? strtolower(trim($_POST['category'])) : 'feed';
+$formAmountMode = isset($_POST['amount_mode']) ? strtolower(trim($_POST['amount_mode'])) : 'account';
 $payAmount = isset($_POST['pay_amount']) ? (int)$_POST['pay_amount'] : 0;
 $formAmount = $payAmount > 0 ? (string)$payAmount : '';
 $formNote = isset($_POST['note']) ? trim($_POST['note']) : '';
-$currentFreight = (int)$row['freight'];
 
 if(!in_array($formCategory, $allowedCategories, true)){
 $err = 'Invalid category selected.';
+} elseif(!in_array($formAmountMode, ['cash', 'account'], true)){
+$err = 'Invalid payment mode selected.';
 } elseif($payAmount <= 0){
 $err = 'Pay amount must be greater than 0.';
-} elseif($payAmount > $currentFreight){
+} elseif($payAmount > $remainingFreight){
 $err = 'Pay amount cannot be more than remaining freight.';
 } else {
-$newFreight = $currentFreight - $payAmount;
-$newProfit = (int)$row['tender'] - $newFreight;
 $note = $formNote !== '' ? $formNote : ("Bilty #" . $row['bilty_no'] . " payment");
 
 $conn->begin_transaction();
 try{
-$ins = $conn->prepare("INSERT INTO account_entries(entry_date, category, entry_type, amount_mode, amount, note) VALUES(?, ?, 'debit', 'account', ?, ?)");
-$ins->bind_param("ssds", $formDate, $formCategory, $payAmount, $note);
+$ins = $conn->prepare("INSERT INTO account_entries(entry_date, category, entry_type, amount_mode, bilty_id, amount, note) VALUES(?, ?, 'debit', ?, ?, ?, ?)");
+$ins->bind_param("sssids", $formDate, $formCategory, $formAmountMode, $id, $payAmount, $note);
 $ins->execute();
 $ins->close();
-
-$upd = $conn->prepare("UPDATE bilty SET freight=?, profit=? WHERE id=?");
-$upd->bind_param("iii", $newFreight, $newProfit, $id);
-$upd->execute();
-$upd->close();
 
 $conn->commit();
 header("location:dashboard.php?pay=success");
@@ -167,8 +175,10 @@ grid-template-columns:1fr;
 <div class="info">
 <div class="box"><b>Vehicle:</b> <?php echo htmlspecialchars($row['vehicle']); ?></div>
 <div class="box"><b>Party:</b> <?php echo htmlspecialchars($row['party']); ?></div>
+<div class="box"><b>Total Freight:</b> Rs <?php echo number_format((float)$row['freight'], 0); ?></div>
+<div class="box"><b>Paid So Far:</b> Rs <?php echo number_format((float)$paidTotal, 0); ?></div>
+<div class="box"><b>Remaining Freight:</b> Rs <?php echo number_format((float)$remainingFreight, 0); ?></div>
 <div class="box"><b>Tender:</b> Rs <?php echo number_format((float)$row['tender'], 0); ?></div>
-<div class="box"><b>Remaining Freight:</b> Rs <?php echo number_format((float)$row['freight'], 0); ?></div>
 </div>
 
 <form method="post">
@@ -185,8 +195,15 @@ grid-template-columns:1fr;
 </select>
 </div>
 <div class="field">
-<label for="pay_amount">Pay Amount (Account)</label>
-<input id="pay_amount" type="number" name="pay_amount" min="1" max="<?php echo (int)$row['freight']; ?>" value="<?php echo htmlspecialchars($formAmount); ?>" required>
+<label for="amount_mode">Payment Mode</label>
+<select id="amount_mode" name="amount_mode" required>
+<option value="cash" <?php echo $formAmountMode === 'cash' ? 'selected' : ''; ?>>Cash</option>
+<option value="account" <?php echo $formAmountMode === 'account' ? 'selected' : ''; ?>>Account</option>
+</select>
+</div>
+<div class="field">
+<label for="pay_amount">Pay Amount</label>
+<input id="pay_amount" type="number" name="pay_amount" min="1" max="<?php echo (int)$remainingFreight; ?>" value="<?php echo htmlspecialchars($formAmount); ?>" required>
 </div>
 <div class="field">
 <label for="note">Note (optional)</label>

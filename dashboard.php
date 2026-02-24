@@ -24,7 +24,7 @@ $import_message = "Import failed. Please upload a valid CSV file.";
 $pay_message = "";
 if (isset($_GET['pay'])) {
 if ($_GET['pay'] === 'success') {
-$pay_message = "Payment posted and freight updated.";
+$pay_message = "Payment posted successfully.";
 } elseif ($_GET['pay'] === 'error') {
 $pay_message = "Payment failed. Please try again.";
 }

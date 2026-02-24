@@ -256,6 +256,16 @@ background:#eef3ff;
 color:#1e3f8a;
 font-weight:700;
 }
+.line-net-cash{
+background:#e6f4ff;
+color:#0f4c81;
+font-weight:700;
+}
+.line-net-account{
+background:#fff4df;
+color:#7a5200;
+font-weight:700;
+}
 .totals-grid{
 display:grid;
 grid-template-columns:repeat(3,minmax(180px,1fr));
@@ -377,6 +387,8 @@ $dCash = isset($categoryTotals[$c]) ? $categoryTotals[$c]['debit_cash'] : 0;
 $dAccount = isset($categoryTotals[$c]) ? $categoryTotals[$c]['debit_account'] : 0;
 $cCash = isset($categoryTotals[$c]) ? $categoryTotals[$c]['credit_cash'] : 0;
 $cAccount = isset($categoryTotals[$c]) ? $categoryTotals[$c]['credit_account'] : 0;
+$nCash = (float)$cCash - (float)$dCash;
+$nAccount = (float)$cAccount - (float)$dAccount;
 $n = (float)$cr - (float)$d;
 ?>
 <div class="cat-card">
@@ -387,6 +399,8 @@ $n = (float)$cr - (float)$d;
 <span class="line line-debit-account">Debit (Account): Rs <?php echo number_format((float)$dAccount, 2); ?></span>
 <span class="line line-credit-cash">Credit (Cash): Rs <?php echo number_format((float)$cCash, 2); ?></span>
 <span class="line line-credit-account">Credit (Account): Rs <?php echo number_format((float)$cAccount, 2); ?></span>
+<span class="line line-net-cash">Net (Cash): Rs <?php echo number_format((float)$nCash, 2); ?></span>
+<span class="line line-net-account">Net (Account): Rs <?php echo number_format((float)$nAccount, 2); ?></span>
 <span class="line line-net">Net: Rs <?php echo number_format((float)$n, 2); ?></span>
 </div>
 <?php } ?>
