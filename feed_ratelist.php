@@ -29,9 +29,76 @@ $cols[] = $r;
 return $cols;
 }
 
+function normalize_header_local($v){
+$v = strtolower(trim((string)$v));
+$v = preg_replace('/\s+/', ' ', $v);
+$v = str_replace(['.', '(', ')'], '', $v);
+return $v;
+}
+
+function normalize_digits_local($v){
+$v = (string)$v;
+$map = [
+'٠' => '0', '١' => '1', '٢' => '2', '٣' => '3', '٤' => '4',
+'٥' => '5', '٦' => '6', '٧' => '7', '٨' => '8', '٩' => '9',
+'۰' => '0', '۱' => '1', '۲' => '2', '۳' => '3', '۴' => '4',
+'۵' => '5', '۶' => '6', '۷' => '7', '۸' => '8', '۹' => '9',
+];
+return strtr($v, $map);
+}
+
+function canonical_sr_local($v){
+$v = normalize_digits_local((string)$v);
+$v = strtolower(trim($v));
+return preg_replace('/[^a-z0-9]/u', '', $v);
+}
+
+function detect_sr_column_key_local($columns){
+foreach($columns as $c){
+if(isset($c['column_key']) && $c['column_key'] === 'sr_no'){
+return 'sr_no';
+}
+}
+foreach($columns as $c){
+$lbl = isset($c['column_label']) ? normalize_header_local($c['column_label']) : '';
+if(in_array($lbl, ['sr', 'sr no', 'serial', 'serial no', 'serial number'], true)){
+return (string)$c['column_key'];
+}
+}
+return '';
+}
+
+function sr_exists_local($conn, $srKey, $srValue, $excludeId = 0){
+$srCanon = canonical_sr_local($srValue);
+if($srCanon === '' || $srKey === ''){
+return false;
+}
+$res = $conn->query("SELECT id, sr_no, extra_data FROM image_processed_rates");
+while($res && $row = $res->fetch_assoc()){
+$id = (int)$row['id'];
+if($excludeId > 0 && $id === $excludeId){
+continue;
+}
+$candidate = '';
+if($srKey === 'sr_no'){
+$candidate = isset($row['sr_no']) ? (string)$row['sr_no'] : '';
+} else {
+$extra = json_decode((string)$row['extra_data'], true);
+if(is_array($extra) && isset($extra[$srKey])){
+$candidate = (string)$extra[$srKey];
+}
+}
+if(canonical_sr_local($candidate) === $srCanon){
+return true;
+}
+}
+return false;
+}
+
 $msg = '';
 $err = '';
 $editingId = 0;
+$openAddRow = false;
 
 if(isset($_GET['delete_all']) && $_GET['delete_all'] === '1'){
 $conn->query("DELETE FROM image_processed_rates");
@@ -142,6 +209,18 @@ $extra[$key] = $val;
 }
 }
 
+$srKey = detect_sr_column_key_local($activeCols);
+$srVal = '';
+if($srKey !== ''){
+if($srKey === 'sr_no'){
+$srVal = $base['sr_no'];
+} elseif(isset($extra[$srKey])){
+$srVal = $extra[$srKey];
+}
+}
+if($srKey !== '' && sr_exists_local($conn, $srKey, $srVal, $editingId)){
+$err = 'Same SR already exists. Duplicate SR is not allowed.';
+} else {
 $extraJson = json_encode($extra, JSON_UNESCAPED_UNICODE);
 $upd = $conn->prepare("UPDATE image_processed_rates SET sr_no=?, station_english=?, station_urdu=?, rate1=?, rate2=?, extra_data=? WHERE id=?");
 $upd->bind_param("ssssssi", $base['sr_no'], $base['station_english'], $base['station_urdu'], $base['rate1'], $base['rate2'], $extraJson, $editingId);
@@ -149,6 +228,56 @@ $upd->execute();
 $upd->close();
 $msg = 'Rate row updated.';
 $editingId = 0;
+}
+}
+}
+
+if(isset($_POST['add_rate'])){
+$openAddRow = true;
+$allCols = load_columns($conn);
+$activeCols = array_values(array_filter($allCols, function($c){
+return (int)$c['is_deleted'] === 0;
+}));
+
+$base = [
+'sr_no' => '',
+'station_english' => '',
+'station_urdu' => '',
+'rate1' => '',
+'rate2' => '',
+];
+$extra = [];
+
+foreach($activeCols as $c){
+$key = $c['column_key'];
+$field = 'add_col_' . $key;
+$val = isset($_POST[$field]) ? trim($_POST[$field]) : '';
+if(array_key_exists($key, $base)){
+$base[$key] = $val;
+} else {
+$extra[$key] = $val;
+}
+}
+
+$srKey = detect_sr_column_key_local($activeCols);
+$srVal = '';
+if($srKey !== ''){
+if($srKey === 'sr_no'){
+$srVal = $base['sr_no'];
+} elseif(isset($extra[$srKey])){
+$srVal = $extra[$srKey];
+}
+}
+
+if($srKey !== '' && $srVal !== '' && sr_exists_local($conn, $srKey, $srVal, 0)){
+$err = 'Same SR already exists. Duplicate SR is not allowed.';
+} else {
+$extraJson = json_encode($extra, JSON_UNESCAPED_UNICODE);
+$ins = $conn->prepare("INSERT INTO image_processed_rates(source_file, source_image_path, sr_no, station_english, station_urdu, rate1, rate2, extra_data) VALUES('', '', ?, ?, ?, ?, ?, ?)");
+$ins->bind_param("ssssss", $base['sr_no'], $base['station_english'], $base['station_urdu'], $base['rate1'], $base['rate2'], $extraJson);
+$ins->execute();
+$ins->close();
+$msg = 'New rate row added.';
 }
 }
 
@@ -315,7 +444,7 @@ display:block;
 <input type="file" name="csv_file" accept=".csv" required style="max-width:180px;">
 <button class="btn" type="submit">Import List</button>
 </form>
-<a class="btn" href="rate_list.php?delete_all=1" onclick="return confirm('Delete complete rate list?')">Delete List</a>
+<a class="btn" href="feed_ratelist.php?delete_all=1" onclick="return confirm('Delete complete rate list?')">Delete List</a>
 <a class="btn" href="feed.php">Feed</a>
 </div>
 </div>
@@ -356,6 +485,33 @@ display:block;
 </div>
 </div>
 
+<div class="panel">
+<div class="panel-head">
+<h3 style="margin:0;">Add New Row</h3>
+<button class="toggle-btn" type="button" id="toggle_add_row" aria-expanded="<?php echo $openAddRow ? 'true' : 'false'; ?>" aria-controls="add_row_body"><?php echo $openAddRow ? 'Close' : 'Open'; ?></button>
+</div>
+<div id="add_row_body" class="settings-body<?php echo $openAddRow ? ' open' : ''; ?>">
+<form method="post" class="edit-row">
+<table style="margin-top:0;">
+<tr>
+<?php foreach($visibleColumns as $c){ ?>
+<th><?php echo htmlspecialchars($c['column_label']); ?></th>
+<?php } ?>
+<th>Action</th>
+</tr>
+<tr>
+<?php foreach($visibleColumns as $c){
+$key = $c['column_key'];
+?>
+<td><input type="text" name="add_col_<?php echo htmlspecialchars($key); ?>" value=""></td>
+<?php } ?>
+<td><button class="save-btn" type="submit" name="add_rate">Add Row</button></td>
+</tr>
+</table>
+</form>
+</div>
+</div>
+
 <table>
 <tr>
 <?php foreach($visibleColumns as $c){ ?>
@@ -390,7 +546,7 @@ elseif(isset($extra[$key])){ $val = (string)$extra[$key]; }
 <?php } ?>
 <input type="hidden" name="edit_id" value="<?php echo (int)$r['id']; ?>">
 <button class="save-btn" type="submit" name="update_rate">Save</button>
-<a class="cancel-btn" href="rate_list.php">Cancel</a>
+<a class="cancel-btn" href="feed_ratelist.php">Cancel</a>
 </td>
 </form>
 </tr>
@@ -409,7 +565,7 @@ elseif(isset($extra[$key])){ $val = (string)$extra[$key]; }
 <?php if(isset($r['source_image_path']) && $r['source_image_path'] !== ''){ ?>
 <a class="icon-link" href="<?php echo htmlspecialchars($r['source_image_path']); ?>" target="_blank" title="<?php echo htmlspecialchars($r['source_file']); ?>" aria-label="View Source Image">&#128065;</a>
 <?php } ?>
-<a class="icon-edit" href="rate_list.php?edit_id=<?php echo (int)$r['id']; ?>" title="Edit" aria-label="Edit">&#9998;</a>
+<a class="icon-edit" href="feed_ratelist.php?edit_id=<?php echo (int)$r['id']; ?>" title="Edit" aria-label="Edit">&#9998;</a>
 </td>
 </tr>
 <?php } ?>
@@ -419,14 +575,26 @@ elseif(isset($extra[$key])){ $val = (string)$extra[$key]; }
 (function(){
 var btn = document.getElementById('toggle_column_settings');
 var body = document.getElementById('column_settings_body');
-if(!btn || !body){ return; }
+if(btn && body){
 btn.addEventListener('click', function(){
 var isOpen = body.classList.toggle('open');
 btn.textContent = isOpen ? 'Close' : 'Open';
 btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
 });
+}
+
+var addBtn = document.getElementById('toggle_add_row');
+var addBody = document.getElementById('add_row_body');
+if(addBtn && addBody){
+addBtn.addEventListener('click', function(){
+var isOpen = addBody.classList.toggle('open');
+addBtn.textContent = isOpen ? 'Close' : 'Open';
+addBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+});
+}
 })();
 </script>
 </body>
 </html>
+
 

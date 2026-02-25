@@ -8,7 +8,7 @@ exit();
 include 'config/db.php';
 
 if($_SERVER['REQUEST_METHOD'] !== 'POST' || !isset($_FILES['csv_file']) || $_FILES['csv_file']['error'] !== UPLOAD_ERR_OK){
-header("location:rate_list.php?import=error");
+header("location:feed_ratelist.php?import=error");
 exit();
 }
 
@@ -80,14 +80,14 @@ return $bestKey;
 $tmpName = $_FILES['csv_file']['tmp_name'];
 $handle = fopen($tmpName, 'r');
 if(!$handle){
-header("location:rate_list.php?import=error");
+header("location:feed_ratelist.php?import=error");
 exit();
 }
 
 $headers = fgetcsv($handle);
 if($headers === false || !is_array($headers) || count($headers) === 0){
 fclose($handle);
-header("location:rate_list.php?import=error");
+header("location:feed_ratelist.php?import=error");
 exit();
 }
 
@@ -103,7 +103,7 @@ $columns[] = $c;
 
 if(count($columns) === 0){
 fclose($handle);
-header("location:rate_list.php?import=error&reason=no_columns");
+header("location:feed_ratelist.php?import=error&reason=no_columns");
 exit();
 }
 
@@ -180,6 +180,7 @@ $skipped++;
 fclose($handle);
 $stmt->close();
 
-header("location:rate_list.php?import=success&ins=$inserted&skip=$skipped");
+header("location:feed_ratelist.php?import=success&ins=$inserted&skip=$skipped");
 exit();
 ?>
+

@@ -303,7 +303,7 @@ justify-content:flex-end;
 <a class="btn" href="dashboard.php">Dashboard</a>
 <button class="menu-btn" id="feed_menu_btn" type="button" aria-label="Menu" title="Menu">&#9776;</button>
 <div class="menu-pop" id="feed_menu_pop">
-<a class="btn" href="rate_list.php">Rate List</a>
+<a class="btn" href="feed_ratelist.php">Rate List</a>
 <a class="btn" href="export_bilty.php">Export CSV</a>
 <form class="import-wrap" action="import_bilty.php" method="post" enctype="multipart/form-data">
 <input type="file" name="csv_file" accept=".csv" required>
@@ -405,3 +405,4 @@ pop.classList.remove('open');
 
 </body>
 </html>
+
