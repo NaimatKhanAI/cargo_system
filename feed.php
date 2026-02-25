@@ -48,8 +48,22 @@ if($dateFrom !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateFrom)){ $where[]
 if($dateTo !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateTo)){ $where[] = "date <= ?"; $bindTypes .= "s"; $bindValues[] = $dateTo; }
 if($vehicleSearch !== ''){ $where[] = "vehicle LIKE ?"; $bindTypes .= "s"; $bindValues[] = "%" . $vehicleSearch . "%"; }
 
-$sql = "SELECT *, (tender - freight) AS calc_profit FROM bilty";
-if(count($where) > 0) $sql .= " WHERE " . implode(" AND ", $where);
+$sql = "SELECT b.*, (b.tender - b.freight) AS calc_profit,
+        GREATEST(COALESCE(b.original_freight, b.freight) - COALESCE(p.paid_total, 0), 0) AS remaining_balance
+        FROM bilty b
+        LEFT JOIN (
+          SELECT bilty_id, SUM(amount) AS paid_total
+          FROM account_entries
+          WHERE bilty_id IS NOT NULL AND entry_type='debit'
+          GROUP BY bilty_id
+        ) p ON p.bilty_id = b.id";
+if(count($where) > 0){
+    $whereSql = [];
+    foreach($where as $w){
+        $whereSql[] = str_replace(["date", "vehicle"], ["b.date", "b.vehicle"], $w);
+    }
+    $sql .= " WHERE " . implode(" AND ", $whereSql);
+}
 $sql .= " ORDER BY id DESC";
 
 if(count($bindValues) > 0){
@@ -219,6 +233,12 @@ if(count($bindValues) > 0){
   .act-pdf:hover { background: rgba(59,130,246,0.25); }
 
   .th-action { text-align: center; width: 90px; }
+  .rem-badge {
+    display: inline-block; padding: 3px 9px; font-size: 10px; font-weight: 700;
+    letter-spacing: 1px; text-transform: uppercase; border: 1px solid transparent;
+  }
+  .rem-zero { background: rgba(34,197,94,0.15); color: var(--green); border-color: rgba(34,197,94,0.25); }
+  .rem-pending { background: rgba(239,68,68,0.15); color: var(--red); border-color: rgba(239,68,68,0.25); }
 
   @media(max-width: 900px) {
     .search-form { grid-template-columns: 1fr 1fr; }
@@ -280,7 +300,7 @@ if(count($bindValues) > 0){
   <div class="profit-banner">
     <div>
       <div class="profit-label">Total Profit</div>
-      <div class="profit-value">Rs <?php echo number_format((float)$total_profit, 2); ?></div>
+      <div class="profit-value"><?php echo number_format((float)$total_profit, 2); ?></div>
     </div>
   </div>
 
@@ -326,6 +346,7 @@ if(count($bindValues) > 0){
           <th>Bags</th>
           <th>Freight</th>
           <th>Tender</th>
+          <th>Remaining</th>
           <th>Profit</th>
           <th class="th-action">Actions</th>
         </tr>
@@ -342,10 +363,16 @@ if(count($bindValues) > 0){
           <td><?php echo htmlspecialchars($row['party']); ?></td>
           <td><?php echo htmlspecialchars($row['location']); ?></td>
           <td><?php echo (int)($row['bags'] ?? 0); ?></td>
-          <td>Rs <?php echo number_format((float)$row['freight'], 2); ?></td>
-          <td>Rs <?php echo number_format((float)$row['tender'], 2); ?></td>
+          <td><?php echo number_format((float)$row['freight'], 2); ?></td>
+          <td><?php echo number_format((float)$row['tender'], 2); ?></td>
+          <?php $remaining = (float)($row['remaining_balance'] ?? 0); ?>
+          <td>
+            <span class="rem-badge <?php echo $remaining <= 0 ? 'rem-zero' : 'rem-pending'; ?>">
+              <?php echo number_format($remaining, 2); ?>
+            </span>
+          </td>
           <td class="td-profit <?php echo $profit < 0 ? 'neg' : ''; ?>">
-            Rs <?php echo number_format($profit, 2); ?>
+            <?php echo number_format($profit, 2); ?>
           </td>
           <td>
             <div class="action-cell">
