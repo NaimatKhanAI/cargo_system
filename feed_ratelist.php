@@ -150,13 +150,13 @@ $rows = $conn->query("SELECT id, source_file, source_image_path, sr_no, station_
 <div class="topbar">
   <div class="topbar-logo">
     <span class="badge">Rate List</span>
-    <h1>Rate List</h1>
+    <h1>Rates</h1>
   </div>
   <div class="nav-links">
     <a class="nav-btn" href="feed.php">Feed</a>
     <a class="nav-btn" href="dashboard.php">Dashboard</a>
     <div class="menu-wrap">
-      <button type="button" class="nav-btn menu-toggle" id="menu_toggle" aria-label="Open Menu" aria-expanded="false">&#9776;</button>
+      <button type="button" class="nav-btn menu-toggle" id="menu_toggle" aria-label="Menu" aria-expanded="false">&#9776;</button>
       <div class="menu-dropdown" id="menu_dropdown">
         <form class="menu-import-form" action="import_rate_list.php" method="post" enctype="multipart/form-data" id="menu_import_form">
           <input class="menu-import-input" id="menu_import_file" type="file" name="csv_file" accept=".csv" required>
@@ -180,13 +180,13 @@ $rows = $conn->query("SELECT id, source_file, source_image_path, sr_no, station_
   <!-- COLUMN SETTINGS -->
   <div class="panel">
     <div class="panel-head" id="col_head">
-      <span class="panel-title">Column Settings</span>
+      <span class="panel-title">Columns</span>
       <span class="panel-toggle" id="col_toggle">+</span>
     </div>
     <div class="panel-body" id="col_body">
       <form method="post">
         <div class="add-col-row">
-          <input type="text" name="new_column_label" placeholder="New column name...">
+          <input type="text" name="new_column_label" placeholder="Column name">
           <button class="nav-btn primary" type="submit" name="add_column">Add Column</button>
         </div>
       </form>
@@ -214,7 +214,7 @@ $rows = $conn->query("SELECT id, source_file, source_image_path, sr_no, station_
           <?php endforeach; ?>
         </div>
         <input type="hidden" id="delete_col_key" name="column_key" value="">
-        <button class="nav-btn primary" type="submit" name="save_columns">Save Column Settings</button>
+        <button class="nav-btn primary" type="submit" name="save_columns">Save Columns</button>
       </form>
     </div>
   </div>
@@ -222,7 +222,7 @@ $rows = $conn->query("SELECT id, source_file, source_image_path, sr_no, station_
   <!-- ADD ROW -->
   <div class="panel">
     <div class="panel-head" id="add_head">
-      <span class="panel-title">Add New Row</span>
+      <span class="panel-title">Add Row</span>
       <span class="panel-toggle <?php echo $openAddRow ? 'open' : ''; ?>" id="add_toggle">+</span>
     </div>
     <div class="panel-body <?php echo $openAddRow ? 'open' : ''; ?>" id="add_body">
@@ -254,7 +254,7 @@ $rows = $conn->query("SELECT id, source_file, source_image_path, sr_no, station_
   <!-- DATA TABLE -->
   <div class="table-wrap">
     <div class="tbl-header">
-      <span class="tbl-title">Rate Records</span>
+      <span class="tbl-title">Rows</span>
     </div>
     <table>
       <thead>
@@ -287,7 +287,7 @@ $rows = $conn->query("SELECT id, source_file, source_image_path, sr_no, station_
               <td class="td-action">
                 <input type="hidden" name="edit_id" value="<?php echo (int)$r['id']; ?>">
                 <?php if(isset($r['source_image_path']) && $r['source_image_path'] !== ''): ?>
-                  <a class="act-btn act-view" href="<?php echo htmlspecialchars($r['source_image_path']); ?>" target="_blank" title="View Source">&#128065;</a>
+                  <a class="act-btn act-view" href="<?php echo htmlspecialchars($r['source_image_path']); ?>" target="_blank" title="View">&#128065;</a>
                 <?php endif; ?>
                 <button class="act-btn act-save" type="submit" name="update_rate">Save</button>
                 <a class="act-btn act-cancel" href="feed_ratelist.php">✕</a>
@@ -305,7 +305,7 @@ $rows = $conn->query("SELECT id, source_file, source_image_path, sr_no, station_
             <td class="td-date"><?php echo htmlspecialchars($r['created_at']); ?></td>
             <td class="td-action">
               <?php if(isset($r['source_image_path']) && $r['source_image_path'] !== ''): ?>
-                <a class="act-btn act-view" href="<?php echo htmlspecialchars($r['source_image_path']); ?>" target="_blank" title="View Source">&#128065;</a>
+                <a class="act-btn act-view" href="<?php echo htmlspecialchars($r['source_image_path']); ?>" target="_blank" title="View">&#128065;</a>
               <?php endif; ?>
               <a class="act-btn act-edit" href="feed_ratelist.php?edit_id=<?php echo (int)$r['id']; ?>" title="Edit">&#9998;</a>
             </td>
@@ -363,3 +363,4 @@ $rows = $conn->query("SELECT id, source_file, source_image_path, sr_no, station_
 </script>
 </body>
 </html>
+

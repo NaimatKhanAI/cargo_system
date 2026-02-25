@@ -57,12 +57,12 @@
     <span class="badge">Haleeb</span>
     <h1>Add Haleeb Bilty</h1>
   </div>
-  <a class="nav-btn" href="haleeb.php">Back to Haleeb</a>
+  <a class="nav-btn" href="haleeb.php">Back</a>
 </div>
 
 <div class="main">
   <div class="form-card">
-    <div class="form-title">New Haleeb Bilty Entry</div>
+    <div class="form-title">Add Haleeb Bilty</div>
     <form action="save_haleeb_bilty.php" method="post">
       <div class="grid">
         <div class="field">
@@ -75,7 +75,7 @@
         </div>
         <div class="field">
           <label for="vehicle_type">Vehicle Type</label>
-          <input id="vehicle_type" name="vehicle_type" placeholder="e.g. Truck, Loader..." required>
+          <input id="vehicle_type" name="vehicle_type" placeholder="Truck" required>
         </div>
         <div class="field">
           <label for="delivery_note">Delivery Note</label>
@@ -91,7 +91,7 @@
         </div>
         <div class="field">
           <label for="location">Location</label>
-          <input id="location" name="location" placeholder="Pickup / drop location" required>
+          <input id="location" name="location" placeholder="Location" required>
         </div>
         <div class="field">
           <label for="tender">Tender</label>
@@ -103,7 +103,7 @@
         </div>
       </div>
       <div class="form-footer">
-        <button class="submit-btn" type="submit">Save Bilty</button>
+        <button class="submit-btn" type="submit">Save</button>
       </div>
     </form>
   </div>

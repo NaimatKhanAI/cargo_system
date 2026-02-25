@@ -9,7 +9,7 @@ if(!isset($_SESSION['user'])){
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Cargo Dashboard</title>
+<title>Dashboard</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -118,33 +118,33 @@ if(!isset($_SESSION['user'])){
 
 <div class="main">
   <div class="greeting">
-    <div class="greeting-label">Welcome back</div>
-    <div class="greeting-title">Cargo <span>Dashboard</span></div>
+    <div class="greeting-label">Welcome</div>
+    <div class="greeting-title"><span>Dashboard</span></div>
   </div>
 
   <div class="grid">
     <a class="card card-feed" href="feed.php">
       <div class="card-icon icon-feed">&#9646;</div>
       <div class="card-title">Feed</div>
-      <div class="card-desc">Feed factory bilty records and profit details.</div>
+      <div class="card-desc">Manage feed bilty and profit.</div>
       <span class="card-arrow">›</span>
     </a>
     <a class="card card-haleeb" href="haleeb.php">
       <div class="card-icon icon-haleeb">&#9647;</div>
       <div class="card-title">Haleeb</div>
-      <div class="card-desc">Haleeb factory bilty records and tracking.</div>
+      <div class="card-desc">Manage haleeb bilty records.</div>
       <span class="card-arrow">›</span>
     </a>
     <a class="card card-account" href="account.php">
       <div class="card-icon icon-account">&#8350;</div>
       <div class="card-title">Account Ledger</div>
-      <div class="card-desc">Debit/credit entries and overall balances.</div>
+      <div class="card-desc">Manage debit, credit, and balance.</div>
       <span class="card-arrow">›</span>
     </a>
     <a class="card card-image" href="process_img.php">
       <div class="card-icon icon-image">&#9741;</div>
       <div class="card-title">Image Processing</div>
-      <div class="card-desc">Rate-list image processing and data extraction.</div>
+      <div class="card-desc">Read rate images and save data.</div>
       <span class="card-arrow">›</span>
     </a>
   </div>

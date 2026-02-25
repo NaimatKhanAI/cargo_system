@@ -92,13 +92,13 @@ if(!$row){ header("location:feed.php"); exit(); }
     <span class="badge">Edit</span>
     <h1>Edit Bilty</h1>
   </div>
-  <a class="nav-btn" href="feed.php">Back to Feed</a>
+  <a class="nav-btn" href="feed.php">Back</a>
 </div>
 
 <div class="main">
   <div class="form-card">
-    <div class="form-title">Edit Bilty Record</div>
-    <div class="form-sub">Bilty No: <?php echo htmlspecialchars($row['bilty_no']); ?> &nbsp;·&nbsp; ID: <?php echo $id; ?></div>
+    <div class="form-title">Edit Bilty</div>
+    <div class="form-sub">Bilty: <?php echo htmlspecialchars($row['bilty_no']); ?> &nbsp;·&nbsp; ID: <?php echo $id; ?></div>
 
     <form method="post">
       <div class="grid">
@@ -137,8 +137,8 @@ if(!$row){ header("location:feed.php"); exit(); }
       </div>
 
       <div class="form-footer">
-        <a class="delete-btn" href="delete.php?id=<?php echo $id; ?>" onclick="return confirm('Permanently delete this bilty?')">&#128465; Delete</a>
-        <button class="update-btn" type="submit" name="update">Update Bilty</button>
+        <a class="delete-btn" href="delete.php?id=<?php echo $id; ?>" onclick="return confirm('Delete this bilty?')">&#128465; Delete</a>
+        <button class="update-btn" type="submit" name="update">Save</button>
       </div>
     </form>
   </div>

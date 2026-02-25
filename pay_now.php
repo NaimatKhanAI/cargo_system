@@ -138,7 +138,7 @@ $paidPct = $baseFreight > 0 ? min(100, round($paidTotal / $baseFreight * 100)) :
     <span class="badge">Pay</span>
     <h1>Pay Now — Bilty <?php echo htmlspecialchars($row['bilty_no']); ?></h1>
   </div>
-  <a class="nav-btn" href="feed.php">Back to Feed</a>
+  <a class="nav-btn" href="feed.php">Back</a>
 </div>
 
 <div class="main">
@@ -146,7 +146,7 @@ $paidPct = $baseFreight > 0 ? min(100, round($paidTotal / $baseFreight * 100)) :
     <!-- LEFT -->
     <div class="info-panel">
       <div class="info-card">
-        <div class="panel-title">Bilty Details</div>
+        <div class="panel-title">Details</div>
         <div class="info-grid">
           <div class="info-item">
             <div class="info-label">Vehicle</div>
@@ -165,11 +165,11 @@ $paidPct = $baseFreight > 0 ? min(100, round($paidTotal / $baseFreight * 100)) :
             <div class="info-val yellow">Rs <?php echo number_format((float)$row['tender'], 0); ?></div>
           </div>
           <div class="info-item">
-            <div class="info-label">Total Freight</div>
+            <div class="info-label">Freight Total</div>
             <div class="info-val">Rs <?php echo number_format($baseFreight, 0); ?></div>
           </div>
           <div class="info-item">
-            <div class="info-label">Paid So Far</div>
+            <div class="info-label">Paid</div>
             <div class="info-val green">Rs <?php echo number_format($paidTotal, 0); ?></div>
           </div>
         </div>
@@ -177,7 +177,7 @@ $paidPct = $baseFreight > 0 ? min(100, round($paidTotal / $baseFreight * 100)) :
 
       <div class="progress-card">
         <div class="progress-header">
-          <span class="progress-label">Payment Progress</span>
+          <span class="progress-label">Progress</span>
           <span class="progress-pct"><?php echo $paidPct; ?>%</span>
         </div>
         <div class="progress-track">
@@ -194,7 +194,7 @@ $paidPct = $baseFreight > 0 ? min(100, round($paidTotal / $baseFreight * 100)) :
 
     <!-- RIGHT: FORM -->
     <div class="form-card">
-      <div class="form-title">Record Payment</div>
+      <div class="form-title">Add Payment</div>
 
       <?php if($err !== ""): ?>
         <div class="alert"><?php echo htmlspecialchars($err); ?></div>
@@ -202,11 +202,11 @@ $paidPct = $baseFreight > 0 ? min(100, round($paidTotal / $baseFreight * 100)) :
 
       <form method="post">
         <div class="field">
-          <label for="entry_date">Payment Date</label>
+          <label for="entry_date">Date</label>
           <input id="entry_date" type="date" name="entry_date" value="<?php echo htmlspecialchars($formDate); ?>" required>
         </div>
         <div class="field">
-          <label for="category">Account Category</label>
+          <label for="category">Category</label>
           <select id="category" name="category" required>
             <option value="feed" <?php echo $formCategory==='feed'?'selected':''; ?>>Feed</option>
             <option value="haleeb" <?php echo $formCategory==='haleeb'?'selected':''; ?>>Haleeb</option>
@@ -214,22 +214,22 @@ $paidPct = $baseFreight > 0 ? min(100, round($paidTotal / $baseFreight * 100)) :
           </select>
         </div>
         <div class="field">
-          <label for="amount_mode">Payment Mode</label>
+          <label for="amount_mode">Mode</label>
           <select id="amount_mode" name="amount_mode" required>
             <option value="cash" <?php echo $formAmountMode==='cash'?'selected':''; ?>>Cash</option>
             <option value="account" <?php echo $formAmountMode==='account'?'selected':''; ?>>Account</option>
           </select>
         </div>
         <div class="field">
-          <label for="pay_amount">Pay Amount</label>
+          <label for="pay_amount">Amount</label>
           <input id="pay_amount" type="number" name="pay_amount" min="1" max="<?php echo (int)$remainingFreight; ?>" value="<?php echo htmlspecialchars($formAmount); ?>" placeholder="0" required>
           <div class="field-hint">Max: Rs <?php echo number_format($remainingFreight, 0); ?></div>
         </div>
         <div class="field">
-          <label for="note">Note (optional)</label>
+          <label for="note">Note</label>
           <input id="note" type="text" name="note" value="<?php echo htmlspecialchars($formNote); ?>" placeholder="Payment note...">
         </div>
-        <button class="submit-btn" type="submit" name="pay_now">Confirm Payment</button>
+        <button class="submit-btn" type="submit" name="pay_now">Save Payment</button>
       </form>
     </div>
   </div>

@@ -95,12 +95,12 @@ if(!$row){ header("location:haleeb.php"); exit(); }
     <span class="badge">Edit</span>
     <h1>Edit Haleeb Bilty</h1>
   </div>
-  <a class="nav-btn" href="haleeb.php">Back to Haleeb</a>
+  <a class="nav-btn" href="haleeb.php">Back</a>
 </div>
 
 <div class="main">
   <div class="form-card">
-    <div class="form-title">Edit Haleeb Bilty Record</div>
+    <div class="form-title">Edit Haleeb Bilty</div>
     <div class="form-sub">Token: <?php echo htmlspecialchars($row['token_no']); ?> &nbsp;·&nbsp; ID: <?php echo $id; ?></div>
 
     <form method="post">
@@ -144,8 +144,8 @@ if(!$row){ header("location:haleeb.php"); exit(); }
       </div>
 
       <div class="form-footer">
-        <a class="delete-btn" href="delete_haleeb_bilty.php?id=<?php echo $id; ?>" onclick="return confirm('Permanently delete this bilty?')">&#128465; Delete</a>
-        <button class="update-btn" type="submit" name="update">Update Bilty</button>
+        <a class="delete-btn" href="delete_haleeb_bilty.php?id=<?php echo $id; ?>" onclick="return confirm('Delete this bilty?')">&#128465; Delete</a>
+        <button class="update-btn" type="submit" name="update">Save</button>
       </div>
     </form>
   </div>

@@ -178,7 +178,7 @@ list($entryStmt, $entries) = exec_prepared_result_local($conn, $entriesSql, $bin
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Account Ledger</title>
+<title>Account</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -384,7 +384,7 @@ list($entryStmt, $entries) = exec_prepared_result_local($conn, $entriesSql, $bin
 <div class="topbar">
   <div class="topbar-logo">
     <span class="badge-pill">Ledger</span>
-    <h1>Account Ledger</h1>
+    <h1>Account</h1>
   </div>
   <div class="nav-links">
     <a class="nav-btn" href="feed.php">Feed</a>
@@ -439,7 +439,7 @@ list($entryStmt, $entries) = exec_prepared_result_local($conn, $entriesSql, $bin
         </div>
         <div class="form-field">
           <label>Note (optional)</label>
-          <input type="text" name="note" placeholder="Description..." value="<?php echo htmlspecialchars($formNote); ?>">
+          <input type="text" name="note" placeholder="Note" value="<?php echo htmlspecialchars($formNote); ?>">
         </div>
         <div class="form-actions">
           <?php if($editingId > 0): ?>
@@ -502,7 +502,7 @@ list($entryStmt, $entries) = exec_prepared_result_local($conn, $entriesSql, $bin
       <div class="stat-val <?php echo ((float)$cCash-(float)$dCash)>=0?'green':'red'; ?>">
         Rs <?php echo number_format((float)$cCash-(float)$dCash, 2); ?>
       </div>
-      <div class="stat-sub">Credit - Debit (Cash)</div>
+      <div class="stat-sub">Cash Credit - Debit</div>
     </div>
     <div class="stat-card <?php echo $netPos ? 'net-pos' : 'net-neg'; ?>">
       <div class="stat-label">Net Balance</div>

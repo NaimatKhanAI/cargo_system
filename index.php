@@ -12,7 +12,7 @@ if(isset($_POST['login'])){
     $u = isset($_POST['user']) ? trim($_POST['user']) : '';
     $p = isset($_POST['pass']) ? trim($_POST['pass']) : '';
     if($u === '' || $p === ''){
-        $error = "Username aur password required hai.";
+        $error = "Username and password are required.";
     } else {
         $stmt = $conn->prepare("SELECT username FROM users WHERE username=? AND password=? LIMIT 1");
         $stmt->bind_param("ss", $u, $p);
@@ -104,7 +104,7 @@ if(isset($_POST['login'])){
     <span class="brand-name">Cargo Manager</span>
   </div>
   <div class="login-title">Sign In</div>
-  <div class="login-sub">Enter your credentials to continue.</div>
+  <div class="login-sub">Enter username and password.</div>
 
   <form method="post" autocomplete="off">
     <div class="field">
@@ -122,7 +122,7 @@ if(isset($_POST['login'])){
     <div class="alert"><?php echo htmlspecialchars($error); ?></div>
   <?php endif; ?>
 
-  <div class="footer-note">CARGO MANAGEMENT SYSTEM</div>
+  <div class="footer-note">Cargo System</div>
 </div>
 </body>
 </html>

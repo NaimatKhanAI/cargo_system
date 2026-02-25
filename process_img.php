@@ -69,19 +69,19 @@ if(!isset($_SESSION['user'])){
     <span class="badge">Image</span>
     <h1>Image Processing</h1>
   </div>
-  <a class="nav-btn" href="dashboard.php">Back to Dashboard</a>
+  <a class="nav-btn" href="dashboard.php">Back</a>
 </div>
 
 <div class="main">
   <div class="upload-card">
     <div class="card-title">Image → Excel</div>
-    <div class="card-desc">Upload a rate table image and extract it into an Excel-ready CSV file. Multiple images supported.</div>
+    <div class="card-desc">Upload rate images and get CSV data.</div>
 
     <form action="process.php" method="post" enctype="multipart/form-data" id="upload_form">
       <div class="drop-zone" id="drop_zone">
         <div class="drop-icon">&#128247;</div>
-        <div class="drop-title">Drop images here or click to browse</div>
-        <div class="drop-hint">PNG · JPG · JPEG · WEBP · Multiple files OK</div>
+        <div class="drop-title">Drop images here or click</div>
+        <div class="drop-hint">PNG · JPG · JPEG · WEBP · Multi file ok</div>
         <input type="file" name="image[]" accept=".png,.jpg,.jpeg,.webp" multiple required id="file_input">
       </div>
 
@@ -89,7 +89,7 @@ if(!isset($_SESSION['user'])){
         <ul class="file-list" id="file_list"></ul>
       </div>
 
-      <button class="submit-btn" type="submit">Convert to Excel</button>
+      <button class="submit-btn" type="submit">Make CSV</button>
     </form>
 
     <div class="formats">
@@ -127,3 +127,4 @@ if(!isset($_SESSION['user'])){
 </script>
 </body>
 </html>
+

@@ -60,7 +60,7 @@ if(count($bindValues) > 0){
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Feed Management</title>
+<title>Feed</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -232,10 +232,10 @@ if(count($bindValues) > 0){
 <div class="topbar">
   <div class="topbar-logo">
     <span class="badge">Feed</span>
-    <h1>Feed Management</h1>
+    <h1>Feed</h1>
   </div>
   <div class="nav-links">
-    <a class="nav-btn primary" href="add_bilty.php">+ Add Bilty</a>
+    <a class="nav-btn primary" href="add_bilty.php">Add Bilty</a>
     <a class="nav-btn" href="haleeb.php">Haleeb</a>
     <a class="nav-btn" href="dashboard.php">Dashboard</a>
     <div class="menu-wrap">
@@ -277,16 +277,16 @@ if(count($bindValues) > 0){
   <div class="search-panel">
     <form class="search-form" method="get">
       <div class="field">
-        <label for="date_from">Date From</label>
+        <label for="date_from">From</label>
         <input id="date_from" type="date" name="date_from" value="<?php echo htmlspecialchars($dateFrom); ?>">
       </div>
       <div class="field">
-        <label for="date_to">Date To</label>
+        <label for="date_to">To</label>
         <input id="date_to" type="date" name="date_to" value="<?php echo htmlspecialchars($dateTo); ?>">
       </div>
       <div class="field">
-        <label for="vehicle">Vehicle No.</label>
-        <input id="vehicle" name="vehicle" list="vehicle_list" placeholder="Search by vehicle..." value="<?php echo htmlspecialchars($vehicleSearch); ?>">
+        <label for="vehicle">Vehicle</label>
+        <input id="vehicle" name="vehicle" list="vehicle_list" placeholder="Vehicle" value="<?php echo htmlspecialchars($vehicleSearch); ?>">
         <datalist id="vehicle_list">
           <?php foreach($vehicleOptions as $opt): ?>
             <option value="<?php echo htmlspecialchars($opt); ?>">
@@ -302,7 +302,7 @@ if(count($bindValues) > 0){
 
   <div class="table-wrap">
     <div class="tbl-header">
-      <span class="tbl-header-title">Bilty Records</span>
+      <span class="tbl-header-title">Records</span>
     </div>
     <table>
       <thead>
@@ -337,7 +337,7 @@ if(count($bindValues) > 0){
           </td>
           <td>
             <div class="action-cell">
-              <a class="act-btn act-pay" href="pay_now.php?id=<?php echo $row['id']; ?>" title="Pay Now">&#8377;</a>
+              <a class="act-btn act-pay" href="pay_now.php?id=<?php echo $row['id']; ?>" title="Pay">&#8377;</a>
               <a class="act-btn act-edit" href="edit.php?id=<?php echo $row['id']; ?>" title="Edit">&#9998;</a>
               <a class="act-btn act-pdf" href="pdf.php?id=<?php echo $row['id']; ?>" target="_blank" title="PDF">&#128196;</a>
             </div>

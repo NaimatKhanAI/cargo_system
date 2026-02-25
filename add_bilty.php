@@ -127,20 +127,20 @@ $today = date('Y-m-d');
     <h1>Add Bilty</h1>
   </div>
   <div class="topbar-right">
-    <button type="button" class="settings-btn" id="open_settings" title="Tender Lookup Settings">&#9881;</button>
-    <a class="nav-btn" href="feed.php">Back to Feed</a>
+    <button type="button" class="settings-btn" id="open_settings" title="Tender Settings">&#9881;</button>
+    <a class="nav-btn" href="feed.php">Back</a>
   </div>
 </div>
 
 <div class="main">
   <div class="form-card">
-    <div class="form-title">New Bilty Entry</div>
+    <div class="form-title">Add Bilty</div>
     <form action="save_bilty.php" method="post">
       <div class="grid">
         <div class="field">
           <label for="sr_no">SR No</label>
-          <input id="sr_no" name="sr_no" placeholder="Enter SR number" required>
-          <div class="field-meta" id="tender_help">Value column: <span id="value_lookup_name"><?php echo htmlspecialchars($savedValueLookupLabel !== '' ? $savedValueLookupLabel : 'Not set'); ?></span></div>
+          <input id="sr_no" name="sr_no" placeholder="SR number" required>
+          <div class="field-meta" id="tender_help">Tender column: <span id="value_lookup_name"><?php echo htmlspecialchars($savedValueLookupLabel !== '' ? $savedValueLookupLabel : 'Not set'); ?></span></div>
         </div>
         <div class="field">
           <label for="date">Date</label>
@@ -172,7 +172,7 @@ $today = date('Y-m-d');
         </div>
       </div>
       <div class="form-footer">
-        <button class="submit-btn" type="submit">Save Bilty</button>
+        <button class="submit-btn" type="submit">Save</button>
       </div>
     </form>
   </div>
@@ -180,11 +180,11 @@ $today = date('Y-m-d');
 
 <div class="modal" id="settings_modal" aria-hidden="true">
   <div class="modal-card">
-    <div class="modal-title">Tender Lookup Settings</div>
+    <div class="modal-title">Tender Settings</div>
     <div class="modal-desc">SR matching is fixed to SR column. Select which column value should auto-fill the Tender field.</div>
     <form id="settings_form">
       <div class="modal-field">
-        <label for="rate_value_column">Tender Value Column</label>
+        <label for="rate_value_column">Tender column</label>
         <select id="rate_value_column" name="rate_value_column" required>
           <?php foreach($activeColumns as $c): ?>
             <option value="<?php echo htmlspecialchars($c['key']); ?>" <?php echo $c['key'] === $savedValueLookupColumn ? 'selected' : ''; ?>>
@@ -195,7 +195,7 @@ $today = date('Y-m-d');
       </div>
       <div class="modal-actions">
         <button class="btn-cancel" type="button" id="close_settings">Cancel</button>
-        <button class="btn-save" type="submit">Save Settings</button>
+        <button class="btn-save" type="submit">Save</button>
       </div>
     </form>
   </div>
@@ -226,18 +226,18 @@ $today = date('Y-m-d');
 
   function lookupTender(){
     var sr = (srInput.value || '').trim();
-    if(sr === ''){ setHelp('Value column: ' + (valueLookupName ? valueLookupName.textContent : ''), ''); return; }
+    if(sr === ''){ setHelp('Tender column: ' + (valueLookupName ? valueLookupName.textContent : ''), ''); return; }
     reqId++;
     var cur = reqId;
-    setHelp('Looking up rate...', 'info');
+    setHelp('Checking rate...', 'info');
     fetch('add_bilty.php?lookup_tender=1&sr_no=' + encodeURIComponent(sr), { headers: { 'Accept': 'application/json' } })
     .then(function(r){ return r.json(); })
     .then(function(data){
       if(cur !== reqId) return;
-      if(data && data.ok){ tenderInput.value = data.rate; setHelp('✓ Auto-filled from: ' + (data.value_column_label || data.column_label || 'selected'), 'ok'); }
-      else { setHelp('✗ ' + ((data && data.message) ? data.message : 'Rate not found.'), 'err'); }
+      if(data && data.ok){ tenderInput.value = data.rate; setHelp('✓ Auto fill: ' + (data.value_column_label || data.column_label || 'selected'), 'ok'); }
+      else { setHelp('✗ ' + ((data && data.message) ? data.message : 'Rate not found'), 'err'); }
     })
-    .catch(function(){ if(cur !== reqId) return; setHelp('✗ Unable to fetch rate.', 'err'); });
+    .catch(function(){ if(cur !== reqId) return; setHelp('✗ Cannot get rate.', 'err'); });
   }
 
   function scheduleLookup(){ if(timer) clearTimeout(timer); timer = setTimeout(lookupTender, 250); }
@@ -259,9 +259,9 @@ $today = date('Y-m-d');
           if(valueLookupName) valueLookupName.textContent = label;
           closeModal();
           lookupTender();
-        } else { setHelp('✗ ' + ((data && data.message) ? data.message : 'Could not save settings.'), 'err'); }
+        } else { setHelp('✗ ' + ((data && data.message) ? data.message : 'Could not save.'), 'err'); }
       })
-      .catch(function(){ setHelp('✗ Could not save settings.', 'err'); });
+      .catch(function(){ setHelp('✗ Could not save.', 'err'); });
     });
   }
 })();
