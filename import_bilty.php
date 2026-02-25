@@ -23,85 +23,116 @@ exit();
 $inserted = 0;
 $skipped = 0;
 $lineNo = 0;
+$headerMap = null;
+
+function normalize_header_name($v){
+    $v = strtolower(trim((string)$v));
+    $v = preg_replace('/\s+/', '_', $v);
+    return $v;
+}
+
+function parse_csv_date_to_mysql($value){
+    $value = trim((string)$value);
+    if($value === '') return '';
+    $formats = ['Y-m-d', 'n/j/Y', 'm/d/Y', 'j/n/Y', 'd/m/Y', 'n-j-Y', 'm-d-Y', 'd-m-Y'];
+    foreach($formats as $fmt){
+        $dt = DateTime::createFromFormat($fmt, $value);
+        if($dt instanceof DateTime){
+            return $dt->format('Y-m-d');
+        }
+    }
+    $ts = strtotime($value);
+    if($ts === false) return '';
+    return date('Y-m-d', $ts);
+}
+
+function parse_csv_number($value){
+    $value = trim((string)$value);
+    if($value === '' || $value === '-' || $value === '--') return null;
+    $value = str_replace([',', ' '], '', $value);
+    $value = preg_replace('/[^0-9.\-]/', '', $value);
+    if($value === '' || $value === '-' || $value === '--') return null;
+    if(!is_numeric($value)) return null;
+    return (int)round((float)$value);
+}
 
 $stmt = $conn->prepare("INSERT INTO bilty(sr_no, date, vehicle, bilty_no, party, location, freight, original_freight, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
 
 while(($data = fgetcsv($handle)) !== false){
-$lineNo++;
-if(empty($data) || count($data) < 6){
-$skipped++;
-continue;
-}
+    $lineNo++;
+    if(empty($data)){
+        $skipped++;
+        continue;
+    }
 
-$data = array_map('trim', $data);
+    $data = array_map('trim', $data);
 
-if($lineNo === 1){
-$firstLine = strtolower(implode(',', $data));
-if(strpos($firstLine, 'date') !== false && strpos($firstLine, 'vehicle') !== false){
-continue;
-}
-}
+    if($lineNo === 1){
+        $headers = array_map('normalize_header_name', $data);
+        if(in_array('date', $headers, true) && in_array('vehicle', $headers, true)){
+            $headerMap = [];
+            foreach($headers as $i => $name){
+                $headerMap[$name] = $i;
+            }
+            continue;
+        }
+    }
 
-if(preg_match('/^\d{4}-\d{2}-\d{2}$/', $data[0])){
-$offset = 0;
-} elseif(isset($data[1]) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $data[1])){
-$offset = 1;
-} else {
-$skipped++;
-continue;
-}
+    if($headerMap !== null){
+        $dateRaw = isset($headerMap['date']) ? ($data[$headerMap['date']] ?? '') : '';
+        $date = parse_csv_date_to_mysql($dateRaw);
+        $srNo = isset($headerMap['sr_no']) ? ($data[$headerMap['sr_no']] ?? '') : '';
+        $vehicle = isset($headerMap['vehicle']) ? ($data[$headerMap['vehicle']] ?? '') : '';
+        $biltyNo = isset($headerMap['bilty_no']) ? ($data[$headerMap['bilty_no']] ?? '') : '';
+        $party = isset($headerMap['party']) ? ($data[$headerMap['party']] ?? '') : '';
+        $location = isset($headerMap['location']) ? ($data[$headerMap['location']] ?? '') : '';
+        $freight = parse_csv_number(isset($headerMap['freight']) ? ($data[$headerMap['freight']] ?? '') : '');
+        $tender = parse_csv_number(isset($headerMap['tender']) ? ($data[$headerMap['tender']] ?? '') : '');
+        $profit = parse_csv_number(isset($headerMap['profit']) ? ($data[$headerMap['profit']] ?? '') : '');
+    } else {
+        if(count($data) < 6){
+            $skipped++;
+            continue;
+        }
 
-$remaining = count($data) - $offset;
-if($remaining < 6){
-$skipped++;
-continue;
-}
+        $offset = -1;
+        for($i = 0; $i <= min(3, count($data) - 1); $i++){
+            if(parse_csv_date_to_mysql($data[$i]) !== ''){
+                $offset = $i;
+                break;
+            }
+        }
+        if($offset < 0){
+            $skipped++;
+            continue;
+        }
 
-$date = $data[$offset];
-$vehicle = isset($data[$offset + 1]) ? $data[$offset + 1] : "";
-$biltyNo = isset($data[$offset + 2]) ? $data[$offset + 2] : "";
-$srNo = "";
+        $date = parse_csv_date_to_mysql($data[$offset]);
+        $vehicle = $data[$offset + 1] ?? '';
+        $biltyNo = $data[$offset + 2] ?? '';
+        $party = $data[$offset + 3] ?? '';
+        $location = $data[$offset + 4] ?? '';
+        $freight = parse_csv_number($data[$offset + 5] ?? '');
+        $tender = parse_csv_number($data[$offset + 6] ?? '');
+        $profit = parse_csv_number($data[$offset + 7] ?? '');
+        $srNo = ($offset > 0) ? ($data[$offset - 1] ?? '') : '';
+    }
 
-if($offset >= 2){
-$srNo = isset($data[$offset - 1]) ? $data[$offset - 1] : "";
-} elseif($offset === 1 && isset($data[0]) && !is_numeric($data[0])){
-$srNo = $data[0];
-}
+    if($date === '' || $freight === null || $tender === null){
+        $skipped++;
+        continue;
+    }
 
-if($remaining >= 8){
-$party = isset($data[$offset + 3]) ? $data[$offset + 3] : "";
-$location = isset($data[$offset + 4]) ? $data[$offset + 4] : "";
-$freight = isset($data[$offset + 5]) ? $data[$offset + 5] : "";
-$tender = isset($data[$offset + 6]) ? $data[$offset + 6] : "";
-$profit = isset($data[$offset + 7]) ? $data[$offset + 7] : "";
-} else {
-$party = "";
-$location = isset($data[$offset + 3]) ? $data[$offset + 3] : "";
-$freight = isset($data[$offset + 4]) ? $data[$offset + 4] : "";
-$tender = isset($data[$offset + 5]) ? $data[$offset + 5] : "";
-$profit = isset($data[$offset + 6]) ? $data[$offset + 6] : "";
-}
+    if($profit === null){
+        $profit = $tender - $freight;
+    }
 
-if(!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)){
-$skipped++;
-continue;
-}
-
-if(!is_numeric($freight) || !is_numeric($tender)){
-$skipped++;
-continue;
-}
-
-$freight = (int)$freight;
-$tender = (int)$tender;
-$profit = is_numeric($profit) ? (int)$profit : ($tender - $freight);
-
-$stmt->bind_param("ssssssiiii", $srNo, $date, $vehicle, $biltyNo, $party, $location, $freight, $freight, $tender, $profit);
-if($stmt->execute()){
-$inserted++;
-} else {
-$skipped++;
-}
+    $stmt->bind_param("ssssssiiii", $srNo, $date, $vehicle, $biltyNo, $party, $location, $freight, $freight, $tender, $profit);
+    if($stmt->execute()){
+        $inserted++;
+    } else {
+        $skipped++;
+    }
 }
 
 fclose($handle);
