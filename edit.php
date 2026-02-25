@@ -15,7 +15,7 @@ $p=$t-$f;
 
 $conn->query("UPDATE bilty SET sr_no='$sr',date='$d',vehicle='$v',bilty_no='$b',
 party='$party',location='$l',freight='$f',original_freight='$f',tender='$t',profit='$p' WHERE id=$id");
-header("location:dashboard.php");
+header("location:feed.php");
 }
 
 $row=$conn->query("SELECT * FROM bilty WHERE id=$id")->fetch_assoc();
@@ -118,7 +118,7 @@ max-width:none;
 <div class="form-card">
 <div class="form-head">
 <h2>Edit Bilty</h2>
-<a class="back-link" href="dashboard.php">Back to Dashboard</a>
+<a class="back-link" href="feed.php">Back to Feed</a>
 </div>
 
 <form method="post">
@@ -166,3 +166,5 @@ max-width:none;
 </div>
 </body>
 </html>
+
+

@@ -352,7 +352,7 @@ grid-template-columns:1fr;
 <div class="topbar">
 <h2>Account Ledger</h2>
 <div>
-<a class="btn" href="dashboard.php">Dashboard</a>
+<a class="btn" href="feed.php">Feed</a>
 <a class="btn" href="logout.php">Logout</a>
 </div>
 </div>
@@ -478,3 +478,4 @@ $n = (float)$cr - (float)$d;
 <?php if(isset($entryStmt)){ $entryStmt->close(); } ?>
 </body>
 </html>
+

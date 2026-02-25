@@ -428,7 +428,7 @@ max-width:none;
 <h2>Add Bilty</h2>
 <div class="head-right">
 <button type="button" class="settings-btn" id="open_settings" title="Tender Lookup Settings" aria-label="Tender Lookup Settings">&#9881;</button>
-<a class="back-link" href="dashboard.php">Back to Dashboard</a>
+<a class="back-link" href="feed.php">Back to Feed</a>
 </div>
 </div>
 
@@ -629,3 +629,4 @@ max-width:none;
 </script>
 </body>
 </html>
+

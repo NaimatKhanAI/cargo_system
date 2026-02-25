@@ -23,4 +23,5 @@ echo $row['date']." | ".$row['vehicle']." | Profit: ".$row['profit']."<br>";
 }
 }
 ?>
-<a href="dashboard.php">Back</a>
+<a href="feed.php">Back</a>
+

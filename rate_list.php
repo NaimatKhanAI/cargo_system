@@ -316,7 +316,7 @@ display:block;
 <button class="btn" type="submit">Import List</button>
 </form>
 <a class="btn" href="rate_list.php?delete_all=1" onclick="return confirm('Delete complete rate list?')">Delete List</a>
-<a class="btn" href="dashboard.php">Dashboard</a>
+<a class="btn" href="feed.php">Feed</a>
 </div>
 </div>
 
@@ -429,3 +429,4 @@ btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
 </script>
 </body>
 </html>
+

@@ -35,7 +35,7 @@ $pay_message = "Payment failed. Please try again.";
 
 <html>
 <head>
-<title>Cargo Dashboard</title>
+<title>Cargo Feed</title>
 
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
@@ -115,7 +115,7 @@ text-align:center;
 <body>
 
 <div class="topbar">
-<h2>Cargo Management Dashboard</h2>
+<h2>Cargo Management Feed</h2>
 <div>
 <a class="btn" href="add_bilty.php">+ Add Bilty</a>
 <a class="btn" href="search.php">Search</a>

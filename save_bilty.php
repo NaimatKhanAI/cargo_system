@@ -15,5 +15,6 @@ $p=$t-$f;
 $conn->query("INSERT INTO bilty(sr_no,date,vehicle,bilty_no,party,location,freight,original_freight,tender,profit)
 VALUES('$sr','$d','$v','$b','$party','$l','$f','$f','$t','$p')");
 
-header("location:dashboard.php");
+header("location:feed.php");
 ?>
+

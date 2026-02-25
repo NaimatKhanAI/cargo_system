@@ -9,7 +9,7 @@ include 'config/db.php';
 
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 if($id <= 0){
-header("location:dashboard.php?pay=error");
+header("location:feed.php?pay=error");
 exit();
 }
 
@@ -31,7 +31,7 @@ $row = $biltyRes->fetch_assoc();
 $stmt->close();
 
 if(!$row){
-header("location:dashboard.php?pay=error");
+header("location:feed.php?pay=error");
 exit();
 }
 
@@ -76,7 +76,7 @@ $ins->execute();
 $ins->close();
 
 $conn->commit();
-header("location:dashboard.php?pay=success");
+header("location:feed.php?pay=success");
 exit();
 } catch (Throwable $e){
 $conn->rollback();
@@ -168,7 +168,7 @@ grid-template-columns:1fr;
 <div class="card">
 <div class="top">
 <h2>Pay Now - Bilty <?php echo htmlspecialchars($row['bilty_no']); ?></h2>
-<a class="back-link" href="dashboard.php">Back to Dashboard</a>
+<a class="back-link" href="feed.php">Back to Feed</a>
 </div>
 
 <?php if($err!=""){ ?><p class="err"><?php echo htmlspecialchars($err); ?></p><?php } ?>
@@ -219,3 +219,5 @@ grid-template-columns:1fr;
 </div>
 </body>
 </html>
+
+

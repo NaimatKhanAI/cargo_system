@@ -105,7 +105,7 @@ exit();
 </head>
 <body>
   <div class="top">
-    <a class="back" href="dashboard.php">Back to Dashboard</a>
+    <a class="back" href="feed.php">Back to Feed</a>
   </div>
   <div class="wrap">
     <div class="card">
@@ -126,3 +126,4 @@ exit();
   </div>
 </body>
 </html>
+

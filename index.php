@@ -10,7 +10,7 @@ if($canChooseOption){
 $_SESSION['user']='Guest';
 unset($_SESSION['login_verified']);
 unset($_SESSION['pending_user']);
-header("location:dashboard.php");
+header("location:feed.php");
 exit();
 }else{
 $error = "Pehle sahi login karein.";
@@ -44,12 +44,12 @@ $error = "Pehle sahi login karein.";
 }
 }
 
-if(isset($_POST['dashboard'])){
+if(isset($_POST['feed'])){
 if($canChooseOption){
 $_SESSION['user'] = $pendingUser !== '' ? $pendingUser : 'User';
 unset($_SESSION['login_verified']);
 unset($_SESSION['pending_user']);
-header("location:dashboard.php");
+header("location:feed.php");
 exit();
 }else{
 $error = "Pehle sahi login karein.";
@@ -191,7 +191,7 @@ grid-template-columns:1fr;
 <div class="option-wrap" id="optionWrap" style="<?php echo $canChooseOption ? 'display:block;' : 'display:none;'; ?>">
 <p class="option-title">Login verified. Choose where to continue:</p>
 <div class="option-grid">
-<button class="option-btn" name="dashboard" type="submit">Cargo Dashboard</button>
+<button class="option-btn" name="feed" type="submit">Cargo Feed</button>
 <button class="option-btn" name="account" type="submit">Account Ledger</button>
 <button class="option-btn" name="process_img" type="submit">Process Image</button>
 <button class="option-btn" name="rate_list" type="submit">Rate List</button>
@@ -210,3 +210,4 @@ grid-template-columns:1fr;
 </div>
 </body>
 </html>
+

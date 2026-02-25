@@ -8,7 +8,7 @@ exit();
 include 'config/db.php';
 
 if($_SERVER['REQUEST_METHOD'] !== 'POST' || !isset($_FILES['csv_file']) || $_FILES['csv_file']['error'] !== UPLOAD_ERR_OK){
-header("location:dashboard.php?import=error");
+header("location:feed.php?import=error");
 exit();
 }
 
@@ -16,7 +16,7 @@ $tmpName = $_FILES['csv_file']['tmp_name'];
 $handle = fopen($tmpName, 'r');
 
 if(!$handle){
-header("location:dashboard.php?import=error");
+header("location:feed.php?import=error");
 exit();
 }
 
@@ -107,6 +107,7 @@ $skipped++;
 fclose($handle);
 $stmt->close();
 
-header("location:dashboard.php?import=success&ins=$inserted&skip=$skipped");
+header("location:feed.php?import=success&ins=$inserted&skip=$skipped");
 exit();
 ?>
+
