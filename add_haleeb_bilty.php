@@ -1,137 +1,112 @@
 <?php $today = date('Y-m-d'); ?>
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+<meta charset="UTF-8">
 <title>Add Haleeb Bilty</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="stylesheet" href="assets/style.css">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-.page-wrap{
-max-width:900px;
-margin:25px auto;
-}
-.form-card{
-background:#fff;
-border:1px solid #ddd;
-border-radius:10px;
-padding:20px;
-box-shadow:0 10px 24px rgba(0,0,0,0.06);
-}
-.form-head{
-display:flex;
-justify-content:space-between;
-align-items:center;
-gap:10px;
-margin-bottom:15px;
-}
-.back-link{
-display:inline-block;
-padding:10px 14px;
-background:#ececec;
-color:#111;
-text-decoration:none;
-border-radius:8px;
-font-weight:600;
-}
-.grid{
-display:grid;
-grid-template-columns:repeat(2, minmax(220px, 1fr));
-gap:12px 16px;
-}
-.field label{
-display:block;
-margin:0 0 6px;
-font-size:14px;
-color:#333;
-font-weight:600;
-}
-.field input{
-max-width:none;
-margin:0;
-border:1px solid #cfcfcf;
-border-radius:8px;
-background:#fafafa;
-}
-.actions{
-margin-top:16px;
-display:flex;
-justify-content:flex-end;
-}
-.actions button{
-max-width:180px;
-border-radius:8px;
-font-weight:700;
-}
-@media(max-width:700px){
-.grid{
-grid-template-columns:1fr;
-}
-.form-head{
-align-items:flex-start;
-flex-direction:column;
-}
-.actions{
-justify-content:stretch;
-}
-.actions button{
-max-width:none;
-}
-}
+  :root {
+    --bg: #0e0f11; --surface: #16181c; --surface2: #1e2128; --border: #2a2d35;
+    --accent: #60a5fa; --green: #22c55e; --red: #ef4444;
+    --text: #e8eaf0; --muted: #7c8091; --font: 'Syne', sans-serif; --mono: 'DM Mono', monospace;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; }
+
+  .topbar { display: flex; justify-content: space-between; align-items: center; padding: 18px 32px; border-bottom: 1px solid var(--border); background: var(--surface); }
+  .topbar-logo { display: flex; align-items: center; gap: 12px; }
+  .badge { background: var(--accent); color: #0e0f11; font-size: 10px; font-weight: 800; padding: 3px 8px; letter-spacing: 1.5px; text-transform: uppercase; }
+  .topbar h1 { font-size: 18px; font-weight: 800; letter-spacing: -0.5px; }
+  .nav-btn { padding: 8px 16px; background: transparent; color: var(--muted); border: 1px solid var(--border); cursor: pointer; text-decoration: none; font-family: var(--font); font-size: 13px; font-weight: 600; transition: all 0.15s; }
+  .nav-btn:hover { background: var(--surface2); color: var(--text); border-color: var(--muted); }
+
+  .main { display: flex; align-items: flex-start; justify-content: center; padding: 40px 24px; }
+  .form-card { background: var(--surface); border: 1px solid var(--border); padding: 32px; width: min(860px, 100%); position: relative; overflow: hidden; }
+  .form-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--accent); }
+
+  .form-title { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 28px; }
+
+  .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px 20px; }
+  .field label { display: block; font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
+  .field input {
+    width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    padding: 11px 14px; font-family: var(--font); font-size: 14px; transition: border-color 0.15s;
+  }
+  .field input:focus { outline: none; border-color: var(--accent); }
+  .field input::-webkit-calendar-picker-indicator { filter: invert(0.5); cursor: pointer; }
+  .field input::placeholder { color: var(--muted); }
+
+  .form-footer { margin-top: 28px; display: flex; justify-content: flex-end; }
+  .submit-btn { padding: 13px 36px; background: var(--accent); color: #0e0f11; border: none; cursor: pointer; font-family: var(--font); font-size: 14px; font-weight: 800; transition: background 0.15s; }
+  .submit-btn:hover { background: #3b82f6; color: #fff; }
+
+  @media(max-width: 640px) {
+    .main { padding: 20px 14px; }
+    .form-card { padding: 22px 16px; }
+    .grid { grid-template-columns: 1fr; }
+    .topbar { padding: 14px 16px; }
+  }
 </style>
 </head>
 <body>
-<div class="page-wrap">
-<div class="form-card">
-<div class="form-head">
-<h2>Add Haleeb Bilty</h2>
-<a class="back-link" href="haleeb.php">Back to Haleeb Feed</a>
+
+<div class="topbar">
+  <div class="topbar-logo">
+    <span class="badge">Haleeb</span>
+    <h1>Add Haleeb Bilty</h1>
+  </div>
+  <a class="nav-btn" href="haleeb.php">Back to Haleeb</a>
 </div>
 
-<form action="save_haleeb_bilty.php" method="post">
-<div class="grid">
-<div class="field">
-<label for="date">Date</label>
-<input id="date" type="date" name="date" value="<?php echo $today; ?>" required>
-</div>
-<div class="field">
-<label for="vehicle">Vehicle</label>
-<input id="vehicle" name="vehicle" placeholder="Vehicle number" required>
-</div>
-<div class="field">
-<label for="vehicle_type">Vehicle Type</label>
-<input id="vehicle_type" name="vehicle_type" placeholder="Vehicle type" required>
-</div>
-<div class="field">
-<label for="delivery_note">Delivery Note</label>
-<input id="delivery_note" name="delivery_note" placeholder="Delivery note" required>
-</div>
-<div class="field">
-<label for="token_no">Token No</label>
-<input id="token_no" name="token_no" placeholder="Token number" required>
-</div>
-<div class="field">
-<label for="party">Party</label>
-<input id="party" name="party" placeholder="Party name">
-</div>
-<div class="field">
-<label for="location">Location</label>
-<input id="location" name="location" placeholder="Pickup / drop location" required>
-</div>
-<div class="field">
-<label for="tender">Tender</label>
-<input id="tender" type="number" name="tender" placeholder="Tender amount" min="0" required>
-</div>
-<div class="field">
-<label for="freight">Freight</label>
-<input id="freight" type="number" name="freight" placeholder="Freight amount" min="0" required>
-</div>
-</div>
-
-<div class="actions">
-<button type="submit">Save Bilty</button>
-</div>
-</form>
-</div>
+<div class="main">
+  <div class="form-card">
+    <div class="form-title">New Haleeb Bilty Entry</div>
+    <form action="save_haleeb_bilty.php" method="post">
+      <div class="grid">
+        <div class="field">
+          <label for="date">Date</label>
+          <input id="date" type="date" name="date" value="<?php echo $today; ?>" required>
+        </div>
+        <div class="field">
+          <label for="vehicle">Vehicle</label>
+          <input id="vehicle" name="vehicle" placeholder="Vehicle number" required>
+        </div>
+        <div class="field">
+          <label for="vehicle_type">Vehicle Type</label>
+          <input id="vehicle_type" name="vehicle_type" placeholder="e.g. Truck, Loader..." required>
+        </div>
+        <div class="field">
+          <label for="delivery_note">Delivery Note</label>
+          <input id="delivery_note" name="delivery_note" placeholder="Delivery note number" required>
+        </div>
+        <div class="field">
+          <label for="token_no">Token No</label>
+          <input id="token_no" name="token_no" placeholder="Token number" required>
+        </div>
+        <div class="field">
+          <label for="party">Party</label>
+          <input id="party" name="party" placeholder="Party name">
+        </div>
+        <div class="field">
+          <label for="location">Location</label>
+          <input id="location" name="location" placeholder="Pickup / drop location" required>
+        </div>
+        <div class="field">
+          <label for="tender">Tender</label>
+          <input id="tender" type="number" name="tender" placeholder="0" min="0" required>
+        </div>
+        <div class="field">
+          <label for="freight">Freight</label>
+          <input id="freight" type="number" name="freight" placeholder="0" min="0" required>
+        </div>
+      </div>
+      <div class="form-footer">
+        <button class="submit-btn" type="submit">Save Bilty</button>
+      </div>
+    </form>
+  </div>
 </div>
 </body>
 </html>

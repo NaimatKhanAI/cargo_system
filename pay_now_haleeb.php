@@ -1,223 +1,243 @@
 <?php
 session_start();
 if(!isset($_SESSION['user'])){
-header("location:index.php");
-exit();
+    header("location:index.php");
+    exit();
 }
 
 include 'config/db.php';
 
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
-if($id <= 0){
-header("location:haleeb.php?pay=error");
-exit();
-}
+if($id <= 0){ header("location:haleeb.php?pay=error"); exit(); }
 
 $allowedCategories = ['feed', 'haleeb', 'loan'];
-$msg = '';
-$err = '';
+$msg = ''; $err = '';
 $today = date('Y-m-d');
-$formDate = $today;
-$formCategory = 'haleeb';
-$formAmountMode = 'account';
-$formAmount = '';
-$formNote = '';
+$formDate = $today; $formCategory = 'haleeb'; $formAmountMode = 'account'; $formAmount = ''; $formNote = '';
 
 $stmt = $conn->prepare("SELECT * FROM haleeb_bilty WHERE id=? LIMIT 1");
-$stmt->bind_param("i", $id);
-$stmt->execute();
-$biltyRes = $stmt->get_result();
-$row = $biltyRes->fetch_assoc();
-$stmt->close();
-
-if(!$row){
-header("location:haleeb.php?pay=error");
-exit();
-}
+$stmt->bind_param("i", $id); $stmt->execute();
+$row = $stmt->get_result()->fetch_assoc(); $stmt->close();
+if(!$row){ header("location:haleeb.php?pay=error"); exit(); }
 
 $paidStmt = $conn->prepare("SELECT SUM(amount) AS paid_total FROM account_entries WHERE haleeb_bilty_id=? AND entry_type='debit'");
-$paidStmt->bind_param("i", $id);
-$paidStmt->execute();
-$paidRes = $paidStmt->get_result()->fetch_assoc();
-$paidStmt->close();
-
+$paidStmt->bind_param("i", $id); $paidStmt->execute();
+$paidRes = $paidStmt->get_result()->fetch_assoc(); $paidStmt->close();
 $paidTotal = $paidRes && $paidRes['paid_total'] ? (float)$paidRes['paid_total'] : 0;
 $baseFreight = (float)$row['freight'];
-$remainingFreight = $baseFreight - $paidTotal;
-if($remainingFreight < 0){
-$remainingFreight = 0;
-}
+$remainingFreight = max(0, $baseFreight - $paidTotal);
 
 if(isset($_POST['pay_now'])){
-$formDate = isset($_POST['entry_date']) ? $_POST['entry_date'] : $today;
-$formCategory = isset($_POST['category']) ? strtolower(trim($_POST['category'])) : 'haleeb';
-$formAmountMode = isset($_POST['amount_mode']) ? strtolower(trim($_POST['amount_mode'])) : 'account';
-$payAmount = isset($_POST['pay_amount']) ? (int)$_POST['pay_amount'] : 0;
-$formAmount = $payAmount > 0 ? (string)$payAmount : '';
-$formNote = isset($_POST['note']) ? trim($_POST['note']) : '';
+    $formDate = isset($_POST['entry_date']) ? $_POST['entry_date'] : $today;
+    $formCategory = isset($_POST['category']) ? strtolower(trim($_POST['category'])) : 'haleeb';
+    $formAmountMode = isset($_POST['amount_mode']) ? strtolower(trim($_POST['amount_mode'])) : 'account';
+    $payAmount = isset($_POST['pay_amount']) ? (int)$_POST['pay_amount'] : 0;
+    $formAmount = $payAmount > 0 ? (string)$payAmount : '';
+    $formNote = isset($_POST['note']) ? trim($_POST['note']) : '';
 
-if(!in_array($formCategory, $allowedCategories, true)){
-$err = 'Invalid category selected.';
-} elseif(!in_array($formAmountMode, ['cash', 'account'], true)){
-$err = 'Invalid payment mode selected.';
-} elseif($payAmount <= 0){
-$err = 'Pay amount must be greater than 0.';
-} elseif($payAmount > $remainingFreight){
-$err = 'Pay amount cannot be more than remaining freight.';
-} else {
-$baseNote = "Haleeeb - Tok(" . $row['token_no'] . ") - ";
-$note = $formNote !== '' ? ($baseNote . " - " . $formNote) : $baseNote;
+    if(!in_array($formCategory, $allowedCategories, true)) $err = 'Invalid category selected.';
+    elseif(!in_array($formAmountMode, ['cash', 'account'], true)) $err = 'Invalid payment mode.';
+    elseif($payAmount <= 0) $err = 'Pay amount must be greater than 0.';
+    elseif($payAmount > $remainingFreight) $err = 'Pay amount cannot exceed remaining freight.';
+    else {
+        $baseNote = "Haleeb - Tok(" . $row['token_no'] . ") - ";
+        $note = $formNote !== '' ? ($baseNote . " - " . $formNote) : $baseNote;
+        $conn->begin_transaction();
+        try {
+            $ins = $conn->prepare("INSERT INTO account_entries(entry_date, category, entry_type, amount_mode, bilty_id, haleeb_bilty_id, amount, note) VALUES(?, ?, 'debit', ?, NULL, ?, ?, ?)");
+            $ins->bind_param("sssids", $formDate, $formCategory, $formAmountMode, $id, $payAmount, $note);
+            $ins->execute(); $ins->close();
+            $conn->commit();
+            header("location:haleeb.php?pay=success"); exit();
+        } catch (Throwable $e) { $conn->rollback(); $err = 'Payment failed. Please try again.'; }
+    }
+}
 
-$conn->begin_transaction();
-try{
-$ins = $conn->prepare("INSERT INTO account_entries(entry_date, category, entry_type, amount_mode, bilty_id, haleeb_bilty_id, amount, note) VALUES(?, ?, 'debit', ?, NULL, ?, ?, ?)");
-$ins->bind_param("sssids", $formDate, $formCategory, $formAmountMode, $id, $payAmount, $note);
-$ins->execute();
-$ins->close();
-
-$conn->commit();
-header("location:haleeb.php?pay=success");
-exit();
-} catch (Throwable $e){
-$conn->rollback();
-$err = 'Payment failed. Please try again.';
-}
-}
-}
+$paidPct = $baseFreight > 0 ? min(100, round($paidTotal / $baseFreight * 100)) : 0;
 ?>
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<title>Pay Now - Haleeb</title>
+<meta charset="UTF-8">
+<title>Pay Now — Haleeb Token <?php echo htmlspecialchars($row['token_no']); ?></title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="stylesheet" href="assets/style.css">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-.page-wrap{
-max-width:860px;
-margin:25px auto;
-}
-.card{
-background:#fff;
-border:1px solid #ddd;
-border-radius:10px;
-padding:20px;
-box-shadow:0 10px 24px rgba(0,0,0,0.06);
-}
-.top{
-display:flex;
-justify-content:space-between;
-align-items:center;
-gap:10px;
-margin-bottom:12px;
-}
-.back-link{
-display:inline-block;
-padding:10px 14px;
-background:#ececec;
-color:#111;
-text-decoration:none;
-border-radius:8px;
-font-weight:600;
-}
-.info{
-display:grid;
-grid-template-columns:repeat(2,minmax(220px,1fr));
-gap:10px;
-margin-bottom:12px;
-}
-.info .box{
-background:#f7f7f7;
-border:1px solid #ddd;
-padding:10px;
-border-radius:8px;
-}
-.field label{
-display:block;
-margin:0 0 6px;
-font-size:14px;
-font-weight:600;
-}
-.field input, .field select{
-max-width:none;
-margin:0 0 10px;
-border:1px solid #cfcfcf;
-border-radius:8px;
-background:#fafafa;
-}
-.actions{
-display:flex;
-justify-content:flex-end;
-}
-.actions button{
-max-width:180px;
-border-radius:8px;
-font-weight:700;
-}
-.err{
-color:#b71c1c;
-}
-@media(max-width:700px){
-.info{
-grid-template-columns:1fr;
-}
-}
+  :root {
+    --bg: #0e0f11; --surface: #16181c; --surface2: #1e2128; --border: #2a2d35;
+    --accent: #60a5fa; --green: #22c55e; --red: #ef4444; --yellow: #f0c040;
+    --text: #e8eaf0; --muted: #7c8091; --font: 'Syne', sans-serif; --mono: 'DM Mono', monospace;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; }
+
+  .topbar { display: flex; justify-content: space-between; align-items: center; padding: 18px 32px; border-bottom: 1px solid var(--border); background: var(--surface); }
+  .topbar-logo { display: flex; align-items: center; gap: 12px; }
+  .badge { background: var(--green); color: #0e0f11; font-size: 10px; font-weight: 800; padding: 3px 8px; letter-spacing: 1.5px; text-transform: uppercase; }
+  .topbar h1 { font-size: 18px; font-weight: 800; letter-spacing: -0.5px; }
+  .nav-btn { padding: 8px 16px; background: transparent; color: var(--muted); border: 1px solid var(--border); cursor: pointer; text-decoration: none; font-family: var(--font); font-size: 13px; font-weight: 600; transition: all 0.15s; }
+  .nav-btn:hover { background: var(--surface2); color: var(--text); border-color: var(--muted); }
+
+  .main { display: flex; justify-content: center; padding: 36px 24px; }
+  .layout { display: grid; grid-template-columns: 1fr 380px; gap: 20px; width: min(900px, 100%); }
+
+  .info-panel { display: flex; flex-direction: column; gap: 14px; }
+  .panel-title { font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
+
+  .info-card { background: var(--surface); border: 1px solid var(--border); padding: 20px; }
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .info-label { font-size: 10px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+  .info-val { font-family: var(--mono); font-size: 14px; font-weight: 500; }
+  .info-val.green { color: var(--green); }
+  .info-val.yellow { color: var(--yellow); }
+  .info-val.blue { color: var(--accent); }
+
+  .type-badge { display: inline-block; padding: 2px 8px; font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; background: rgba(96,165,250,0.12); color: var(--accent); border: 1px solid rgba(96,165,250,0.2); }
+
+  .progress-card { background: var(--surface); border: 1px solid var(--border); padding: 20px; }
+  .progress-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+  .progress-label { font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); }
+  .progress-pct { font-family: var(--mono); font-size: 22px; font-weight: 500; color: var(--accent); }
+  .progress-track { height: 6px; background: var(--surface2); border: 1px solid var(--border); overflow: hidden; margin-bottom: 10px; }
+  .progress-fill { height: 100%; background: var(--accent); transition: width 0.6s ease; }
+  .progress-detail { display: flex; justify-content: space-between; font-size: 12px; font-family: var(--mono); color: var(--muted); }
+
+  .form-card { background: var(--surface); border: 1px solid var(--border); padding: 24px; position: relative; overflow: hidden; align-self: start; }
+  .form-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--green); }
+  .form-title { font-size: 17px; font-weight: 800; letter-spacing: -0.3px; margin-bottom: 20px; }
+
+  .alert { padding: 11px 14px; margin-bottom: 16px; font-size: 13px; border-left: 3px solid var(--red); background: rgba(239,68,68,0.08); color: var(--red); }
+
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+  .field input, .field select { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 10px 12px; font-family: var(--font); font-size: 13px; transition: border-color 0.15s; appearance: none; }
+  .field input:focus, .field select:focus { outline: none; border-color: var(--green); }
+  .field input::-webkit-calendar-picker-indicator { filter: invert(0.5); cursor: pointer; }
+  .field input::placeholder { color: var(--muted); }
+  .field-hint { font-size: 11px; font-family: var(--mono); color: var(--muted); margin-top: 4px; }
+
+  .submit-btn { width: 100%; padding: 13px; background: var(--green); color: #0e0f11; border: none; cursor: pointer; font-family: var(--font); font-size: 14px; font-weight: 800; transition: background 0.15s; margin-top: 4px; }
+  .submit-btn:hover { background: #16a34a; }
+
+  @media(max-width: 720px) {
+    .layout { grid-template-columns: 1fr; }
+    .main { padding: 20px 14px; }
+    .topbar { padding: 14px 16px; }
+  }
 </style>
 </head>
 <body>
-<div class="page-wrap">
-<div class="card">
-<div class="top">
-<h2>Pay Now - Haleeb Token <?php echo htmlspecialchars($row['token_no']); ?></h2>
-<a class="back-link" href="haleeb.php">Back to Haleeb</a>
+
+<div class="topbar">
+  <div class="topbar-logo">
+    <span class="badge">Pay</span>
+    <h1>Pay Now — Token <?php echo htmlspecialchars($row['token_no']); ?></h1>
+  </div>
+  <a class="nav-btn" href="haleeb.php">Back to Haleeb</a>
 </div>
 
-<?php if($err!=""){ ?><p class="err"><?php echo htmlspecialchars($err); ?></p><?php } ?>
-<?php if($msg!=""){ ?><p style="color:green;"><?php echo htmlspecialchars($msg); ?></p><?php } ?>
+<div class="main">
+  <div class="layout">
+    <!-- LEFT INFO -->
+    <div class="info-panel">
+      <div class="info-card">
+        <div class="panel-title">Haleeb Bilty Details</div>
+        <div class="info-grid">
+          <div class="info-item">
+            <div class="info-label">Vehicle</div>
+            <div class="info-val"><?php echo htmlspecialchars($row['vehicle']); ?></div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Vehicle Type</div>
+            <div class="info-val"><span class="type-badge"><?php echo htmlspecialchars($row['vehicle_type']); ?></span></div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Party</div>
+            <div class="info-val"><?php echo htmlspecialchars($row['party']); ?></div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Location</div>
+            <div class="info-val"><?php echo htmlspecialchars($row['location']); ?></div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Delivery Note</div>
+            <div class="info-val blue"><?php echo htmlspecialchars($row['delivery_note']); ?></div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Token No</div>
+            <div class="info-val blue"><?php echo htmlspecialchars($row['token_no']); ?></div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Tender</div>
+            <div class="info-val yellow">Rs <?php echo number_format((float)$row['tender'], 0); ?></div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Total Freight</div>
+            <div class="info-val">Rs <?php echo number_format($baseFreight, 0); ?></div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Paid So Far</div>
+            <div class="info-val green">Rs <?php echo number_format($paidTotal, 0); ?></div>
+          </div>
+        </div>
+      </div>
 
-<div class="info">
-<div class="box"><b>Vehicle:</b> <?php echo htmlspecialchars($row['vehicle']); ?></div>
-<div class="box"><b>Party:</b> <?php echo htmlspecialchars($row['party']); ?></div>
-<div class="box"><b>Delivery Note:</b> <?php echo htmlspecialchars($row['delivery_note']); ?></div>
-<div class="box"><b>Token No:</b> <?php echo htmlspecialchars($row['token_no']); ?></div>
-<div class="box"><b>Total Freight:</b> Rs <?php echo number_format((float)$baseFreight, 0); ?></div>
-<div class="box"><b>Paid So Far:</b> Rs <?php echo number_format((float)$paidTotal, 0); ?></div>
-<div class="box"><b>Remaining Freight:</b> Rs <?php echo number_format((float)$remainingFreight, 0); ?></div>
-<div class="box"><b>Tender:</b> Rs <?php echo number_format((float)$row['tender'], 0); ?></div>
-</div>
+      <div class="progress-card">
+        <div class="progress-header">
+          <span class="progress-label">Payment Progress</span>
+          <span class="progress-pct"><?php echo $paidPct; ?>%</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill" style="width:<?php echo $paidPct; ?>%"></div>
+        </div>
+        <div class="progress-detail">
+          <span>Paid: Rs <?php echo number_format($paidTotal, 0); ?></span>
+          <span>Remaining: Rs <?php echo number_format($remainingFreight, 0); ?></span>
+        </div>
+      </div>
+    </div>
 
-<form method="post">
-<div class="field">
-<label for="entry_date">Payment Date</label>
-<input id="entry_date" type="date" name="entry_date" value="<?php echo htmlspecialchars($formDate); ?>" required>
-</div>
-<div class="field">
-<label for="category">Account Category</label>
-<select id="category" name="category" required>
-<option value="feed" <?php echo $formCategory === 'feed' ? 'selected' : ''; ?>>Feed</option>
-<option value="haleeb" <?php echo $formCategory === 'haleeb' ? 'selected' : ''; ?>>Haleeb</option>
-<option value="loan" <?php echo $formCategory === 'loan' ? 'selected' : ''; ?>>Loan</option>
-</select>
-</div>
-<div class="field">
-<label for="amount_mode">Payment Mode</label>
-<select id="amount_mode" name="amount_mode" required>
-<option value="cash" <?php echo $formAmountMode === 'cash' ? 'selected' : ''; ?>>Cash</option>
-<option value="account" <?php echo $formAmountMode === 'account' ? 'selected' : ''; ?>>Account</option>
-</select>
-</div>
-<div class="field">
-<label for="pay_amount">Pay Amount</label>
-<input id="pay_amount" type="number" name="pay_amount" min="1" max="<?php echo (int)$remainingFreight; ?>" value="<?php echo htmlspecialchars($formAmount); ?>" required>
-</div>
-<div class="field">
-<label for="note">Note (optional)</label>
-<input id="note" type="text" name="note" value="<?php echo htmlspecialchars($formNote); ?>" placeholder="Payment note">
-</div>
-<div class="actions">
-<button type="submit" name="pay_now">Pay Now</button>
-</div>
-</form>
-</div>
+    <!-- RIGHT FORM -->
+    <div class="form-card">
+      <div class="form-title">Record Payment</div>
+
+      <?php if($err !== ""): ?>
+        <div class="alert"><?php echo htmlspecialchars($err); ?></div>
+      <?php endif; ?>
+
+      <form method="post">
+        <div class="field">
+          <label for="entry_date">Payment Date</label>
+          <input id="entry_date" type="date" name="entry_date" value="<?php echo htmlspecialchars($formDate); ?>" required>
+        </div>
+        <div class="field">
+          <label for="category">Account Category</label>
+          <select id="category" name="category" required>
+            <option value="feed" <?php echo $formCategory==='feed'?'selected':''; ?>>Feed</option>
+            <option value="haleeb" <?php echo $formCategory==='haleeb'?'selected':''; ?>>Haleeb</option>
+            <option value="loan" <?php echo $formCategory==='loan'?'selected':''; ?>>Loan</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="amount_mode">Payment Mode</label>
+          <select id="amount_mode" name="amount_mode" required>
+            <option value="cash" <?php echo $formAmountMode==='cash'?'selected':''; ?>>Cash</option>
+            <option value="account" <?php echo $formAmountMode==='account'?'selected':''; ?>>Account</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="pay_amount">Pay Amount</label>
+          <input id="pay_amount" type="number" name="pay_amount" min="1" max="<?php echo (int)$remainingFreight; ?>" value="<?php echo htmlspecialchars($formAmount); ?>" placeholder="0" required>
+          <div class="field-hint">Max: Rs <?php echo number_format($remainingFreight, 0); ?></div>
+        </div>
+        <div class="field">
+          <label for="note">Note (optional)</label>
+          <input id="note" type="text" name="note" value="<?php echo htmlspecialchars($formNote); ?>" placeholder="Payment note...">
+        </div>
+        <button class="submit-btn" type="submit" name="pay_now">Confirm Payment</button>
+      </form>
+    </div>
+  </div>
 </div>
 </body>
 </html>
