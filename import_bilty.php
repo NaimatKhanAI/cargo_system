@@ -24,6 +24,7 @@ $inserted = 0;
 $skipped = 0;
 $lineNo = 0;
 $headerMap = null;
+$importReport = [];
 
 function normalize_header_name($v){
     $v = strtolower(trim((string)$v));
@@ -61,6 +62,7 @@ $stmt = $conn->prepare("INSERT INTO bilty(sr_no, date, vehicle, bilty_no, party,
 while(($data = fgetcsv($handle)) !== false){
     $lineNo++;
     if(empty($data)){
+        $importReport[] = ['skipped', $lineNo, 'Empty row', ''];
         $skipped++;
         continue;
     }
@@ -91,6 +93,7 @@ while(($data = fgetcsv($handle)) !== false){
         $profit = parse_csv_number(isset($headerMap['profit']) ? ($data[$headerMap['profit']] ?? '') : '');
     } else {
         if(count($data) < 6){
+            $importReport[] = ['skipped', $lineNo, 'Too few columns', implode(' | ', $data)];
             $skipped++;
             continue;
         }
@@ -103,8 +106,7 @@ while(($data = fgetcsv($handle)) !== false){
             }
         }
         if($offset < 0){
-            $skipped++;
-            continue;
+            $offset = 0;
         }
 
         $date = parse_csv_date_to_mysql($data[$offset]);
@@ -118,9 +120,17 @@ while(($data = fgetcsv($handle)) !== false){
         $srNo = ($offset > 0) ? ($data[$offset - 1] ?? '') : '';
     }
 
-    if($date === '' || $freight === null || $tender === null){
-        $skipped++;
-        continue;
+    if($date === ''){
+        $date = date('Y-m-d');
+        $importReport[] = ['adjusted', $lineNo, 'Invalid date -> today used', implode(' | ', $data)];
+    }
+    if($freight === null){
+        $freight = 0;
+        $importReport[] = ['adjusted', $lineNo, 'Invalid freight -> 0 used', implode(' | ', $data)];
+    }
+    if($tender === null){
+        $tender = 0;
+        $importReport[] = ['adjusted', $lineNo, 'Invalid tender -> 0 used', implode(' | ', $data)];
     }
 
     if($profit === null){
@@ -131,6 +141,7 @@ while(($data = fgetcsv($handle)) !== false){
     if($stmt->execute()){
         $inserted++;
     } else {
+        $importReport[] = ['skipped', $lineNo, 'DB insert failed: ' . $stmt->error, implode(' | ', $data)];
         $skipped++;
     }
 }
@@ -138,7 +149,29 @@ while(($data = fgetcsv($handle)) !== false){
 fclose($handle);
 $stmt->close();
 
-header("location:feed.php?import=success&ins=$inserted&skip=$skipped");
+$reportFile = '';
+if(count($importReport) > 0){
+    $dir = __DIR__ . '/output/import_logs';
+    if(!is_dir($dir)) @mkdir($dir, 0777, true);
+    $reportFile = 'feed_import_' . date('Ymd_His') . '.csv';
+    $fullPath = $dir . '/' . $reportFile;
+    $rf = @fopen($fullPath, 'w');
+    if($rf){
+        fputcsv($rf, ['status', 'line', 'reason', 'raw_row']);
+        foreach($importReport as $r){
+            fputcsv($rf, $r);
+        }
+        fclose($rf);
+    } else {
+        $reportFile = '';
+    }
+}
+
+$redirect = "location:feed.php?import=success&ins=$inserted&skip=$skipped";
+if($reportFile !== ''){
+    $redirect .= "&report=" . urlencode($reportFile);
+}
+header($redirect);
 exit();
 ?>
 

@@ -14,11 +14,18 @@ $dateTo = isset($_GET['date_to']) ? trim((string)$_GET['date_to']) : '';
 $vehicleSearch = isset($_GET['vehicle']) ? trim((string)$_GET['vehicle']) : '';
 
 $import_message = "";
+$import_report_url = "";
 if (isset($_GET['import'])) {
     if ($_GET['import'] === 'success') {
         $ins = isset($_GET['ins']) ? (int)$_GET['ins'] : 0;
         $skip = isset($_GET['skip']) ? (int)$_GET['skip'] : 0;
         $import_message = "Import completed. Inserted: $ins, Skipped: $skip";
+        if(isset($_GET['report'])){
+            $report = basename((string)$_GET['report']);
+            if($report !== ''){
+                $import_report_url = "output/import_logs/" . rawurlencode($report);
+            }
+        }
     } elseif ($_GET['import'] === 'error') {
         $import_message = "Import failed. Please upload a valid CSV file.";
     }
@@ -259,6 +266,9 @@ if(count($bindValues) > 0){
   <?php if($import_message !== ""): ?>
     <div class="alert <?php echo strpos($import_message,'failed') !== false ? 'error' : ''; ?>">
       <?php echo htmlspecialchars($import_message); ?>
+      <?php if($import_report_url !== ""): ?>
+        <br><a href="<?php echo htmlspecialchars($import_report_url); ?>" target="_blank" style="color:inherit;text-decoration:underline;">View import report</a>
+      <?php endif; ?>
     </div>
   <?php endif; ?>
   <?php if($pay_message !== ""): ?>
