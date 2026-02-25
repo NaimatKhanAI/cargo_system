@@ -103,6 +103,8 @@ display:flex;
 align-items:center;
 gap:4px;
 position:relative;
+flex-wrap:wrap;
+justify-content:flex-end;
 }
 
 .btn{
@@ -201,12 +203,19 @@ background:#fff;
 border:1px solid #ddd;
 padding:12px;
 margin:10px 0;
+border-radius:10px;
 }
 .search-form{
-display:grid;
-grid-template-columns:repeat(4,minmax(150px,1fr));
-gap:8px;
+display:flex;
+flex-wrap:wrap;
+column-gap:30px;
+row-gap:14px;
 align-items:end;
+}
+.search-field{
+min-width:180px;
+flex:1 1 220px;
+max-width:260px;
 }
 .search-form label{
 display:block;
@@ -215,15 +224,24 @@ color:#444;
 margin-bottom:4px;
 }
 .search-form input{
+width:100%;
 max-width:none;
 margin:0;
 border:1px solid #ccc;
 border-radius:8px;
 background:#fafafa;
+padding:8px 10px;
+font-size:13px;
 }
 .search-actions{
 display:flex;
 gap:8px;
+margin-left:auto;
+align-items:center;
+}
+.search-actions .btn,
+.search-actions .btn-light{
+margin:0;
 }
 .btn-light{
 padding:10px 15px;
@@ -236,13 +254,33 @@ border-radius:8px;
 display:inline-block;
 }
 @media(max-width:900px){
-.search-form{
-grid-template-columns:1fr 1fr;
+.search-field{
+min-width:160px;
+flex:1 1 calc(50% - 14px);
+max-width:none;
+}
+.search-actions{
+margin-left:0;
+flex:1 1 100%;
+justify-content:flex-end;
+}
+}
+@media(max-width:700px){
+.topbar{
+align-items:flex-start;
+flex-direction:column;
+}
+.top-actions{
+width:100%;
+}
+.btn{
+margin:4px 4px 0 0;
 }
 }
 @media(max-width:560px){
-.search-form{
-grid-template-columns:1fr;
+.search-field{
+flex:1 1 100%;
+min-width:100%;
 }
 }
 </style>
@@ -251,11 +289,10 @@ grid-template-columns:1fr;
 <body>
 
 <div class="topbar">
-<h2>Cargo Management Feed</h2>
+<h2>Feed Management</h2>
 <div class="top-actions">
 <a class="btn" href="add_bilty.php">+ Add Bilty</a>
 <a class="btn" href="haleeb.php">Haleeb</a>
-<a class="btn" href="search.php">Search</a>
 <a class="btn" href="dashboard.php">Dashboard</a>
 <button class="menu-btn" id="feed_menu_btn" type="button" aria-label="Menu" title="Menu">&#9776;</button>
 <div class="menu-pop" id="feed_menu_pop">
@@ -282,15 +319,15 @@ Total Profit: Rs <?php echo $total_profit; ?>
 
 <div class="search-panel">
 <form class="search-form" method="get">
-<div>
+<div class="search-field">
 <label for="date_from">Date From</label>
 <input id="date_from" type="date" name="date_from" value="<?php echo htmlspecialchars($dateFrom); ?>">
 </div>
-<div>
+<div class="search-field">
 <label for="date_to">Date To</label>
 <input id="date_to" type="date" name="date_to" value="<?php echo htmlspecialchars($dateTo); ?>">
 </div>
-<div>
+<div class="search-field">
 <label for="vehicle">Vehicle No</label>
 <input id="vehicle" name="vehicle" list="vehicle_list" placeholder="Search vehicle" value="<?php echo htmlspecialchars($vehicleSearch); ?>">
 <datalist id="vehicle_list">
