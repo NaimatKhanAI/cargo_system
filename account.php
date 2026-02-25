@@ -420,19 +420,49 @@ white-space:nowrap;
 text-align:center;
 }
 .filter-form{
-display:flex;
+display:grid;
+grid-template-columns:minmax(180px,220px) minmax(180px,220px) auto auto;
 flex-wrap:wrap;
-gap:8px;
+gap:10px 12px;
 align-items:end;
+margin-top:10px;
 }
 .filter-form input{
+width:100%;
 max-width:none;
+margin:0;
+border:1px solid #ccc;
+border-radius:8px;
+background:#fafafa;
+padding:8px 10px;
+font-size:13px;
+}
+.filter-field label{
+display:block;
+font-size:12px;
+margin-bottom:4px;
+color:#444;
+}
+.filter-actions{
+display:flex;
+gap:8px;
+align-items:center;
+justify-self:end;
+}
+.filter-actions .btn{
 margin:0;
 }
 @media(max-width:700px){
 .totals-grid{
 grid-template-columns:1fr;
 }
+ .filter-form{
+ grid-template-columns:1fr;
+ }
+ .filter-actions{
+ justify-self:stretch;
+ justify-content:flex-end;
+ }
 }
 </style>
 </head>
@@ -441,6 +471,8 @@ grid-template-columns:1fr;
 <h2>Account Ledger</h2>
 <div>
 <a class="btn" href="feed.php">Feed</a>
+<a class="btn" href="haleeb.php">Haleeb</a>
+<a class="btn" href="dashboard.php">Dashboard</a>
 <a class="btn" href="logout.php">Logout</a>
 </div>
 </div>
@@ -488,18 +520,20 @@ grid-template-columns:1fr;
 <a class="btn" href="account.php?cat=feed<?php echo $dateQueryTail; ?>">Feed</a>
 <a class="btn" href="account.php?cat=haleeb<?php echo $dateQueryTail; ?>">Haleeb</a>
 <a class="btn" href="account.php?cat=loan<?php echo $dateQueryTail; ?>">Loan</a>
-<form class="filter-form" method="get" style="margin-top:8px;">
+<form class="filter-form" method="get">
 <input type="hidden" name="cat" value="<?php echo htmlspecialchars($cat); ?>">
-<div>
-<label for="date_from" style="display:block;font-size:12px;margin-bottom:4px;">From</label>
+<div class="filter-field">
+<label for="date_from">From</label>
 <input id="date_from" type="date" name="date_from" value="<?php echo htmlspecialchars($dateFrom); ?>">
 </div>
-<div>
-<label for="date_to" style="display:block;font-size:12px;margin-bottom:4px;">To</label>
+<div class="filter-field">
+<label for="date_to">To</label>
 <input id="date_to" type="date" name="date_to" value="<?php echo htmlspecialchars($dateTo); ?>">
 </div>
+<div class="filter-actions">
 <button class="btn" type="submit">Apply</button>
 <a class="btn" href="account.php?cat=<?php echo urlencode($cat); ?>">Reset</a>
+</div>
 </form>
 </div>
 
