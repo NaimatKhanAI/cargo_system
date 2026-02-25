@@ -118,6 +118,7 @@ text-align:center;
 <h2>Cargo Management Feed</h2>
 <div>
 <a class="btn" href="add_bilty.php">+ Add Bilty</a>
+<a class="btn" href="haleeb.php">Haleeb</a>
 <a class="btn" href="search.php">Search</a>
 <a class="btn" href="account.php">Account Ledger</a>
 <a class="btn" href="process_img.php">Process Image</a>

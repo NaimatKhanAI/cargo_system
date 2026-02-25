@@ -1,0 +1,77 @@
+<?php
+$projectRoot = __DIR__;
+$autoloadPaths = [
+    $projectRoot . '/vendor/autoload.php',
+    $projectRoot . '/dompdf/vendor/autoload.php',
+    $projectRoot . '/dompdf/autoload.inc.php',
+];
+
+$autoloadLoaded = false;
+foreach ($autoloadPaths as $autoloadPath) {
+    if (file_exists($autoloadPath)) {
+        require_once $autoloadPath;
+        $autoloadLoaded = true;
+        break;
+    }
+}
+
+if (!$autoloadLoaded) {
+    http_response_code(500);
+    die('Dompdf autoloader not found. Install Dompdf with Composer or provide a valid autoload file.');
+}
+
+use Dompdf\Dompdf;
+
+include 'config/db.php';
+
+$id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+if($id <= 0){
+    http_response_code(400);
+    die('Invalid id');
+}
+
+$stmt = $conn->prepare("SELECT * FROM haleeb_bilty WHERE id=? LIMIT 1");
+$stmt->bind_param("i", $id);
+$stmt->execute();
+$row = $stmt->get_result()->fetch_assoc();
+$stmt->close();
+
+if(!$row){
+    http_response_code(404);
+    die('Record not found');
+}
+
+$html = "
+<style>
+body{font-family:Arial}
+.box{border:2px solid #000;padding:20px;width:600px}
+h2{text-align:center}
+.row{margin:8px 0;font-size:18px}
+</style>
+
+<div class='box'>
+<h2>HALEEB BILTY SLIP</h2>
+
+<div class='row'><b>Date:</b> {$row['date']}</div>
+<div class='row'><b>Vehicle:</b> {$row['vehicle']}</div>
+<div class='row'><b>Vehicle Type:</b> {$row['vehicle_type']}</div>
+<div class='row'><b>Delivery Note:</b> {$row['delivery_note']}</div>
+<div class='row'><b>Token No:</b> {$row['token_no']}</div>
+<div class='row'><b>Party:</b> {$row['party']}</div>
+<div class='row'><b>Location:</b> {$row['location']}</div>
+<div class='row'><b>Freight:</b> Rs {$row['freight']}</div>
+<div class='row'><b>Tender:</b> Rs {$row['tender']}</div>
+<div class='row'><b>Profit:</b> Rs {$row['profit']}</div>
+
+<br><br>
+Driver Sign: ____________<br>
+Office Sign: ____________
+</div>
+";
+
+$dompdf = new Dompdf();
+$dompdf->loadHtml($html);
+$dompdf->setPaper('A4');
+$dompdf->render();
+$dompdf->stream('haleeb_bilty.pdf');
+?>

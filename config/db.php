@@ -28,6 +28,21 @@ tender INT,
 profit INT
 )");
 
+$conn->query("CREATE TABLE IF NOT EXISTS haleeb_bilty(
+id INT AUTO_INCREMENT PRIMARY KEY,
+date DATE,
+vehicle VARCHAR(50),
+vehicle_type VARCHAR(50),
+delivery_note VARCHAR(100),
+token_no VARCHAR(50),
+party VARCHAR(100),
+location VARCHAR(100),
+freight INT,
+tender INT,
+profit INT,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)");
+
 $colCheck = $conn->query("SHOW COLUMNS FROM bilty LIKE 'party'");
 if($colCheck && $colCheck->num_rows === 0){
 $conn->query("ALTER TABLE bilty ADD party VARCHAR(100) AFTER bilty_no");
