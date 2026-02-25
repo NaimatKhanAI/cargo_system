@@ -7,6 +7,24 @@ exit();
 
 include 'config/db.php';
 
+function exec_prepared_result_local($conn, $sql, $types = '', $values = []){
+$stmt = $conn->prepare($sql);
+if(!$stmt){
+return [null, false];
+}
+$count = count($values);
+if($count === 1){
+$stmt->bind_param($types, $values[0]);
+} elseif($count === 2){
+$stmt->bind_param($types, $values[0], $values[1]);
+} elseif($count === 3){
+$stmt->bind_param($types, $values[0], $values[1], $values[2]);
+}
+$stmt->execute();
+$res = $stmt->get_result();
+return [$stmt, $res];
+}
+
 $allowedCategories = ['feed', 'haleeb', 'loan'];
 $allowedTypes = ['debit', 'credit'];
 $allowedModes = ['cash', 'account'];
@@ -19,6 +37,8 @@ $formAmountMode = 'cash';
 $formAmount = '';
 $formNote = '';
 $editingId = 0;
+$dateFrom = isset($_GET['date_from']) ? trim((string)$_GET['date_from']) : '';
+$dateTo = isset($_GET['date_to']) ? trim((string)$_GET['date_to']) : '';
 
 if(isset($_GET['delete_id'])){
 $deleteId = (int)$_GET['delete_id'];
@@ -179,6 +199,33 @@ if(!in_array($cat, array_merge(['all'], $allowedCategories), true)){
 $cat = 'all';
 }
 
+$where = [];
+$bindTypes = '';
+$bindValues = [];
+if($dateFrom !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateFrom)){
+$where[] = "entry_date >= ?";
+$bindTypes .= 's';
+$bindValues[] = $dateFrom;
+}
+if($dateTo !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateTo)){
+$where[] = "entry_date <= ?";
+$bindTypes .= 's';
+$bindValues[] = $dateTo;
+}
+if($cat !== 'all'){
+$where[] = "category = ?";
+$bindTypes .= 's';
+$bindValues[] = $cat;
+}
+$whereSql = count($where) > 0 ? (' WHERE ' . implode(' AND ', $where)) : '';
+$dateQueryTail = '';
+if($dateFrom !== ''){
+$dateQueryTail .= '&date_from=' . urlencode($dateFrom);
+}
+if($dateTo !== ''){
+$dateQueryTail .= '&date_to=' . urlencode($dateTo);
+}
+
 if(isset($_GET['edit_id']) && !isset($_POST['update_entry'])){
 $requestedEditId = (int)$_GET['edit_id'];
 if($requestedEditId > 0){
@@ -203,8 +250,10 @@ $editStmt->close();
 $totalSql = "SELECT 
 SUM(CASE WHEN entry_type='debit' THEN amount ELSE 0 END) AS total_debit,
 SUM(CASE WHEN entry_type='credit' THEN amount ELSE 0 END) AS total_credit
-FROM account_entries";
-$totals = $conn->query($totalSql)->fetch_assoc();
+FROM account_entries" . $whereSql;
+list($totalStmt, $totalsRes) = exec_prepared_result_local($conn, $totalSql, $bindTypes, $bindValues);
+$totals = $totalsRes ? $totalsRes->fetch_assoc() : ['total_debit' => 0, 'total_credit' => 0];
+if($totalStmt){ $totalStmt->close(); }
 $totalDebit = $totals['total_debit'] ? $totals['total_debit'] : 0;
 $totalCredit = $totals['total_credit'] ? $totals['total_credit'] : 0;
 $netBalance = (float)$totalCredit - (float)$totalDebit;
@@ -214,8 +263,10 @@ SUM(CASE WHEN entry_type='debit' AND amount_mode='cash' THEN amount ELSE 0 END) 
 SUM(CASE WHEN entry_type='debit' AND amount_mode='account' THEN amount ELSE 0 END) AS debit_account,
 SUM(CASE WHEN entry_type='credit' AND amount_mode='cash' THEN amount ELSE 0 END) AS credit_cash,
 SUM(CASE WHEN entry_type='credit' AND amount_mode='account' THEN amount ELSE 0 END) AS credit_account
-FROM account_entries";
-$modeTotals = $conn->query($modeTotalsSql)->fetch_assoc();
+FROM account_entries" . $whereSql;
+list($modeStmt, $modeRes) = exec_prepared_result_local($conn, $modeTotalsSql, $bindTypes, $bindValues);
+$modeTotals = $modeRes ? $modeRes->fetch_assoc() : ['debit_cash' => 0, 'debit_account' => 0, 'credit_cash' => 0, 'credit_account' => 0];
+if($modeStmt){ $modeStmt->close(); }
 $debitCash = $modeTotals['debit_cash'] ? $modeTotals['debit_cash'] : 0;
 $debitAccount = $modeTotals['debit_account'] ? $modeTotals['debit_account'] : 0;
 $creditCash = $modeTotals['credit_cash'] ? $modeTotals['credit_cash'] : 0;
@@ -229,21 +280,16 @@ SUM(CASE WHEN entry_type='debit' AND amount_mode='cash' THEN amount ELSE 0 END) 
 SUM(CASE WHEN entry_type='debit' AND amount_mode='account' THEN amount ELSE 0 END) AS debit_account,
 SUM(CASE WHEN entry_type='credit' AND amount_mode='cash' THEN amount ELSE 0 END) AS credit_cash,
 SUM(CASE WHEN entry_type='credit' AND amount_mode='account' THEN amount ELSE 0 END) AS credit_account
-FROM account_entries
+FROM account_entries" . $whereSql . "
 GROUP BY category";
-$catResult = $conn->query($catTotalsSql);
+list($catStmt, $catResult) = exec_prepared_result_local($conn, $catTotalsSql, $bindTypes, $bindValues);
 while($r = $catResult->fetch_assoc()){
 $categoryTotals[$r['category']] = $r;
 }
+if($catStmt){ $catStmt->close(); }
 
-if($cat === 'all'){
-$entries = $conn->query("SELECT * FROM account_entries ORDER BY entry_date DESC, id DESC");
-} else {
-$entryStmt = $conn->prepare("SELECT * FROM account_entries WHERE category=? ORDER BY entry_date DESC, id DESC");
-$entryStmt->bind_param("s", $cat);
-$entryStmt->execute();
-$entries = $entryStmt->get_result();
-}
+$entriesSql = "SELECT * FROM account_entries" . $whereSql . " ORDER BY entry_date DESC, id DESC";
+list($entryStmt, $entries) = exec_prepared_result_local($conn, $entriesSql, $bindTypes, $bindValues);
 ?>
 <!DOCTYPE html>
 <html>
@@ -373,6 +419,16 @@ width:70px;
 white-space:nowrap;
 text-align:center;
 }
+.filter-form{
+display:flex;
+flex-wrap:wrap;
+gap:8px;
+align-items:end;
+}
+.filter-form input{
+max-width:none;
+margin:0;
+}
 @media(max-width:700px){
 .totals-grid{
 grid-template-columns:1fr;
@@ -418,8 +474,8 @@ grid-template-columns:1fr;
 <?php if($editingId > 0){ ?>
 <input type="hidden" name="edit_id" value="<?php echo (int)$editingId; ?>">
 <button class="btn" type="submit" name="update_entry">Update Entry</button>
-<a class="btn" href="account.php?cat=<?php echo urlencode($cat); ?>">Cancel Edit</a>
-<a class="btn icon-btn icon-delete" href="account.php?cat=<?php echo urlencode($cat); ?>&delete_id=<?php echo (int)$editingId; ?>" onclick="return confirm('Delete this entry?')" title="Delete" aria-label="Delete">&#128465;</a>
+<a class="btn" href="account.php?cat=<?php echo urlencode($cat); ?>&date_from=<?php echo urlencode($dateFrom); ?>&date_to=<?php echo urlencode($dateTo); ?>">Cancel Edit</a>
+<a class="btn icon-btn icon-delete" href="account.php?cat=<?php echo urlencode($cat); ?>&date_from=<?php echo urlencode($dateFrom); ?>&date_to=<?php echo urlencode($dateTo); ?>&delete_id=<?php echo (int)$editingId; ?>" onclick="return confirm('Delete this entry?')" title="Delete" aria-label="Delete">&#128465;</a>
 <?php }else{ ?>
 <button class="btn" type="submit" name="add_entry">Save Entry</button>
 <?php } ?>
@@ -428,10 +484,23 @@ grid-template-columns:1fr;
 
 <div class="panel">
 <h3>Category View</h3>
-<a class="btn" href="account.php?cat=all">All</a>
-<a class="btn" href="account.php?cat=feed">Feed</a>
-<a class="btn" href="account.php?cat=haleeb">Haleeb</a>
-<a class="btn" href="account.php?cat=loan">Loan</a>
+<a class="btn" href="account.php?cat=all<?php echo $dateQueryTail; ?>">All</a>
+<a class="btn" href="account.php?cat=feed<?php echo $dateQueryTail; ?>">Feed</a>
+<a class="btn" href="account.php?cat=haleeb<?php echo $dateQueryTail; ?>">Haleeb</a>
+<a class="btn" href="account.php?cat=loan<?php echo $dateQueryTail; ?>">Loan</a>
+<form class="filter-form" method="get" style="margin-top:8px;">
+<input type="hidden" name="cat" value="<?php echo htmlspecialchars($cat); ?>">
+<div>
+<label for="date_from" style="display:block;font-size:12px;margin-bottom:4px;">From</label>
+<input id="date_from" type="date" name="date_from" value="<?php echo htmlspecialchars($dateFrom); ?>">
+</div>
+<div>
+<label for="date_to" style="display:block;font-size:12px;margin-bottom:4px;">To</label>
+<input id="date_to" type="date" name="date_to" value="<?php echo htmlspecialchars($dateTo); ?>">
+</div>
+<button class="btn" type="submit">Apply</button>
+<a class="btn" href="account.php?cat=<?php echo urlencode($cat); ?>">Reset</a>
+</form>
 </div>
 
 <div class="panel">
@@ -456,7 +525,8 @@ grid-template-columns:1fr;
 <div class="panel">
 <h3>Category Totals</h3>
 <div class="grid">
-<?php foreach($allowedCategories as $c){ 
+<?php $categoriesToShow = $cat === 'all' ? $allowedCategories : [$cat]; ?>
+<?php foreach($categoriesToShow as $c){ 
 $d = isset($categoryTotals[$c]) ? $categoryTotals[$c]['debit_total'] : 0;
 $cr = isset($categoryTotals[$c]) ? $categoryTotals[$c]['credit_total'] : 0;
 $dCash = isset($categoryTotals[$c]) ? $categoryTotals[$c]['debit_cash'] : 0;
@@ -502,12 +572,12 @@ $n = (float)$cr - (float)$d;
 <td>Rs <?php echo number_format((float)$row['amount'], 2); ?></td>
 <td class="col-note"><?php echo htmlspecialchars($row['note']); ?></td>
 <td class="col-action">
-<a class="btn icon-btn" href="account.php?cat=<?php echo urlencode($cat); ?>&edit_id=<?php echo (int)$row['id']; ?>" title="Edit" aria-label="Edit">&#9998;</a>
+<a class="btn icon-btn" href="account.php?cat=<?php echo urlencode($cat); ?>&date_from=<?php echo urlencode($dateFrom); ?>&date_to=<?php echo urlencode($dateTo); ?>&edit_id=<?php echo (int)$row['id']; ?>" title="Edit" aria-label="Edit">&#9998;</a>
 </td>
 </tr>
 <?php } ?>
 </table>
-<?php if(isset($entryStmt)){ $entryStmt->close(); } ?>
+<?php if($entryStmt){ $entryStmt->close(); } ?>
 </body>
 </html>
 
