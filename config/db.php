@@ -22,6 +22,7 @@ vehicle VARCHAR(50),
 bilty_no VARCHAR(50),
 party VARCHAR(100),
 location VARCHAR(100),
+bags INT DEFAULT 0,
 freight INT,
 original_freight INT NULL,
 tender INT,
@@ -56,6 +57,11 @@ $conn->query("ALTER TABLE bilty ADD sr_no VARCHAR(50) AFTER id");
 $origFreightColCheck = $conn->query("SHOW COLUMNS FROM bilty LIKE 'original_freight'");
 if($origFreightColCheck && $origFreightColCheck->num_rows === 0){
 $conn->query("ALTER TABLE bilty ADD original_freight INT NULL AFTER freight");
+}
+
+$bagsColCheck = $conn->query("SHOW COLUMNS FROM bilty LIKE 'bags'");
+if($bagsColCheck && $bagsColCheck->num_rows === 0){
+$conn->query("ALTER TABLE bilty ADD bags INT DEFAULT 0 AFTER location");
 }
 
 $conn->query("CREATE TABLE IF NOT EXISTS account_entries(

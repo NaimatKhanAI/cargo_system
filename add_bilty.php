@@ -163,6 +163,10 @@ $today = date('Y-m-d');
           <input id="location" name="location" placeholder="Pickup / drop location" required>
         </div>
         <div class="field">
+          <label for="bags">Bags</label>
+          <input id="bags" type="number" name="bags" placeholder="0" min="0" value="0" required>
+        </div>
+        <div class="field">
           <label for="freight">Freight</label>
           <input id="freight" type="number" name="freight" placeholder="0" min="0" required>
         </div>

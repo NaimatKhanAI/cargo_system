@@ -10,11 +10,12 @@ if(isset($_POST['update'])){
     $b = isset($_POST['bilty']) ? trim($_POST['bilty']) : '';
     $party = isset($_POST['party']) ? trim($_POST['party']) : '';
     $l = isset($_POST['location']) ? trim($_POST['location']) : '';
+    $bags = isset($_POST['bags']) ? (int)$_POST['bags'] : 0;
     $f = isset($_POST['freight']) ? (int)$_POST['freight'] : 0;
     $t = isset($_POST['tender']) ? (int)$_POST['tender'] : 0;
     $p = $t - $f;
-    $stmt = $conn->prepare("UPDATE bilty SET sr_no=?, date=?, vehicle=?, bilty_no=?, party=?, location=?, freight=?, original_freight=?, tender=?, profit=? WHERE id=?");
-    $stmt->bind_param("ssssssiiii i", $sr, $d, $v, $b, $party, $l, $f, $f, $t, $p, $id);
+    $stmt = $conn->prepare("UPDATE bilty SET sr_no=?, date=?, vehicle=?, bilty_no=?, party=?, location=?, bags=?, freight=?, original_freight=?, tender=?, profit=? WHERE id=?");
+    $stmt->bind_param("sssssssiiiii", $sr, $d, $v, $b, $party, $l, $bags, $f, $f, $t, $p, $id);
     $stmt->execute(); $stmt->close();
     header("location:feed.php"); exit();
 }
@@ -125,6 +126,10 @@ if(!$row){ header("location:feed.php"); exit(); }
         <div class="field">
           <label for="location">Location</label>
           <input id="location" name="location" value="<?php echo htmlspecialchars($row['location']); ?>" required>
+        </div>
+        <div class="field">
+          <label for="bags">Bags</label>
+          <input id="bags" type="number" name="bags" value="<?php echo htmlspecialchars($row['bags'] ?? 0); ?>" min="0" required>
         </div>
         <div class="field">
           <label for="freight">Freight</label>

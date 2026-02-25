@@ -43,6 +43,7 @@ h2{text-align:center}
 <div class='row'><b>Bilty No:</b> {$row['bilty_no']}</div>
 <div class='row'><b>Party:</b> {$row['party']}</div>
 <div class='row'><b>Location:</b> {$row['location']}</div>
+<div class='row'><b>Bags:</b> {$row['bags']}</div>
 <div class='row'><b>Freight:</b> Rs {$row['freight']}</div>
 <div class='row'><b>Tender:</b> Rs {$row['tender']}</div>
 <div class='row'><b>Profit:</b> Rs {$row['profit']}</div>

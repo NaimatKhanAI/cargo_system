@@ -57,7 +57,7 @@ function parse_csv_number($value){
     return (int)round((float)$value);
 }
 
-$stmt = $conn->prepare("INSERT INTO bilty(sr_no, date, vehicle, bilty_no, party, location, freight, original_freight, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+$stmt = $conn->prepare("INSERT INTO bilty(sr_no, date, vehicle, bilty_no, party, location, bags, freight, original_freight, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
 
 while(($data = fgetcsv($handle)) !== false){
     $lineNo++;
@@ -88,6 +88,7 @@ while(($data = fgetcsv($handle)) !== false){
         $biltyNo = isset($headerMap['bilty_no']) ? ($data[$headerMap['bilty_no']] ?? '') : '';
         $party = isset($headerMap['party']) ? ($data[$headerMap['party']] ?? '') : '';
         $location = isset($headerMap['location']) ? ($data[$headerMap['location']] ?? '') : '';
+        $bags = parse_csv_number(isset($headerMap['bags']) ? ($data[$headerMap['bags']] ?? '') : '');
         $freight = parse_csv_number(isset($headerMap['freight']) ? ($data[$headerMap['freight']] ?? '') : '');
         $tender = parse_csv_number(isset($headerMap['tender']) ? ($data[$headerMap['tender']] ?? '') : '');
         $profit = parse_csv_number(isset($headerMap['profit']) ? ($data[$headerMap['profit']] ?? '') : '');
@@ -114,9 +115,20 @@ while(($data = fgetcsv($handle)) !== false){
         $biltyNo = $data[$offset + 2] ?? '';
         $party = $data[$offset + 3] ?? '';
         $location = $data[$offset + 4] ?? '';
-        $freight = parse_csv_number($data[$offset + 5] ?? '');
-        $tender = parse_csv_number($data[$offset + 6] ?? '');
-        $profit = parse_csv_number($data[$offset + 7] ?? '');
+        $remaining = count($data) - $offset;
+        if($remaining >= 9){
+            // New format with bags.
+            $bags = parse_csv_number($data[$offset + 5] ?? '');
+            $freight = parse_csv_number($data[$offset + 6] ?? '');
+            $tender = parse_csv_number($data[$offset + 7] ?? '');
+            $profit = parse_csv_number($data[$offset + 8] ?? '');
+        } else {
+            // Legacy format without bags.
+            $bags = 0;
+            $freight = parse_csv_number($data[$offset + 5] ?? '');
+            $tender = parse_csv_number($data[$offset + 6] ?? '');
+            $profit = parse_csv_number($data[$offset + 7] ?? '');
+        }
         $srNo = ($offset > 0) ? ($data[$offset - 1] ?? '') : '';
     }
 
@@ -128,6 +140,9 @@ while(($data = fgetcsv($handle)) !== false){
         $freight = 0;
         $importReport[] = ['adjusted', $lineNo, 'Invalid freight -> 0 used', implode(' | ', $data)];
     }
+    if($bags === null){
+        $bags = 0;
+    }
     if($tender === null){
         $tender = 0;
         $importReport[] = ['adjusted', $lineNo, 'Invalid tender -> 0 used', implode(' | ', $data)];
@@ -137,7 +152,7 @@ while(($data = fgetcsv($handle)) !== false){
         $profit = $tender - $freight;
     }
 
-    $stmt->bind_param("ssssssiiii", $srNo, $date, $vehicle, $biltyNo, $party, $location, $freight, $freight, $tender, $profit);
+    $stmt->bind_param("sssssssiiii", $srNo, $date, $vehicle, $biltyNo, $party, $location, $bags, $freight, $freight, $tender, $profit);
     if($stmt->execute()){
         $inserted++;
     } else {

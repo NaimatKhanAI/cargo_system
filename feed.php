@@ -323,6 +323,7 @@ if(count($bindValues) > 0){
           <th>Bilty No.</th>
           <th>Party</th>
           <th>Location</th>
+          <th>Bags</th>
           <th>Freight</th>
           <th>Tender</th>
           <th>Profit</th>
@@ -340,6 +341,7 @@ if(count($bindValues) > 0){
           <td><?php echo htmlspecialchars($row['bilty_no']); ?></td>
           <td><?php echo htmlspecialchars($row['party']); ?></td>
           <td><?php echo htmlspecialchars($row['location']); ?></td>
+          <td><?php echo (int)($row['bags'] ?? 0); ?></td>
           <td>Rs <?php echo number_format((float)$row['freight'], 2); ?></td>
           <td>Rs <?php echo number_format((float)$row['tender'], 2); ?></td>
           <td class="td-profit <?php echo $profit < 0 ? 'neg' : ''; ?>">
