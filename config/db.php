@@ -80,6 +80,11 @@ if($biltyColCheck && $biltyColCheck->num_rows === 0){
 $conn->query("ALTER TABLE account_entries ADD bilty_id INT NULL AFTER amount_mode");
 }
 
+$haleebBiltyColCheck = $conn->query("SHOW COLUMNS FROM account_entries LIKE 'haleeb_bilty_id'");
+if($haleebBiltyColCheck && $haleebBiltyColCheck->num_rows === 0){
+$conn->query("ALTER TABLE account_entries ADD haleeb_bilty_id INT NULL AFTER bilty_id");
+}
+
 $conn->query("CREATE TABLE IF NOT EXISTS image_processed_rates(
 id INT AUTO_INCREMENT PRIMARY KEY,
 source_file VARCHAR(255),

@@ -60,7 +60,7 @@ $err = 'Amount must be greater than 0.';
 } else {
 $canUpdate = true;
 
-$linkStmt = $conn->prepare("SELECT bilty_id, entry_type FROM account_entries WHERE id=? LIMIT 1");
+$linkStmt = $conn->prepare("SELECT bilty_id, haleeb_bilty_id, entry_type FROM account_entries WHERE id=? LIMIT 1");
 $linkStmt->bind_param("i", $editingId);
 $linkStmt->execute();
 $linkRes = $linkStmt->get_result()->fetch_assoc();
@@ -95,6 +95,38 @@ $maxAllowed = 0;
 
 if((float)$amount > $maxAllowed){
 $err = 'You cannot update this transaction. Amount is greater than bilty remaining.';
+$canUpdate = false;
+}
+}
+} elseif($linkRes && isset($linkRes['haleeb_bilty_id']) && (int)$linkRes['haleeb_bilty_id'] > 0 && strtolower((string)$linkRes['entry_type']) === 'debit'){
+$haleebBiltyId = (int)$linkRes['haleeb_bilty_id'];
+
+$freightStmt = $conn->prepare("SELECT freight AS freight_total FROM haleeb_bilty WHERE id=? LIMIT 1");
+$freightStmt->bind_param("i", $haleebBiltyId);
+$freightStmt->execute();
+$freightRes = $freightStmt->get_result()->fetch_assoc();
+$freightStmt->close();
+
+if(!$freightRes){
+$err = 'Linked haleeb bilty not found. Transaction update blocked.';
+$canUpdate = false;
+} else {
+$freightTotal = (float)$freightRes['freight_total'];
+
+$paidStmt = $conn->prepare("SELECT COALESCE(SUM(amount),0) AS paid_total FROM account_entries WHERE haleeb_bilty_id=? AND entry_type='debit' AND id<>?");
+$paidStmt->bind_param("ii", $haleebBiltyId, $editingId);
+$paidStmt->execute();
+$paidRes = $paidStmt->get_result()->fetch_assoc();
+$paidStmt->close();
+
+$paidByOthers = $paidRes && $paidRes['paid_total'] ? (float)$paidRes['paid_total'] : 0;
+$maxAllowed = $freightTotal - $paidByOthers;
+if($maxAllowed < 0){
+$maxAllowed = 0;
+}
+
+if((float)$amount > $maxAllowed){
+$err = 'You cannot update this transaction. Amount is greater than haleeb bilty remaining.';
 $canUpdate = false;
 }
 }

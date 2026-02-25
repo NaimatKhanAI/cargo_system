@@ -9,7 +9,7 @@ include 'config/db.php';
 
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 if($id <= 0){
-header("location:feed.php?pay=error");
+header("location:haleeb.php?pay=error");
 exit();
 }
 
@@ -18,12 +18,12 @@ $msg = '';
 $err = '';
 $today = date('Y-m-d');
 $formDate = $today;
-$formCategory = 'feed';
+$formCategory = 'haleeb';
 $formAmountMode = 'account';
 $formAmount = '';
 $formNote = '';
 
-$stmt = $conn->prepare("SELECT * FROM bilty WHERE id=? LIMIT 1");
+$stmt = $conn->prepare("SELECT * FROM haleeb_bilty WHERE id=? LIMIT 1");
 $stmt->bind_param("i", $id);
 $stmt->execute();
 $biltyRes = $stmt->get_result();
@@ -31,18 +31,18 @@ $row = $biltyRes->fetch_assoc();
 $stmt->close();
 
 if(!$row){
-header("location:feed.php?pay=error");
+header("location:haleeb.php?pay=error");
 exit();
 }
 
-$paidStmt = $conn->prepare("SELECT SUM(amount) AS paid_total FROM account_entries WHERE bilty_id=? AND entry_type='debit'");
+$paidStmt = $conn->prepare("SELECT SUM(amount) AS paid_total FROM account_entries WHERE haleeb_bilty_id=? AND entry_type='debit'");
 $paidStmt->bind_param("i", $id);
 $paidStmt->execute();
 $paidRes = $paidStmt->get_result()->fetch_assoc();
 $paidStmt->close();
 
 $paidTotal = $paidRes && $paidRes['paid_total'] ? (float)$paidRes['paid_total'] : 0;
-$baseFreight = isset($row['original_freight']) && $row['original_freight'] !== null ? (float)$row['original_freight'] : (float)$row['freight'];
+$baseFreight = (float)$row['freight'];
 $remainingFreight = $baseFreight - $paidTotal;
 if($remainingFreight < 0){
 $remainingFreight = 0;
@@ -50,7 +50,7 @@ $remainingFreight = 0;
 
 if(isset($_POST['pay_now'])){
 $formDate = isset($_POST['entry_date']) ? $_POST['entry_date'] : $today;
-$formCategory = isset($_POST['category']) ? strtolower(trim($_POST['category'])) : 'feed';
+$formCategory = isset($_POST['category']) ? strtolower(trim($_POST['category'])) : 'haleeb';
 $formAmountMode = isset($_POST['amount_mode']) ? strtolower(trim($_POST['amount_mode'])) : 'account';
 $payAmount = isset($_POST['pay_amount']) ? (int)$_POST['pay_amount'] : 0;
 $formAmount = $payAmount > 0 ? (string)$payAmount : '';
@@ -65,18 +65,18 @@ $err = 'Pay amount must be greater than 0.';
 } elseif($payAmount > $remainingFreight){
 $err = 'Pay amount cannot be more than remaining freight.';
 } else {
-$baseNote = "Feed - Bil(" . $row['bilty_no'] . ") - ";
+$baseNote = "Haleeeb - Tok(" . $row['token_no'] . ") - ";
 $note = $formNote !== '' ? ($baseNote . " - " . $formNote) : $baseNote;
 
 $conn->begin_transaction();
 try{
-$ins = $conn->prepare("INSERT INTO account_entries(entry_date, category, entry_type, amount_mode, bilty_id, amount, note) VALUES(?, ?, 'debit', ?, ?, ?, ?)");
+$ins = $conn->prepare("INSERT INTO account_entries(entry_date, category, entry_type, amount_mode, bilty_id, haleeb_bilty_id, amount, note) VALUES(?, ?, 'debit', ?, NULL, ?, ?, ?)");
 $ins->bind_param("sssids", $formDate, $formCategory, $formAmountMode, $id, $payAmount, $note);
 $ins->execute();
 $ins->close();
 
 $conn->commit();
-header("location:feed.php?pay=success");
+header("location:haleeb.php?pay=success");
 exit();
 } catch (Throwable $e){
 $conn->rollback();
@@ -88,7 +88,7 @@ $err = 'Payment failed. Please try again.';
 <!DOCTYPE html>
 <html>
 <head>
-<title>Pay Now</title>
+<title>Pay Now - Haleeb</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="assets/style.css">
 <style>
@@ -167,8 +167,8 @@ grid-template-columns:1fr;
 <div class="page-wrap">
 <div class="card">
 <div class="top">
-<h2>Pay Now - Bilty <?php echo htmlspecialchars($row['bilty_no']); ?></h2>
-<a class="back-link" href="feed.php">Back to Feed</a>
+<h2>Pay Now - Haleeb Token <?php echo htmlspecialchars($row['token_no']); ?></h2>
+<a class="back-link" href="haleeb.php">Back to Haleeb</a>
 </div>
 
 <?php if($err!=""){ ?><p class="err"><?php echo htmlspecialchars($err); ?></p><?php } ?>
@@ -177,6 +177,8 @@ grid-template-columns:1fr;
 <div class="info">
 <div class="box"><b>Vehicle:</b> <?php echo htmlspecialchars($row['vehicle']); ?></div>
 <div class="box"><b>Party:</b> <?php echo htmlspecialchars($row['party']); ?></div>
+<div class="box"><b>Delivery Note:</b> <?php echo htmlspecialchars($row['delivery_note']); ?></div>
+<div class="box"><b>Token No:</b> <?php echo htmlspecialchars($row['token_no']); ?></div>
 <div class="box"><b>Total Freight:</b> Rs <?php echo number_format((float)$baseFreight, 0); ?></div>
 <div class="box"><b>Paid So Far:</b> Rs <?php echo number_format((float)$paidTotal, 0); ?></div>
 <div class="box"><b>Remaining Freight:</b> Rs <?php echo number_format((float)$remainingFreight, 0); ?></div>
@@ -219,5 +221,3 @@ grid-template-columns:1fr;
 </div>
 </body>
 </html>
-
-

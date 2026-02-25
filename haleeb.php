@@ -24,6 +24,15 @@ $import_message = "Import failed. Please upload a valid CSV file.";
 }
 }
 
+$pay_message = "";
+if (isset($_GET['pay'])) {
+if ($_GET['pay'] === 'success') {
+$pay_message = "Payment posted successfully.";
+} elseif ($_GET['pay'] === 'error') {
+$pay_message = "Payment failed. Please try again.";
+}
+}
+
 $vehicleOptions = [];
 $vehicleRes = $conn->query("SELECT DISTINCT vehicle FROM haleeb_bilty WHERE vehicle IS NOT NULL AND vehicle <> '' ORDER BY vehicle ASC");
 while($vehicleRes && $vrow = $vehicleRes->fetch_assoc()){
@@ -169,6 +178,9 @@ background:#000;
 .icon-pdf{
 background:#1565c0;
 }
+.icon-pay{
+background:#2e7d32;
+}
 .col-action{
 width:90px;
 white-space:nowrap;
@@ -270,6 +282,9 @@ min-width:100%;
 <?php if($import_message!=""){ ?>
 <div class="status-msg"><?php echo htmlspecialchars($import_message); ?></div>
 <?php } ?>
+<?php if($pay_message!=""){ ?>
+<div class="status-msg"><?php echo htmlspecialchars($pay_message); ?></div>
+<?php } ?>
 
 <div class="profit-box">
 Total Profit: Rs <?php echo $total_profit; ?>
@@ -329,6 +344,7 @@ echo "<tr>
 <td>Rs {$row['freight']}</td>
 <td><b>Rs {$row['calc_profit']}</b></td>
 <td class='col-action'>
+<a class='btn icon-btn icon-pay' href='pay_now_haleeb.php?id={$row['id']}' title='Pay Now' aria-label='Pay Now'>&#8377;</a>
 <a class='btn icon-btn icon-edit' href='edit_haleeb_bilty.php?id={$row['id']}' title='Edit' aria-label='Edit'>&#9998;</a>
 <a class='btn icon-btn icon-pdf' href='haleeb_pdf.php?id={$row['id']}' target='_blank' title='PDF' aria-label='PDF'>&#128196;</a>
 </td>
