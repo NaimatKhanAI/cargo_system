@@ -64,16 +64,23 @@ $rows = $conn->query("SELECT id, source_file, source_image_path, sr_no, station_
   .topbar-logo { display: flex; align-items: center; gap: 12px; }
   .badge { background: var(--accent); color: #0e0f11; font-size: 10px; font-weight: 800; padding: 3px 8px; letter-spacing: 1.5px; text-transform: uppercase; }
   .topbar h1 { font-size: 18px; font-weight: 800; letter-spacing: -0.5px; }
-  .nav-links { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .nav-links { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .nav-btn { padding: 8px 14px; background: transparent; color: var(--muted); border: 1px solid var(--border); cursor: pointer; text-decoration: none; font-family: var(--font); font-size: 13px; font-weight: 600; transition: all 0.15s; }
   .nav-btn:hover { background: var(--surface2); color: var(--text); border-color: var(--muted); }
   .nav-btn.primary { background: var(--accent); color: #0e0f11; border-color: var(--accent); }
   .nav-btn.primary:hover { background: #e0b030; }
   .nav-btn.danger { background: rgba(239,68,68,0.1); color: var(--red); border-color: rgba(239,68,68,0.25); }
   .nav-btn.danger:hover { background: rgba(239,68,68,0.2); }
-  .import-inline { display: inline-flex; align-items: center; gap: 6px; }
-  .import-inline input[type="file"] { font-size: 11px; color: var(--muted); }
-  .import-inline input[type="file"]::file-selector-button { background: var(--surface2); color: var(--text); border: 1px solid var(--border); padding: 5px 10px; font-family: var(--font); font-size: 11px; cursor: pointer; }
+  .menu-wrap { position: relative; }
+  .menu-toggle { width: 38px; height: 36px; display: inline-flex; align-items: center; justify-content: center; padding: 0; font-size: 18px; line-height: 1; }
+  .menu-dropdown { display: none; position: absolute; right: 0; top: calc(100% + 8px); min-width: 170px; background: var(--surface2); border: 1px solid var(--border); z-index: 120; }
+  .menu-dropdown.open { display: block; }
+  .menu-item { width: 100%; display: block; text-align: left; padding: 10px 12px; background: transparent; color: var(--text); border: none; border-bottom: 1px solid var(--border); text-decoration: none; font-family: var(--font); font-size: 12px; cursor: pointer; }
+  .menu-item:last-child { border-bottom: none; }
+  .menu-item:hover { background: rgba(255,255,255,0.04); }
+  .menu-item.danger { color: var(--red); }
+  .menu-import-form { margin: 0; }
+  .menu-import-input { display: none; }
 
   .main { padding: 24px 28px; max-width: 1600px; margin: 0 auto; }
   .alert { padding: 12px 16px; margin-bottom: 16px; font-size: 13px; border-left: 3px solid var(--green); background: rgba(34,197,94,0.08); color: var(--green); }
@@ -146,16 +153,19 @@ $rows = $conn->query("SELECT id, source_file, source_image_path, sr_no, station_
     <h1>Rate List</h1>
   </div>
   <div class="nav-links">
-    <a class="nav-btn primary" href="process_img.php">Process Image</a>
-    <a class="nav-btn" href="export_rate_list.php">Export</a>
-    <form action="import_rate_list.php" method="post" enctype="multipart/form-data" style="display:inline-flex;align-items:center;gap:6px;">
-      <div class="import-inline">
-        <input type="file" name="csv_file" accept=".csv" required>
-        <button class="nav-btn" type="submit">Import</button>
-      </div>
-    </form>
-    <a class="nav-btn danger" href="feed_ratelist.php?delete_all=1" onclick="return confirm('Delete entire rate list?')">Clear List</a>
     <a class="nav-btn" href="feed.php">Feed</a>
+    <a class="nav-btn" href="dashboard.php">Dashboard</a>
+    <div class="menu-wrap">
+      <button type="button" class="nav-btn menu-toggle" id="menu_toggle" aria-label="Open Menu" aria-expanded="false">&#9776;</button>
+      <div class="menu-dropdown" id="menu_dropdown">
+        <form class="menu-import-form" action="import_rate_list.php" method="post" enctype="multipart/form-data" id="menu_import_form">
+          <input class="menu-import-input" id="menu_import_file" type="file" name="csv_file" accept=".csv" required>
+          <button class="menu-item" type="button" id="menu_import_btn">Import</button>
+        </form>
+        <a class="menu-item" href="export_rate_list.php">Export</a>
+        <a class="menu-item danger" href="feed_ratelist.php?delete_all=1" onclick="return confirm('Delete entire rate list?')">Clear List</a>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -321,6 +331,34 @@ $rows = $conn->query("SELECT id, source_file, source_image_path, sr_no, station_
   }
   initToggle('col_head', 'col_toggle', 'col_body');
   initToggle('add_head', 'add_toggle', 'add_body');
+
+  var menuToggle = document.getElementById('menu_toggle');
+  var menuDropdown = document.getElementById('menu_dropdown');
+  var importBtn = document.getElementById('menu_import_btn');
+  var importFile = document.getElementById('menu_import_file');
+  var importForm = document.getElementById('menu_import_form');
+
+  if(menuToggle && menuDropdown){
+    menuToggle.addEventListener('click', function(e){
+      e.stopPropagation();
+      var isOpen = menuDropdown.classList.toggle('open');
+      menuToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    });
+
+    document.addEventListener('click', function(e){
+      if(!menuDropdown.contains(e.target) && e.target !== menuToggle){
+        menuDropdown.classList.remove('open');
+        menuToggle.setAttribute('aria-expanded', 'false');
+      }
+    });
+  }
+
+  if(importBtn && importFile && importForm){
+    importBtn.addEventListener('click', function(){ importFile.click(); });
+    importFile.addEventListener('change', function(){
+      if(importFile.files && importFile.files.length > 0) importForm.submit();
+    });
+  }
 })();
 </script>
 </body>

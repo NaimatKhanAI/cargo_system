@@ -69,7 +69,7 @@ if(!isset($_SESSION['user'])){
     <span class="badge">Image</span>
     <h1>Image Processing</h1>
   </div>
-  <a class="nav-btn" href="feed.php">Back to Feed</a>
+  <a class="nav-btn" href="dashboard.php">Back to Dashboard</a>
 </div>
 
 <div class="main">
