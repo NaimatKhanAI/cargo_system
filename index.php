@@ -2,58 +2,10 @@
 session_start();
 include 'config/db.php';
 $error = "";
-$canChooseOption = isset($_SESSION['login_verified']) && $_SESSION['login_verified'] === true;
-$pendingUser = isset($_SESSION['pending_user']) ? $_SESSION['pending_user'] : '';
 
-if(isset($_POST['guest'])){
-if($canChooseOption){
-$_SESSION['user']='Guest';
-unset($_SESSION['login_verified']);
-unset($_SESSION['pending_user']);
-header("location:feed.php");
+if(isset($_SESSION['user']) && $_SESSION['user'] !== ''){
+header("location:dashboard.php");
 exit();
-}else{
-$error = "Pehle sahi login karein.";
-}
-}
-
-if(isset($_POST['account'])){
-if($canChooseOption){
-header("location:account.php");
-exit();
-}else{
-$error = "Pehle sahi login karein.";
-}
-}
-
-if(isset($_POST['process_img'])){
-if($canChooseOption){
-header("location:process_img.php");
-exit();
-}else{
-$error = "Pehle sahi login karein.";
-}
-}
-
-if(isset($_POST['rate_list'])){
-if($canChooseOption){
-header("location:rate_list.php");
-exit();
-}else{
-$error = "Pehle sahi login karein.";
-}
-}
-
-if(isset($_POST['feed'])){
-if($canChooseOption){
-$_SESSION['user'] = $pendingUser !== '' ? $pendingUser : 'User';
-unset($_SESSION['login_verified']);
-unset($_SESSION['pending_user']);
-header("location:feed.php");
-exit();
-}else{
-$error = "Pehle sahi login karein.";
-}
 }
 
 if(isset($_POST['login'])){
@@ -62,22 +14,18 @@ $p=isset($_POST['pass']) ? trim($_POST['pass']) : '';
 
 if($u === '' || $p === ''){
 $error = "Username aur password required hai.";
-$canChooseOption = false;
-unset($_SESSION['login_verified']);
-unset($_SESSION['pending_user']);
 } else {
 $stmt = $conn->prepare("SELECT username FROM users WHERE username=? AND password=? LIMIT 1");
 $stmt->bind_param("ss", $u, $p);
 $stmt->execute();
 $res = $stmt->get_result();
 if($res->num_rows > 0){
-$_SESSION['login_verified'] = true;
-$_SESSION['pending_user'] = $u;
-$canChooseOption = true;
-}else{
+$_SESSION['user'] = $u;
 unset($_SESSION['login_verified']);
 unset($_SESSION['pending_user']);
-$canChooseOption = false;
+header("location:dashboard.php");
+exit();
+}else{
 $error = "Wrong login";
 }
 $stmt->close();
@@ -177,32 +125,17 @@ grid-template-columns:1fr;
 <div class="auth-wrap">
 <div class="auth-card">
 <h2 class="auth-title">Cargo System Login</h2>
-<p class="auth-sub">Username/password enter karein, phir desired section choose karein.</p>
+<p class="auth-sub">Username/password enter karein.</p>
 
 <form method="post">
 <label class="field-label" for="user">Username</label>
-<input class="auth-input" id="user" name="user" placeholder="Enter username" value="<?php echo htmlspecialchars($pendingUser); ?>">
+<input class="auth-input" id="user" name="user" placeholder="Enter username">
 
 <label class="field-label" for="pass">Password</label>
 <input class="auth-input" id="pass" name="pass" placeholder="Enter password" type="password">
 
 <button class="primary-btn" name="login" type="submit">Login</button>
-
-<div class="option-wrap" id="optionWrap" style="<?php echo $canChooseOption ? 'display:block;' : 'display:none;'; ?>">
-<p class="option-title">Login verified. Choose where to continue:</p>
-<div class="option-grid">
-<button class="option-btn" name="feed" type="submit">Cargo Feed</button>
-<button class="option-btn" name="account" type="submit">Account Ledger</button>
-<button class="option-btn" name="process_img" type="submit">Process Image</button>
-<button class="option-btn" name="rate_list" type="submit">Rate List</button>
-<button class="option-btn" name="guest" type="submit">Guest Mode</button>
-</div>
-</div>
 </form>
-
-<?php if($canChooseOption){ ?>
-<p class="ok">Login successful.</p>
-<?php } ?>
 <?php if($error!=""){ ?>
 <p class="err"><?php echo htmlspecialchars($error); ?></p>
 <?php } ?>
