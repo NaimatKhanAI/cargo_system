@@ -234,25 +234,69 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
     return Math.round(n);
   }
 
-  function tryAutoTender(){
+  function normalizeAlphaNum(v){
+    return String(v || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  }
+
+  function getVehicleBucket(vehicleTypeRaw){
+    var k = normalizeAlphaNum(vehicleTypeRaw);
+    if(k === 'mazda') return 'mazda';
+    if(k === '14ft') return '14ft';
+    if(k === '20ft') return '20ft';
+    if(k.indexOf('40ft') === 0) return '40ft';
+    return '';
+  }
+
+  function getStopsAddon(stopsRaw, vehicleTypeRaw){
+    var stop = normalizeAlphaNum(stopsRaw);
+    var bucket = getVehicleBucket(vehicleTypeRaw);
+    if(bucket === '') return 0;
+
+    var sameCity = {
+      mazda: 3000,
+      '14ft': 3000,
+      '20ft': 5000,
+      '40ft': 7000
+    };
+    var outCity = {
+      mazda: 4000,
+      '14ft': 4000,
+      '20ft': 6000,
+      '40ft': 8000
+    };
+
+    if(stop === 'samecity') return sameCity[bucket] || 0;
+    if(stop === 'outcity') return outCity[bucket] || 0;
+    return 0;
+  }
+
+  function getBaseTenderFromRateList(){
     var locationKey = normalizeToken(locationInput.value);
     var vehicleInputKey = normalizeToken(vehicleTypeInput.value);
-    if(locationKey === '' || vehicleInputKey === '') return;
-    if(!Object.prototype.hasOwnProperty.call(rateLookup, locationKey)) return;
+    if(locationKey === '' || vehicleInputKey === '') return null;
+    if(!Object.prototype.hasOwnProperty.call(rateLookup, locationKey)) return null;
 
     var vehicleKey = vehicleTypeLookup[vehicleInputKey] || vehicleInputKey;
     var row = rateLookup[locationKey];
-    if(!Object.prototype.hasOwnProperty.call(row, vehicleKey)) return;
+    if(!Object.prototype.hasOwnProperty.call(row, vehicleKey)) return null;
+    return parseRateNumber(row[vehicleKey]);
+  }
 
-    var rateNumber = parseRateNumber(row[vehicleKey]);
-    if(rateNumber === null) return;
-    tenderInput.value = rateNumber;
+  function tryAutoTender(){
+    var baseTender = getBaseTenderFromRateList();
+    var addon = getStopsAddon(stopsInput ? stopsInput.value : '', vehicleTypeInput.value);
+    if(baseTender === null && addon === 0) return;
+    tenderInput.value = (baseTender === null ? 0 : baseTender) + addon;
   }
 
   locationInput.addEventListener('change', tryAutoTender);
   locationInput.addEventListener('blur', tryAutoTender);
   vehicleTypeInput.addEventListener('change', tryAutoTender);
   vehicleTypeInput.addEventListener('blur', tryAutoTender);
+  if(stopsInput){
+    stopsInput.addEventListener('change', tryAutoTender);
+    stopsInput.addEventListener('blur', tryAutoTender);
+  }
   tryAutoTender();
 })();
 </script>
