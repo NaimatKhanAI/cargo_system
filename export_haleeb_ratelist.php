@@ -27,7 +27,7 @@ $headerRow[] = $c['label'];
 }
 fputcsv($output, $headerRow);
 
-$result = $conn->query("SELECT sr_no, station_english, station_urdu, rate1, rate2, extra_data FROM haleeb_image_processed_rates ORDER BY id DESC");
+$result = $conn->query("SELECT sr_no, station_english, station_urdu, rate1, rate2, custom_to, custom_mazda, custom_14ft, custom_20ft, custom_40ft_22t, custom_40ft_28t, custom_40ft_32t, extra_data FROM haleeb_image_processed_rates ORDER BY id DESC");
 while($row = $result->fetch_assoc()){
 $extra = [];
 if(isset($row['extra_data']) && $row['extra_data'] !== ''){

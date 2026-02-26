@@ -167,6 +167,22 @@ if($haleebRate2ColCheck && $haleebRate2ColCheck->num_rows === 0){
 $conn->query("ALTER TABLE haleeb_image_processed_rates ADD rate2 VARCHAR(100) AFTER rate1");
 }
 
+$haleebCustomColumns = [
+    'custom_to',
+    'custom_mazda',
+    'custom_14ft',
+    'custom_20ft',
+    'custom_40ft_22t',
+    'custom_40ft_28t',
+    'custom_40ft_32t',
+];
+foreach($haleebCustomColumns as $customCol){
+    $customColCheck = $conn->query("SHOW COLUMNS FROM haleeb_image_processed_rates LIKE '$customCol'");
+    if($customColCheck && $customColCheck->num_rows === 0){
+        $conn->query("ALTER TABLE haleeb_image_processed_rates ADD $customCol VARCHAR(255) AFTER rate2");
+    }
+}
+
 $conn->query("CREATE TABLE IF NOT EXISTS haleeb_rate_list_columns(
 id INT AUTO_INCREMENT PRIMARY KEY,
 column_key VARCHAR(100) UNIQUE,

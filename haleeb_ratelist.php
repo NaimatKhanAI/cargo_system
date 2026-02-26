@@ -43,7 +43,7 @@ if(isset($_GET['edit_id']) && !isset($_POST['update_rate'])) $editingId = (int)$
 $allColumns = load_columns($conn);
 $displayColumns = array_values(array_filter($allColumns, function($c){ return (int)$c['is_deleted'] === 0; }));
 $visibleColumns = array_values(array_filter($displayColumns, function($c){ return (int)$c['is_hidden'] === 0; }));
-$rows = $conn->query("SELECT id, source_file, source_image_path, sr_no, station_english, station_urdu, rate1, rate2, extra_data, created_at FROM haleeb_image_processed_rates ORDER BY id DESC");
+$rows = $conn->query("SELECT id, source_file, source_image_path, sr_no, station_english, station_urdu, rate1, rate2, custom_to, custom_mazda, custom_14ft, custom_20ft, custom_40ft_22t, custom_40ft_28t, custom_40ft_32t, extra_data, created_at FROM haleeb_image_processed_rates ORDER BY id DESC");
 ?>
 <!DOCTYPE html>
 <html lang="en">

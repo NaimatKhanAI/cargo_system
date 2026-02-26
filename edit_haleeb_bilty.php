@@ -24,6 +24,18 @@ $stmt = $conn->prepare("SELECT * FROM haleeb_bilty WHERE id=? LIMIT 1");
 $stmt->bind_param("i", $id); $stmt->execute();
 $row = $stmt->get_result()->fetch_assoc(); $stmt->close();
 if(!$row){ header("location:haleeb.php"); exit(); }
+
+$locationOptions = [];
+$locRes = $conn->query("SELECT DISTINCT custom_to FROM haleeb_image_processed_rates WHERE custom_to IS NOT NULL AND custom_to <> '' ORDER BY custom_to ASC");
+while($locRes && $lrow = $locRes->fetch_assoc()){
+    $locationOptions[] = (string)$lrow['custom_to'];
+}
+
+$vehicleTypeOptions = [];
+$vtRes = $conn->query("SELECT column_label FROM haleeb_rate_list_columns WHERE is_deleted=0 AND column_key LIKE 'custom_%' ORDER BY display_order ASC, id ASC");
+while($vtRes && $vrow = $vtRes->fetch_assoc()){
+    $vehicleTypeOptions[] = (string)$vrow['column_label'];
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -115,7 +127,7 @@ if(!$row){ header("location:haleeb.php"); exit(); }
         </div>
         <div class="field">
           <label for="vehicle_type">Vehicle Type</label>
-          <input id="vehicle_type" name="vehicle_type" value="<?php echo htmlspecialchars($row['vehicle_type']); ?>" required>
+          <input id="vehicle_type" name="vehicle_type" value="<?php echo htmlspecialchars($row['vehicle_type']); ?>" list="vehicle_type_list" required>
         </div>
         <div class="field">
           <label for="delivery_note">Delivery Note</label>
@@ -131,7 +143,7 @@ if(!$row){ header("location:haleeb.php"); exit(); }
         </div>
         <div class="field">
           <label for="location">Location</label>
-          <input id="location" name="location" value="<?php echo htmlspecialchars($row['location']); ?>" required>
+          <input id="location" name="location" value="<?php echo htmlspecialchars($row['location']); ?>" list="location_list" required>
         </div>
         <div class="field">
           <label for="tender">Tender</label>
@@ -148,6 +160,16 @@ if(!$row){ header("location:haleeb.php"); exit(); }
         <button class="update-btn" type="submit" name="update">Save</button>
       </div>
     </form>
+    <datalist id="location_list">
+      <?php foreach($locationOptions as $opt): ?>
+        <option value="<?php echo htmlspecialchars($opt); ?>">
+      <?php endforeach; ?>
+    </datalist>
+    <datalist id="vehicle_type_list">
+      <?php foreach($vehicleTypeOptions as $opt): ?>
+        <option value="<?php echo htmlspecialchars($opt); ?>">
+      <?php endforeach; ?>
+    </datalist>
   </div>
 </div>
 </body>

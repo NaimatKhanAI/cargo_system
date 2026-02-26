@@ -1,4 +1,19 @@
-<?php $today = date('Y-m-d'); ?>
+<?php
+include 'config/db.php';
+$today = date('Y-m-d');
+
+$locationOptions = [];
+$locRes = $conn->query("SELECT DISTINCT custom_to FROM haleeb_image_processed_rates WHERE custom_to IS NOT NULL AND custom_to <> '' ORDER BY custom_to ASC");
+while($locRes && $row = $locRes->fetch_assoc()){
+    $locationOptions[] = (string)$row['custom_to'];
+}
+
+$vehicleTypeOptions = [];
+$vtRes = $conn->query("SELECT column_label FROM haleeb_rate_list_columns WHERE is_deleted=0 AND column_key LIKE 'custom_%' ORDER BY display_order ASC, id ASC");
+while($vtRes && $row = $vtRes->fetch_assoc()){
+    $vehicleTypeOptions[] = (string)$row['column_label'];
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -75,7 +90,7 @@
         </div>
         <div class="field">
           <label for="vehicle_type">Vehicle Type</label>
-          <input id="vehicle_type" name="vehicle_type" placeholder="Truck" required>
+          <input id="vehicle_type" name="vehicle_type" placeholder="Truck" list="vehicle_type_list" required>
         </div>
         <div class="field">
           <label for="delivery_note">Delivery Note</label>
@@ -91,7 +106,7 @@
         </div>
         <div class="field">
           <label for="location">Location</label>
-          <input id="location" name="location" placeholder="Location" required>
+          <input id="location" name="location" placeholder="Location" list="location_list" required>
         </div>
         <div class="field">
           <label for="tender">Tender</label>
@@ -106,6 +121,16 @@
         <button class="submit-btn" type="submit">Save</button>
       </div>
     </form>
+    <datalist id="location_list">
+      <?php foreach($locationOptions as $opt): ?>
+        <option value="<?php echo htmlspecialchars($opt); ?>">
+      <?php endforeach; ?>
+    </datalist>
+    <datalist id="vehicle_type_list">
+      <?php foreach($vehicleTypeOptions as $opt): ?>
+        <option value="<?php echo htmlspecialchars($opt); ?>">
+      <?php endforeach; ?>
+    </datalist>
   </div>
 </div>
 </body>

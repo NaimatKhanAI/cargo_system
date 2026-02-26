@@ -117,7 +117,7 @@ $uploadedFileName = isset($_FILES['csv_file']['name']) ? (string)$_FILES['csv_fi
 $inserted = 0;
 $skipped = 0;
 
-$stmt = $conn->prepare("INSERT INTO haleeb_image_processed_rates(source_file, source_image_path, sr_no, station_english, station_urdu, rate1, rate2, extra_data) VALUES(?, ?, ?, ?, ?, ?, ?, ?)");
+$stmt = $conn->prepare("INSERT INTO haleeb_image_processed_rates(source_file, source_image_path, sr_no, station_english, station_urdu, rate1, rate2, custom_to, custom_mazda, custom_14ft, custom_20ft, custom_40ft_22t, custom_40ft_28t, custom_40ft_32t, extra_data) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
 
 while(($data = fgetcsv($handle)) !== false){
 if(!is_array($data) || count($data) === 0){
@@ -136,6 +136,13 @@ $base = [
 'station_urdu' => '',
 'rate1' => '',
 'rate2' => '',
+'custom_to' => '',
+'custom_mazda' => '',
+'custom_14ft' => '',
+'custom_20ft' => '',
+'custom_40ft_22t' => '',
+'custom_40ft_28t' => '',
+'custom_40ft_32t' => '',
 ];
 $extra = [];
 
@@ -153,14 +160,21 @@ $extra[$def['column_key']] = $val;
 }
 }
 
-if($base['sr_no'] === '' && $base['station_english'] === '' && $base['station_urdu'] === '' && $base['rate1'] === '' && $base['rate2'] === '' && empty(array_filter($extra, function($v){ return $v !== ''; }))){
-$skipped++;
-continue;
-}
+    $hasBaseValue = false;
+    foreach($base as $val){
+        if($val !== ''){
+            $hasBaseValue = true;
+            break;
+        }
+    }
+    if(!$hasBaseValue && empty(array_filter($extra, function($v){ return $v !== ''; }))){
+        $skipped++;
+        continue;
+    }
 
 $extraJson = empty($extra) ? '' : json_encode($extra, JSON_UNESCAPED_UNICODE);
 $stmt->bind_param(
-"ssssssss",
+"sssssssssssssss",
 $sourceFile,
 $sourceImagePath,
 $base['sr_no'],
@@ -168,6 +182,13 @@ $base['station_english'],
 $base['station_urdu'],
 $base['rate1'],
 $base['rate2'],
+$base['custom_to'],
+$base['custom_mazda'],
+$base['custom_14ft'],
+$base['custom_20ft'],
+$base['custom_40ft_22t'],
+$base['custom_40ft_28t'],
+$base['custom_40ft_32t'],
 $extraJson
 );
 if($stmt->execute()){
