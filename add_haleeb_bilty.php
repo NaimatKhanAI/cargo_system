@@ -109,6 +109,7 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
   .form-title { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 28px; }
 
   .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px 20px; }
+  .field.span-2 { grid-column: 1 / -1; }
   .field label { display: block; font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
   .field input {
     width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text);
@@ -117,6 +118,23 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
   .field input:focus { outline: none; border-color: var(--accent); }
   .field input::-webkit-calendar-picker-indicator { filter: invert(0.5); cursor: pointer; }
   .field input::placeholder { color: var(--muted); }
+  .stops-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .stop-box { border: 1px solid var(--border); background: var(--bg); padding: 10px; min-height: 92px; }
+  .stop-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .stop-title { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); }
+  .stop-add {
+    border: 1px solid var(--border); background: var(--surface2); color: var(--text);
+    padding: 4px 8px; font-size: 11px; font-family: var(--font); cursor: pointer;
+  }
+  .stop-add:hover { border-color: var(--muted); }
+  .stop-list { display: flex; flex-wrap: wrap; gap: 6px; min-height: 28px; }
+  .stop-chip {
+    display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border);
+    background: var(--surface2); padding: 3px 8px; font-size: 11px; font-family: var(--mono);
+  }
+  .stop-remove { border: none; background: transparent; color: var(--muted); cursor: pointer; font-size: 12px; line-height: 1; }
+  .stop-remove:hover { color: var(--red); }
+  .stop-empty { font-size: 11px; color: var(--muted); }
 
   .form-footer { margin-top: 28px; display: flex; justify-content: flex-end; }
   .submit-btn { padding: 13px 36px; background: var(--accent); color: #0e0f11; border: none; cursor: pointer; font-family: var(--font); font-size: 14px; font-weight: 800; transition: background 0.15s; }
@@ -173,9 +191,26 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
           <label for="location">Location</label>
           <input id="location" name="location" placeholder="Location" list="location_list" required>
         </div>
-        <div class="field">
-          <label for="stops">Stops</label>
-          <input id="stops" name="stops" placeholder="same city / out city" list="stops_list" required>
+        <div class="field span-2">
+          <label>Stops</label>
+          <div class="stops-grid">
+            <div class="stop-box">
+              <div class="stop-head">
+                <span class="stop-title">Same City</span>
+                <button class="stop-add" type="button" id="add_same_stop">+ Add</button>
+              </div>
+              <div class="stop-list" id="same_stop_list"></div>
+              <input type="hidden" id="same_city_count" name="same_city_count" value="0">
+            </div>
+            <div class="stop-box">
+              <div class="stop-head">
+                <span class="stop-title">Out City</span>
+                <button class="stop-add" type="button" id="add_out_stop">+ Add</button>
+              </div>
+              <div class="stop-list" id="out_stop_list"></div>
+              <input type="hidden" id="out_city_count" name="out_city_count" value="0">
+            </div>
+          </div>
         </div>
         <div class="field">
           <label for="tender">Tender</label>
@@ -200,27 +235,25 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
         <option value="<?php echo htmlspecialchars($opt); ?>">
       <?php endforeach; ?>
     </datalist>
-    <datalist id="stops_list"></datalist>
   </div>
 </div>
 <script>
 (function(){
-  var stopsInput = document.getElementById('stops');
-  var stopsList = document.getElementById('stops_list');
   var locationInput = document.getElementById('location');
   var vehicleTypeInput = document.getElementById('vehicle_type');
   var tenderInput = document.getElementById('tender');
-  if(stopsInput && stopsList && stopsList.options.length === 0){
-    ['same city', 'out city'].forEach(function(v){
-      var opt = document.createElement('option');
-      opt.value = v;
-      stopsList.appendChild(opt);
-    });
-  }
-  if(!locationInput || !vehicleTypeInput || !tenderInput) return;
+  var addSameStopBtn = document.getElementById('add_same_stop');
+  var addOutStopBtn = document.getElementById('add_out_stop');
+  var sameStopList = document.getElementById('same_stop_list');
+  var outStopList = document.getElementById('out_stop_list');
+  var sameCityCountInput = document.getElementById('same_city_count');
+  var outCityCountInput = document.getElementById('out_city_count');
+  if(!locationInput || !vehicleTypeInput || !tenderInput || !addSameStopBtn || !addOutStopBtn || !sameStopList || !outStopList || !sameCityCountInput || !outCityCountInput) return;
 
   var vehicleTypeLookup = <?php echo $jsonVehicleTypeLookup; ?>;
   var rateLookup = <?php echo $jsonRateLookup; ?>;
+  var sameStops = [];
+  var outStops = [];
 
   function normalizeToken(v){
     return String(v || '').trim().toLowerCase().replace(/\s+/g, ' ');
@@ -247,8 +280,7 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
     return '';
   }
 
-  function getStopsAddon(stopsRaw, vehicleTypeRaw){
-    var stop = normalizeAlphaNum(stopsRaw);
+  function getStopsAddon(vehicleTypeRaw){
     var bucket = getVehicleBucket(vehicleTypeRaw);
     if(bucket === '') return 0;
 
@@ -261,13 +293,11 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
     var outCity = {
       mazda: 4000,
       '14ft': 4000,
-      '20ft': 6000,
+      '20ft': 8000,
       '40ft': 8000
     };
 
-    if(stop === 'samecity') return sameCity[bucket] || 0;
-    if(stop === 'outcity') return outCity[bucket] || 0;
-    return 0;
+    return (sameStops.length * (sameCity[bucket] || 0)) + (outStops.length * (outCity[bucket] || 0));
   }
 
   function getBaseTenderFromRateList(){
@@ -284,19 +314,68 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
 
   function tryAutoTender(){
     var baseTender = getBaseTenderFromRateList();
-    var addon = getStopsAddon(stopsInput ? stopsInput.value : '', vehicleTypeInput.value);
+    var addon = getStopsAddon(vehicleTypeInput.value);
     if(baseTender === null && addon === 0) return;
     tenderInput.value = (baseTender === null ? 0 : baseTender) + addon;
   }
+
+  function makeStopChip(label, onRemove){
+    var chip = document.createElement('span');
+    chip.className = 'stop-chip';
+    chip.appendChild(document.createTextNode(label));
+    var removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'stop-remove';
+    removeBtn.textContent = 'x';
+    removeBtn.addEventListener('click', onRemove);
+    chip.appendChild(removeBtn);
+    return chip;
+  }
+
+  function renderStopList(target, list, labelPrefix, removeCb){
+    target.innerHTML = '';
+    if(list.length === 0){
+      var empty = document.createElement('span');
+      empty.className = 'stop-empty';
+      empty.textContent = 'No stops added';
+      target.appendChild(empty);
+      return;
+    }
+    list.forEach(function(_, idx){
+      target.appendChild(makeStopChip(labelPrefix + ' ' + (idx + 1), function(){ removeCb(idx); }));
+    });
+  }
+
+  function renderStops(){
+    sameCityCountInput.value = String(sameStops.length);
+    outCityCountInput.value = String(outStops.length);
+    renderStopList(sameStopList, sameStops, 'Same', function(idx){
+      sameStops.splice(idx, 1);
+      renderStops();
+      tryAutoTender();
+    });
+    renderStopList(outStopList, outStops, 'Out', function(idx){
+      outStops.splice(idx, 1);
+      renderStops();
+      tryAutoTender();
+    });
+  }
+
+  function addStop(type){
+    if(type === 'same') sameStops.push(1);
+    else outStops.push(1);
+    renderStops();
+    tryAutoTender();
+  }
+
+  addSameStopBtn.addEventListener('click', function(){ addStop('same'); });
+  addOutStopBtn.addEventListener('click', function(){ addStop('out'); });
 
   locationInput.addEventListener('change', tryAutoTender);
   locationInput.addEventListener('blur', tryAutoTender);
   vehicleTypeInput.addEventListener('change', tryAutoTender);
   vehicleTypeInput.addEventListener('blur', tryAutoTender);
-  if(stopsInput){
-    stopsInput.addEventListener('change', tryAutoTender);
-    stopsInput.addEventListener('blur', tryAutoTender);
-  }
+  renderStops();
   tryAutoTender();
 })();
 </script>

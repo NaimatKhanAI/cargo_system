@@ -8,7 +8,9 @@ $dn = isset($_POST['delivery_note']) ? trim($_POST['delivery_note']) : '';
 $tn = isset($_POST['token_no']) ? trim($_POST['token_no']) : '';
 $party = isset($_POST['party']) ? trim($_POST['party']) : '';
 $l = isset($_POST['location']) ? trim($_POST['location']) : '';
-$stops = isset($_POST['stops']) ? trim($_POST['stops']) : '';
+$sameCityCount = isset($_POST['same_city_count']) ? (int)$_POST['same_city_count'] : 0;
+$outCityCount = isset($_POST['out_city_count']) ? (int)$_POST['out_city_count'] : 0;
+$stops = 'SC:' . max(0, $sameCityCount) . '|OC:' . max(0, $outCityCount);
 $t = isset($_POST['tender']) ? (int)$_POST['tender'] : 0;
 $f = isset($_POST['freight']) ? (int)$_POST['freight'] : 0;
 
