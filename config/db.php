@@ -134,6 +134,90 @@ if($oldR2ColCheck && $oldR2ColCheck->num_rows > 0){
 $conn->query("UPDATE image_processed_rates SET rate2 = COALESCE(NULLIF(rate2,''), rate_2026_01_02) WHERE rate_2026_01_02 IS NOT NULL");
 }
 
+$conn->query("CREATE TABLE IF NOT EXISTS haleeb_image_processed_rates(
+id INT AUTO_INCREMENT PRIMARY KEY,
+source_file VARCHAR(255),
+source_image_path VARCHAR(255),
+sr_no VARCHAR(50),
+station_english VARCHAR(255),
+station_urdu VARCHAR(255),
+rate1 VARCHAR(100),
+rate2 VARCHAR(100),
+extra_data TEXT,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)");
+
+$haleebSourceImgColCheck = $conn->query("SHOW COLUMNS FROM haleeb_image_processed_rates LIKE 'source_image_path'");
+if($haleebSourceImgColCheck && $haleebSourceImgColCheck->num_rows === 0){
+$conn->query("ALTER TABLE haleeb_image_processed_rates ADD source_image_path VARCHAR(255) AFTER source_file");
+}
+
+$haleebExtraDataColCheck = $conn->query("SHOW COLUMNS FROM haleeb_image_processed_rates LIKE 'extra_data'");
+if($haleebExtraDataColCheck && $haleebExtraDataColCheck->num_rows === 0){
+$conn->query("ALTER TABLE haleeb_image_processed_rates ADD extra_data TEXT AFTER rate2");
+}
+
+$haleebRate1ColCheck = $conn->query("SHOW COLUMNS FROM haleeb_image_processed_rates LIKE 'rate1'");
+if($haleebRate1ColCheck && $haleebRate1ColCheck->num_rows === 0){
+$conn->query("ALTER TABLE haleeb_image_processed_rates ADD rate1 VARCHAR(100) AFTER station_urdu");
+}
+
+$haleebRate2ColCheck = $conn->query("SHOW COLUMNS FROM haleeb_image_processed_rates LIKE 'rate2'");
+if($haleebRate2ColCheck && $haleebRate2ColCheck->num_rows === 0){
+$conn->query("ALTER TABLE haleeb_image_processed_rates ADD rate2 VARCHAR(100) AFTER rate1");
+}
+
+$conn->query("CREATE TABLE IF NOT EXISTS haleeb_rate_list_columns(
+id INT AUTO_INCREMENT PRIMARY KEY,
+column_key VARCHAR(100) UNIQUE,
+column_label VARCHAR(255),
+is_hidden TINYINT(1) DEFAULT 0,
+is_deleted TINYINT(1) DEFAULT 0,
+display_order INT DEFAULT 0,
+is_base TINYINT(1) DEFAULT 1,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)");
+
+$haleebBaseColumns = [
+    ['key' => 'custom_to', 'label' => 'To', 'order' => 1],
+    ['key' => 'custom_mazda', 'label' => 'Mazda', 'order' => 2],
+    ['key' => 'custom_14ft', 'label' => '14ft', 'order' => 3],
+    ['key' => 'custom_20ft', 'label' => '20ft', 'order' => 4],
+    ['key' => 'custom_40ft_22t', 'label' => '40ft@22T', 'order' => 5],
+    ['key' => 'custom_40ft_28t', 'label' => '40ft@28T', 'order' => 6],
+    ['key' => 'custom_40ft_32t', 'label' => '40ft@32T', 'order' => 7],
+];
+
+$haleebColumnSelect = $conn->prepare("SELECT id FROM haleeb_rate_list_columns WHERE column_key=? LIMIT 1");
+$haleebColumnUpdate = $conn->prepare("UPDATE haleeb_rate_list_columns SET column_label=?, is_hidden=0, is_deleted=0, display_order=?, is_base=1 WHERE column_key=?");
+$haleebColumnInsert = $conn->prepare("INSERT INTO haleeb_rate_list_columns(column_key, column_label, is_hidden, is_deleted, display_order, is_base) VALUES(?, ?, 0, 0, ?, 1)");
+
+foreach($haleebBaseColumns as $col){
+    $haleebColumnSelect->bind_param("s", $col['key']);
+    $haleebColumnSelect->execute();
+    $haleebColumnSelect->store_result();
+    if($haleebColumnSelect->num_rows > 0){
+        $haleebColumnUpdate->bind_param("sis", $col['label'], $col['order'], $col['key']);
+        $haleebColumnUpdate->execute();
+    } else {
+        $haleebColumnInsert->bind_param("ssi", $col['key'], $col['label'], $col['order']);
+        $haleebColumnInsert->execute();
+    }
+    $haleebColumnSelect->free_result();
+}
+
+$haleebColumnSelect->close();
+$haleebColumnUpdate->close();
+$haleebColumnInsert->close();
+
+$legacyHiddenKeys = ['sr_no', 'station_english', 'station_urdu', 'rate1', 'rate2'];
+$legacyUpdate = $conn->prepare("UPDATE haleeb_rate_list_columns SET is_hidden=1, is_base=0 WHERE column_key=?");
+foreach($legacyHiddenKeys as $legacyKey){
+    $legacyUpdate->bind_param("s", $legacyKey);
+    $legacyUpdate->execute();
+}
+$legacyUpdate->close();
+
 $conn->query("CREATE TABLE IF NOT EXISTS rate_list_columns(
 id INT AUTO_INCREMENT PRIMARY KEY,
 column_key VARCHAR(100) UNIQUE,

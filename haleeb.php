@@ -222,10 +222,12 @@ if(count($bindValues) > 0){
   <div class="nav-links">
     <a class="nav-btn primary" href="add_haleeb_bilty.php">Add Bilty</a>
     <a class="nav-btn" href="feed.php">Feed</a>
+    <a class="nav-btn" href="haleeb_ratelist.php">Rate List</a>
     <a class="nav-btn" href="dashboard.php">Dashboard</a>
     <div class="menu-wrap">
       <button class="menu-trigger" id="haleeb_menu_btn" type="button" aria-label="Menu">&#9776;</button>
       <div class="menu-pop" id="haleeb_menu_pop">
+        <a class="nav-btn" href="haleeb_ratelist.php">Rate List</a>
         <a class="nav-btn" href="export_haleeb.php">Export CSV</a>
         <div class="menu-sep"></div>
         <div class="import-row">
