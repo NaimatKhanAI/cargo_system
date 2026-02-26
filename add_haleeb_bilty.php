@@ -2,17 +2,82 @@
 include 'config/db.php';
 $today = date('Y-m-d');
 
+function normalize_lookup_token($v){
+    $v = strtolower(trim((string)$v));
+    $v = preg_replace('/\s+/', ' ', $v);
+    return $v;
+}
+
 $locationOptions = [];
+$locationSeen = [];
 $locRes = $conn->query("SELECT DISTINCT custom_to FROM haleeb_image_processed_rates WHERE custom_to IS NOT NULL AND custom_to <> '' ORDER BY custom_to ASC");
 while($locRes && $row = $locRes->fetch_assoc()){
-    $locationOptions[] = (string)$row['custom_to'];
+    $location = trim((string)$row['custom_to']);
+    if($location === '') continue;
+    $locKey = normalize_lookup_token($location);
+    if(isset($locationSeen[$locKey])) continue;
+    $locationSeen[$locKey] = true;
+    $locationOptions[] = $location;
 }
 
 $vehicleTypeOptions = [];
-$vtRes = $conn->query("SELECT column_label FROM haleeb_rate_list_columns WHERE is_deleted=0 AND column_key LIKE 'custom_%' ORDER BY display_order ASC, id ASC");
+$vehicleTypeLookup = [];
+$vehicleTypeSeen = [];
+$vehicleColumns = [];
+$vtRes = $conn->query("SELECT column_key, column_label FROM haleeb_rate_list_columns WHERE is_deleted=0 AND column_key LIKE 'custom_%' ORDER BY display_order ASC, id ASC");
 while($vtRes && $row = $vtRes->fetch_assoc()){
-    $vehicleTypeOptions[] = (string)$row['column_label'];
+    $columnKey = (string)$row['column_key'];
+    $columnLabel = trim((string)$row['column_label']);
+    if($columnKey === '') continue;
+    if($columnLabel === '') $columnLabel = $columnKey;
+
+    $labelKey = normalize_lookup_token($columnLabel);
+    if(!isset($vehicleTypeSeen[$labelKey])){
+      $vehicleTypeSeen[$labelKey] = true;
+      $vehicleTypeOptions[] = $columnLabel;
+    }
+
+    $vehicleTypeLookup[$labelKey] = $columnKey;
+    $vehicleTypeLookup[normalize_lookup_token($columnKey)] = $columnKey;
+    $vehicleColumns[] = ['column_key' => $columnKey];
 }
+
+$rateLookup = [];
+if(count($vehicleColumns) > 0){
+  $rateRes = $conn->query("SELECT id, custom_to, custom_mazda, custom_14ft, custom_20ft, custom_40ft_22t, custom_40ft_28t, custom_40ft_32t, extra_data FROM haleeb_image_processed_rates ORDER BY id DESC");
+  while($rateRes && $rateRow = $rateRes->fetch_assoc()){
+    $location = trim((string)$rateRow['custom_to']);
+    if($location === '') continue;
+
+    $locKey = normalize_lookup_token($location);
+    if(isset($rateLookup[$locKey])) continue;
+
+    $extra = [];
+    if(isset($rateRow['extra_data']) && $rateRow['extra_data'] !== ''){
+      $decoded = json_decode((string)$rateRow['extra_data'], true);
+      if(is_array($decoded)) $extra = $decoded;
+    }
+
+    $ratesForLocation = [];
+    foreach($vehicleColumns as $vehicleCol){
+      $key = $vehicleCol['column_key'];
+      $value = '';
+      if(array_key_exists($key, $rateRow)){
+        $value = (string)$rateRow[$key];
+      } elseif(isset($extra[$key])){
+        $value = (string)$extra[$key];
+      }
+      $ratesForLocation[$key] = trim($value);
+    }
+
+    $rateLookup[$locKey] = $ratesForLocation;
+  }
+}
+
+$jsonVehicleTypeLookup = json_encode($vehicleTypeLookup, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+if($jsonVehicleTypeLookup === false) $jsonVehicleTypeLookup = '{}';
+$jsonRateLookup = json_encode($rateLookup, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+if($jsonRateLookup === false) $jsonRateLookup = '{}';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -133,5 +198,49 @@ while($vtRes && $row = $vtRes->fetch_assoc()){
     </datalist>
   </div>
 </div>
+<script>
+(function(){
+  var locationInput = document.getElementById('location');
+  var vehicleTypeInput = document.getElementById('vehicle_type');
+  var tenderInput = document.getElementById('tender');
+  if(!locationInput || !vehicleTypeInput || !tenderInput) return;
+
+  var vehicleTypeLookup = <?php echo $jsonVehicleTypeLookup; ?>;
+  var rateLookup = <?php echo $jsonRateLookup; ?>;
+
+  function normalizeToken(v){
+    return String(v || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  }
+
+  function parseRateNumber(raw){
+    var cleaned = String(raw || '').replace(/,/g, '').replace(/\s+/g, '').trim();
+    if(cleaned === '') return null;
+    var n = Number(cleaned);
+    if(!Number.isFinite(n)) return null;
+    return Math.round(n);
+  }
+
+  function tryAutoTender(){
+    var locationKey = normalizeToken(locationInput.value);
+    var vehicleInputKey = normalizeToken(vehicleTypeInput.value);
+    if(locationKey === '' || vehicleInputKey === '') return;
+    if(!Object.prototype.hasOwnProperty.call(rateLookup, locationKey)) return;
+
+    var vehicleKey = vehicleTypeLookup[vehicleInputKey] || vehicleInputKey;
+    var row = rateLookup[locationKey];
+    if(!Object.prototype.hasOwnProperty.call(row, vehicleKey)) return;
+
+    var rateNumber = parseRateNumber(row[vehicleKey]);
+    if(rateNumber === null) return;
+    tenderInput.value = rateNumber;
+  }
+
+  locationInput.addEventListener('change', tryAutoTender);
+  locationInput.addEventListener('blur', tryAutoTender);
+  vehicleTypeInput.addEventListener('change', tryAutoTender);
+  vehicleTypeInput.addEventListener('blur', tryAutoTender);
+  tryAutoTender();
+})();
+</script>
 </body>
 </html>
