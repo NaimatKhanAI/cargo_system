@@ -222,7 +222,6 @@ if(count($bindValues) > 0){
   <div class="nav-links">
     <a class="nav-btn primary" href="add_haleeb_bilty.php">Add Bilty</a>
     <a class="nav-btn" href="feed.php">Feed</a>
-    <a class="nav-btn" href="haleeb_ratelist.php">Rate List</a>
     <a class="nav-btn" href="dashboard.php">Dashboard</a>
     <div class="menu-wrap">
       <button class="menu-trigger" id="haleeb_menu_btn" type="button" aria-label="Menu">&#9776;</button>
@@ -303,6 +302,7 @@ if(count($bindValues) > 0){
           <th>Token No.</th>
           <th>Party</th>
           <th>Location</th>
+          <th>Stops</th>
           <th>Tender</th>
           <th>Freight</th>
           <th>Profit</th>
@@ -321,6 +321,7 @@ if(count($bindValues) > 0){
           <td><?php echo htmlspecialchars($row['token_no']); ?></td>
           <td><?php echo htmlspecialchars($row['party']); ?></td>
           <td><?php echo htmlspecialchars($row['location']); ?></td>
+          <td><?php echo htmlspecialchars(isset($row['stops']) ? $row['stops'] : ''); ?></td>
           <td>Rs <?php echo number_format((float)$row['tender'], 2); ?></td>
           <td>Rs <?php echo number_format((float)$row['freight'], 2); ?></td>
           <td class="td-profit <?php echo $profit < 0 ? 'neg' : ''; ?>">

@@ -156,9 +156,7 @@ $rows = $conn->query("SELECT id, source_file, source_image_path, sr_no, station_
     <h1>Rates</h1>
   </div>
   <div class="nav-links">
-    <a class="nav-btn primary" href="add_haleeb_bilty.php">Add Bilty</a>
     <a class="nav-btn" href="haleeb.php">Haleeb</a>
-    <a class="nav-btn" href="feed.php">Feed</a>
     <a class="nav-btn" href="dashboard.php">Dashboard</a>
     <div class="menu-wrap">
       <button type="button" class="nav-btn menu-toggle" id="menu_toggle" aria-label="Menu" aria-expanded="false">&#9776;</button>

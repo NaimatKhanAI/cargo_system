@@ -188,7 +188,7 @@ if(count($allRows) === 0){
     exit();
 }
 
-$stmt = $conn->prepare("INSERT INTO haleeb_bilty(date, vehicle, vehicle_type, delivery_note, token_no, party, location, freight, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+$stmt = $conn->prepare("INSERT INTO haleeb_bilty(date, vehicle, vehicle_type, delivery_note, token_no, party, location, stops, freight, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
 
 foreach($allRows as $data){
     $lineNo++;
@@ -243,6 +243,11 @@ foreach($allRows as $data){
         if(isset($headerMap['location'])) $location = $data[$headerMap['location']] ?? '';
         elseif(isset($headerMap['city'])) $location = $data[$headerMap['city']] ?? '';
 
+        $stops = '';
+        if(isset($headerMap['stops'])) $stops = $data[$headerMap['stops']] ?? '';
+        elseif(isset($headerMap['stop'])) $stops = $data[$headerMap['stop']] ?? '';
+        elseif(isset($headerMap['stop_type'])) $stops = $data[$headerMap['stop_type']] ?? '';
+
         $freight = parse_csv_number(isset($headerMap['freight']) ? ($data[$headerMap['freight']] ?? '') : '');
         $tender = null;
         if(isset($headerMap['tender'])) $tender = parse_csv_number($data[$headerMap['tender']] ?? '');
@@ -270,6 +275,7 @@ foreach($allRows as $data){
         $tokenNo = $data[$offset + 4] ?? '';
         $party = $data[$offset + 5] ?? '';
         $location = $data[$offset + 6] ?? '';
+        $stops = '';
         $freight = parse_csv_number($data[$offset + 7] ?? '');
         $tender = parse_csv_number($data[$offset + 8] ?? '');
         $profit = parse_csv_number($data[$offset + 9] ?? '');
@@ -291,7 +297,7 @@ foreach($allRows as $data){
         $profit = $tender - $freight;
     }
 
-    $stmt->bind_param("sssssssiii", $date, $vehicle, $vehicleType, $deliveryNote, $tokenNo, $party, $location, $freight, $tender, $profit);
+    $stmt->bind_param("ssssssssiii", $date, $vehicle, $vehicleType, $deliveryNote, $tokenNo, $party, $location, $stops, $freight, $tender, $profit);
     if($stmt->execute()){
         $inserted++;
     } else {

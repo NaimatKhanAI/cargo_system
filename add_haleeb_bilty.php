@@ -174,6 +174,10 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
           <input id="location" name="location" placeholder="Location" list="location_list" required>
         </div>
         <div class="field">
+          <label for="stops">Stops</label>
+          <input id="stops" name="stops" placeholder="same city / out city" list="stops_list" required>
+        </div>
+        <div class="field">
           <label for="tender">Tender</label>
           <input id="tender" type="number" name="tender" placeholder="0" min="0" required>
         </div>
@@ -196,13 +200,23 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
         <option value="<?php echo htmlspecialchars($opt); ?>">
       <?php endforeach; ?>
     </datalist>
+    <datalist id="stops_list"></datalist>
   </div>
 </div>
 <script>
 (function(){
+  var stopsInput = document.getElementById('stops');
+  var stopsList = document.getElementById('stops_list');
   var locationInput = document.getElementById('location');
   var vehicleTypeInput = document.getElementById('vehicle_type');
   var tenderInput = document.getElementById('tender');
+  if(stopsInput && stopsList && stopsList.options.length === 0){
+    ['same city', 'out city'].forEach(function(v){
+      var opt = document.createElement('option');
+      opt.value = v;
+      stopsList.appendChild(opt);
+    });
+  }
   if(!locationInput || !vehicleTypeInput || !tenderInput) return;
 
   var vehicleTypeLookup = <?php echo $jsonVehicleTypeLookup; ?>;

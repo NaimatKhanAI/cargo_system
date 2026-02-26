@@ -17,11 +17,12 @@ if(isset($_POST['update'])){
     $tn = isset($_POST['token_no']) ? trim($_POST['token_no']) : '';
     $party = isset($_POST['party']) ? trim($_POST['party']) : '';
     $l  = isset($_POST['location']) ? trim($_POST['location']) : '';
+    $stops = isset($_POST['stops']) ? trim($_POST['stops']) : '';
     $t  = isset($_POST['tender']) ? (int)$_POST['tender'] : 0;
     $f  = isset($_POST['freight']) ? (int)$_POST['freight'] : 0;
     $p  = $t - $f;
-    $stmt = $conn->prepare("UPDATE haleeb_bilty SET date=?, vehicle=?, vehicle_type=?, delivery_note=?, token_no=?, party=?, location=?, freight=?, tender=?, profit=? WHERE id=?");
-    $stmt->bind_param("sssssssiiii", $d, $v, $vt, $dn, $tn, $party, $l, $f, $t, $p, $id);
+    $stmt = $conn->prepare("UPDATE haleeb_bilty SET date=?, vehicle=?, vehicle_type=?, delivery_note=?, token_no=?, party=?, location=?, stops=?, freight=?, tender=?, profit=? WHERE id=?");
+    $stmt->bind_param("ssssssssiiii", $d, $v, $vt, $dn, $tn, $party, $l, $stops, $f, $t, $p, $id);
     $stmt->execute(); $stmt->close();
     header("location:haleeb.php"); exit();
 }
@@ -211,6 +212,10 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
           <input id="location" name="location" value="<?php echo htmlspecialchars($row['location']); ?>" list="location_list" required>
         </div>
         <div class="field">
+          <label for="stops">Stops</label>
+          <input id="stops" name="stops" value="<?php echo htmlspecialchars(isset($row['stops']) ? $row['stops'] : ''); ?>" list="stops_list" placeholder="same city / out city" required>
+        </div>
+        <div class="field">
           <label for="tender">Tender</label>
           <input id="tender" type="number" name="tender" value="<?php echo htmlspecialchars($row['tender']); ?>" min="0" required>
         </div>
@@ -235,13 +240,23 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
         <option value="<?php echo htmlspecialchars($opt); ?>">
       <?php endforeach; ?>
     </datalist>
+    <datalist id="stops_list"></datalist>
   </div>
 </div>
 <script>
 (function(){
+  var stopsInput = document.getElementById('stops');
+  var stopsList = document.getElementById('stops_list');
   var locationInput = document.getElementById('location');
   var vehicleTypeInput = document.getElementById('vehicle_type');
   var tenderInput = document.getElementById('tender');
+  if(stopsInput && stopsList && stopsList.options.length === 0){
+    ['same city', 'out city'].forEach(function(v){
+      var opt = document.createElement('option');
+      opt.value = v;
+      stopsList.appendChild(opt);
+    });
+  }
   if(!locationInput || !vehicleTypeInput || !tenderInput) return;
 
   var vehicleTypeLookup = <?php echo $jsonVehicleTypeLookup; ?>;

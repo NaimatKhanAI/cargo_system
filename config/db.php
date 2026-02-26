@@ -38,11 +38,17 @@ delivery_note VARCHAR(100),
 token_no VARCHAR(50),
 party VARCHAR(100),
 location VARCHAR(100),
+stops VARCHAR(50) DEFAULT '',
 freight INT,
 tender INT,
 profit INT,
 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )");
+
+$haleebStopsColCheck = $conn->query("SHOW COLUMNS FROM haleeb_bilty LIKE 'stops'");
+if($haleebStopsColCheck && $haleebStopsColCheck->num_rows === 0){
+$conn->query("ALTER TABLE haleeb_bilty ADD stops VARCHAR(50) DEFAULT '' AFTER location");
+}
 
 $colCheck = $conn->query("SHOW COLUMNS FROM bilty LIKE 'party'");
 if($colCheck && $colCheck->num_rows === 0){
