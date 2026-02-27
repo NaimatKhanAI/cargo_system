@@ -71,6 +71,7 @@ $pay_message = "";
 if (isset($_GET['pay'])) {
     if ($_GET['pay'] === 'success') $pay_message = "Payment posted successfully.";
     elseif ($_GET['pay'] === 'error') $pay_message = "Payment failed. Please try again.";
+    elseif ($_GET['pay'] === 'requested') $pay_message = "Payment request sent to super admin for approval.";
 }
 
 $clear_message = "";

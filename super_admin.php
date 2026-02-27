@@ -14,6 +14,127 @@ function bool_post_local($key){
     return isset($_POST[$key]) ? 1 : 0;
 }
 
+function decode_payload_local($raw){
+    if(trim((string)$raw) === '') return [];
+    $decoded = json_decode((string)$raw, true);
+    if(!is_array($decoded)) return [];
+    return $decoded;
+}
+
+function value_text_local($v){
+    if($v === null) return '(empty)';
+    $t = trim((string)$v);
+    return $t === '' ? '(empty)' : $t;
+}
+
+function build_change_lines_local($conn, $requestRow){
+    $actionType = isset($requestRow['action_type']) ? (string)$requestRow['action_type'] : '';
+    $entityId = isset($requestRow['entity_id']) ? (int)$requestRow['entity_id'] : 0;
+    $payload = decode_payload_local(isset($requestRow['payload']) ? (string)$requestRow['payload'] : '');
+    $lines = [];
+
+    if($actionType === 'feed_update'){
+        $row = null;
+        if($entityId > 0){
+            $stmt = $conn->prepare("SELECT sr_no, date, vehicle, bilty_no, party, location, bags, freight, tender FROM bilty WHERE id=? LIMIT 1");
+            $stmt->bind_param("i", $entityId);
+            $stmt->execute();
+            $row = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+        }
+        $map = ['sr_no'=>'SR No','date'=>'Date','vehicle'=>'Vehicle','bilty_no'=>'Bilty No','party'=>'Party','location'=>'Location','bags'=>'Bags','freight'=>'Freight','tender'=>'Tender'];
+        foreach($map as $k => $label){
+            if(!array_key_exists($k, $payload)) continue;
+            $old = $row && isset($row[$k]) ? $row[$k] : '';
+            $new = $payload[$k];
+            if((string)$old !== (string)$new){
+                $lines[] = $label . ': ' . value_text_local($old) . ' -> ' . value_text_local($new);
+            }
+        }
+    } elseif($actionType === 'haleeb_update'){
+        $row = null;
+        if($entityId > 0){
+            $stmt = $conn->prepare("SELECT date, vehicle, vehicle_type, delivery_note, token_no, party, location, stops, freight, tender FROM haleeb_bilty WHERE id=? LIMIT 1");
+            $stmt->bind_param("i", $entityId);
+            $stmt->execute();
+            $row = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+        }
+        $map = ['date'=>'Date','vehicle'=>'Vehicle','vehicle_type'=>'Vehicle Type','delivery_note'=>'Delivery Note','token_no'=>'Token No','party'=>'Party','location'=>'Location','stops'=>'Stops','freight'=>'Freight','tender'=>'Tender'];
+        foreach($map as $k => $label){
+            if(!array_key_exists($k, $payload)) continue;
+            $old = $row && isset($row[$k]) ? $row[$k] : '';
+            $new = $payload[$k];
+            if((string)$old !== (string)$new){
+                $lines[] = $label . ': ' . value_text_local($old) . ' -> ' . value_text_local($new);
+            }
+        }
+    } elseif($actionType === 'account_update'){
+        $row = null;
+        if($entityId > 0){
+            $stmt = $conn->prepare("SELECT entry_date, category, entry_type, amount_mode, amount, note FROM account_entries WHERE id=? LIMIT 1");
+            $stmt->bind_param("i", $entityId);
+            $stmt->execute();
+            $row = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+        }
+        $map = ['entry_date'=>'Date','category'=>'Category','entry_type'=>'Type','amount_mode'=>'Mode','amount'=>'Amount','note'=>'Note'];
+        foreach($map as $k => $label){
+            if(!array_key_exists($k, $payload)) continue;
+            $old = $row && isset($row[$k]) ? $row[$k] : '';
+            $new = $payload[$k];
+            if((string)$old !== (string)$new){
+                $lines[] = $label . ': ' . value_text_local($old) . ' -> ' . value_text_local($new);
+            }
+        }
+    } elseif($actionType === 'feed_delete'){
+        $stmt = $conn->prepare("SELECT bilty_no, vehicle, party, location FROM bilty WHERE id=? LIMIT 1");
+        $stmt->bind_param("i", $entityId);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        if($row){
+            $lines[] = 'Delete Feed Bilty No: ' . value_text_local($row['bilty_no']);
+            $lines[] = 'Vehicle: ' . value_text_local($row['vehicle']) . ', Party: ' . value_text_local($row['party']) . ', Location: ' . value_text_local($row['location']);
+        } else {
+            $lines[] = 'Delete Feed Bilty ID: ' . $entityId;
+        }
+    } elseif($actionType === 'haleeb_delete'){
+        $stmt = $conn->prepare("SELECT token_no, vehicle, party, location FROM haleeb_bilty WHERE id=? LIMIT 1");
+        $stmt->bind_param("i", $entityId);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        if($row){
+            $lines[] = 'Delete Haleeb Token: ' . value_text_local($row['token_no']);
+            $lines[] = 'Vehicle: ' . value_text_local($row['vehicle']) . ', Party: ' . value_text_local($row['party']) . ', Location: ' . value_text_local($row['location']);
+        } else {
+            $lines[] = 'Delete Haleeb Bilty ID: ' . $entityId;
+        }
+    } elseif($actionType === 'account_delete'){
+        $stmt = $conn->prepare("SELECT entry_date, category, entry_type, amount FROM account_entries WHERE id=? LIMIT 1");
+        $stmt->bind_param("i", $entityId);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        if($row){
+            $lines[] = 'Delete Entry: ' . value_text_local($row['entry_date']) . ' | ' . value_text_local($row['category']) . ' | ' . value_text_local($row['entry_type']) . ' | Rs ' . value_text_local($row['amount']);
+        } else {
+            $lines[] = 'Delete Account Entry ID: ' . $entityId;
+        }
+    } elseif($actionType === 'feed_pay' || $actionType === 'haleeb_pay'){
+        $lines[] = 'Payment Date: ' . value_text_local($payload['entry_date'] ?? '');
+        $lines[] = 'Mode: ' . value_text_local($payload['amount_mode'] ?? '') . ', Category: ' . value_text_local($payload['category'] ?? '');
+        $lines[] = 'Amount: Rs ' . value_text_local($payload['amount'] ?? '');
+        $lines[] = 'Note: ' . value_text_local($payload['note'] ?? '');
+    }
+
+    if(count($lines) === 0){
+        $lines[] = 'No specific change diff available.';
+    }
+    return $lines;
+}
+
 if(isset($_POST['create_user'])){
     $username = isset($_POST['username']) ? trim((string)$_POST['username']) : '';
     $password = isset($_POST['password']) ? trim((string)$_POST['password']) : '';
@@ -53,6 +174,7 @@ if(isset($_POST['create_user'])){
 
 if(isset($_POST['update_user'])){
     $userId = isset($_POST['user_id']) ? (int)$_POST['user_id'] : 0;
+    $selfId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
     $role = isset($_POST['role']) ? trim((string)$_POST['role']) : 'sub_admin';
     $isActive = bool_post_local('is_active');
     $accessFeed = bool_post_local('can_access_feed');
@@ -65,7 +187,15 @@ if(isset($_POST['update_user'])){
     } elseif(!in_array($role, ['super_admin', 'sub_admin'], true)){
         $err = 'Invalid role.';
     } else {
-        if($role === 'super_admin'){
+        if($userId === $selfId){
+            // Super admin cannot reduce or alter own access.
+            $role = 'super_admin';
+            $isActive = 1;
+            $accessFeed = 1;
+            $accessHaleeb = 1;
+            $accessAccount = 1;
+            $canManageUsers = 1;
+        } elseif($role === 'super_admin'){
             $accessFeed = 1; $accessHaleeb = 1; $accessAccount = 1;
             $canManageUsers = 1;
         } else {
@@ -97,7 +227,7 @@ if(isset($_POST['update_user'])){
                 $pwd->execute();
                 $pwd->close();
             }
-            $msg = 'User updated.';
+            $msg = $userId === $selfId ? 'Password updated. Own access remains fixed as super admin.' : 'User updated.';
         }
     }
 }
@@ -215,6 +345,12 @@ $pendingRequests = fetch_pending_change_requests_local($conn);
   .pending{ color:var(--accent); border-color:rgba(240,192,64,0.25); }
   .approve{ color:var(--green); border-color:rgba(34,197,94,0.25); }
   .reject{ color:var(--red); border-color:rgba(239,68,68,0.25); }
+  details.payload{ cursor:pointer; }
+  .payload-box{ margin-top:6px; border:1px solid var(--border); background:var(--bg); padding:6px; max-width:360px; }
+  .payload-line{ font-size:11px; color:var(--muted); margin-bottom:4px; word-break:break-word; }
+  .payload-line strong{ color:var(--text); }
+  .change-list{ margin:0; padding-left:16px; }
+  .change-list li{ margin-bottom:4px; color:var(--text); font-size:11px; }
 </style>
 </head>
 <body>
@@ -257,29 +393,34 @@ $pendingRequests = fetch_pending_change_requests_local($conn);
       </thead>
       <tbody>
         <?php foreach($users as $u): ?>
+          <?php $isSelf = ((int)$u['id'] === (int)($_SESSION['user_id'] ?? 0)); ?>
           <tr>
             <form method="post">
               <td>
                 <?php echo htmlspecialchars($u['username']); ?>
-                <div class="mini">ID: <?php echo (int)$u['id']; ?> | <?php echo htmlspecialchars((string)$u['created_at']); ?></div>
+                <div class="mini">ID: <?php echo (int)$u['id']; ?> | <?php echo htmlspecialchars((string)$u['created_at']); ?><?php echo $isSelf ? ' | Self' : ''; ?></div>
               </td>
               <td>
-                <select name="role">
+                <select name="role" <?php echo $isSelf ? 'disabled' : ''; ?>>
                   <option value="sub_admin" <?php echo $u['role'] === 'sub_admin' ? 'selected' : ''; ?>>sub_admin</option>
                   <option value="super_admin" <?php echo $u['role'] === 'super_admin' ? 'selected' : ''; ?>>super_admin</option>
                 </select>
               </td>
-              <td><label class="chk"><input type="checkbox" name="is_active" <?php echo (int)$u['is_active'] === 1 ? 'checked' : ''; ?>></label></td>
-              <td><label class="chk"><input type="checkbox" name="can_access_feed" <?php echo (int)$u['can_access_feed'] === 1 ? 'checked' : ''; ?>></label></td>
-              <td><label class="chk"><input type="checkbox" name="can_access_haleeb" <?php echo (int)$u['can_access_haleeb'] === 1 ? 'checked' : ''; ?>></label></td>
-              <td><label class="chk"><input type="checkbox" name="can_access_account" <?php echo (int)$u['can_access_account'] === 1 ? 'checked' : ''; ?>></label></td>
+              <td><label class="chk"><input type="checkbox" name="is_active" <?php echo (int)$u['is_active'] === 1 ? 'checked' : ''; ?> <?php echo $isSelf ? 'disabled' : ''; ?>></label></td>
+              <td><label class="chk"><input type="checkbox" name="can_access_feed" <?php echo (int)$u['can_access_feed'] === 1 ? 'checked' : ''; ?> <?php echo $isSelf ? 'disabled' : ''; ?>></label></td>
+              <td><label class="chk"><input type="checkbox" name="can_access_haleeb" <?php echo (int)$u['can_access_haleeb'] === 1 ? 'checked' : ''; ?> <?php echo $isSelf ? 'disabled' : ''; ?>></label></td>
+              <td><label class="chk"><input type="checkbox" name="can_access_account" <?php echo (int)$u['can_access_account'] === 1 ? 'checked' : ''; ?> <?php echo $isSelf ? 'disabled' : ''; ?>></label></td>
               <td><input type="password" name="new_password" placeholder="keep same"></td>
               <td>
                 <input type="hidden" name="user_id" value="<?php echo (int)$u['id']; ?>">
                 <button class="nav-btn" type="submit" name="update_user">Update</button>
               </td>
               <td>
-                <button class="nav-btn" type="submit" name="delete_user" onclick="return confirm('Delete user?')">Delete</button>
+                <?php if(!$isSelf): ?>
+                  <button class="nav-btn" type="submit" name="delete_user" onclick="return confirm('Delete user?')">Delete</button>
+                <?php else: ?>
+                  <span class="mini">Not allowed</span>
+                <?php endif; ?>
               </td>
             </form>
           </tr>
@@ -292,7 +433,7 @@ $pendingRequests = fetch_pending_change_requests_local($conn);
     <h2>Pending Change Requests (<?php echo count($pendingRequests); ?>)</h2>
     <table>
       <thead>
-        <tr><th>ID</th><th>By</th><th>Module</th><th>Action</th><th>Entity</th><th>Payload</th><th>Decision</th></tr>
+        <tr><th>ID</th><th>By</th><th>Module</th><th>Action</th><th>Entity</th><th>Requested Change</th><th>Decision</th></tr>
       </thead>
       <tbody>
       <?php if(count($pendingRequests) === 0): ?>
@@ -305,7 +446,36 @@ $pendingRequests = fetch_pending_change_requests_local($conn);
             <td><span class="badge pending"><?php echo htmlspecialchars((string)$r['module_key']); ?></span></td>
             <td><?php echo htmlspecialchars((string)$r['action_type']); ?></td>
             <td><?php echo htmlspecialchars((string)$r['entity_table']); ?> #<?php echo (int)$r['entity_id']; ?></td>
-            <td><textarea readonly><?php echo htmlspecialchars((string)$r['payload']); ?></textarea></td>
+            <td>
+              <?php $changeLines = build_change_lines_local($conn, $r); ?>
+              <ul class="change-list">
+                <?php foreach($changeLines as $line): ?>
+                  <li><?php echo htmlspecialchars((string)$line); ?></li>
+                <?php endforeach; ?>
+              </ul>
+              <?php $decodedPayload = decode_payload_local((string)$r['payload']); ?>
+              <details class="payload">
+                <summary>Raw Payload</summary>
+                <div class="payload-box">
+                  <?php if(count($decodedPayload) === 0): ?>
+                    <div class="payload-line">No payload details.</div>
+                  <?php else: ?>
+                    <?php foreach($decodedPayload as $pk => $pv): ?>
+                      <div class="payload-line">
+                        <strong><?php echo htmlspecialchars((string)$pk); ?></strong>:
+                        <?php
+                          if(is_array($pv)){
+                            echo htmlspecialchars(json_encode($pv, JSON_UNESCAPED_UNICODE));
+                          } else {
+                            echo htmlspecialchars((string)$pv);
+                          }
+                        ?>
+                      </div>
+                    <?php endforeach; ?>
+                  <?php endif; ?>
+                </div>
+              </details>
+            </td>
             <td>
               <form method="post">
                 <input type="hidden" name="request_id" value="<?php echo (int)$r['id']; ?>">

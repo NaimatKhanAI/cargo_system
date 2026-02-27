@@ -101,6 +101,80 @@ function apply_haleeb_delete_local($conn, $id){
     return $ok;
 }
 
+function apply_feed_pay_local($conn, $entityId, $payload, &$error){
+    $error = '';
+    if($entityId <= 0){ $error = 'Invalid feed entity id.'; return false; }
+
+    $biltyStmt = $conn->prepare("SELECT bilty_no, COALESCE(original_freight, freight) AS freight_total FROM bilty WHERE id=? LIMIT 1");
+    $biltyStmt->bind_param("i", $entityId);
+    $biltyStmt->execute();
+    $biltyRow = $biltyStmt->get_result()->fetch_assoc();
+    $biltyStmt->close();
+    if(!$biltyRow){ $error = 'Linked feed bilty not found.'; return false; }
+
+    $entryDate = isset($payload['entry_date']) ? (string)$payload['entry_date'] : date('Y-m-d');
+    $category = isset($payload['category']) ? trim((string)$payload['category']) : 'feed';
+    $amountMode = isset($payload['amount_mode']) ? trim((string)$payload['amount_mode']) : 'account';
+    $amount = isset($payload['amount']) ? (float)$payload['amount'] : 0;
+    $note = isset($payload['note']) ? (string)$payload['note'] : '';
+    if($amount <= 0){ $error = 'Invalid payment amount.'; return false; }
+    if(!in_array($amountMode, ['cash', 'account'], true)){ $error = 'Invalid payment mode.'; return false; }
+
+    $paidStmt = $conn->prepare("SELECT COALESCE(SUM(amount),0) AS paid_total FROM account_entries WHERE bilty_id=? AND entry_type='debit'");
+    $paidStmt->bind_param("i", $entityId);
+    $paidStmt->execute();
+    $paidRow = $paidStmt->get_result()->fetch_assoc();
+    $paidStmt->close();
+    $remaining = max(0, (float)$biltyRow['freight_total'] - (float)($paidRow['paid_total'] ?? 0));
+    if($amount > $remaining){
+        $error = 'Requested payment exceeds current remaining freight.';
+        return false;
+    }
+
+    $ins = $conn->prepare("INSERT INTO account_entries(entry_date, category, entry_type, amount_mode, bilty_id, amount, note) VALUES(?, ?, 'debit', ?, ?, ?, ?)");
+    $ins->bind_param("sssids", $entryDate, $category, $amountMode, $entityId, $amount, $note);
+    $ok = $ins->execute();
+    $ins->close();
+    return (bool)$ok;
+}
+
+function apply_haleeb_pay_local($conn, $entityId, $payload, &$error){
+    $error = '';
+    if($entityId <= 0){ $error = 'Invalid haleeb entity id.'; return false; }
+
+    $biltyStmt = $conn->prepare("SELECT token_no, freight FROM haleeb_bilty WHERE id=? LIMIT 1");
+    $biltyStmt->bind_param("i", $entityId);
+    $biltyStmt->execute();
+    $biltyRow = $biltyStmt->get_result()->fetch_assoc();
+    $biltyStmt->close();
+    if(!$biltyRow){ $error = 'Linked haleeb bilty not found.'; return false; }
+
+    $entryDate = isset($payload['entry_date']) ? (string)$payload['entry_date'] : date('Y-m-d');
+    $category = isset($payload['category']) ? trim((string)$payload['category']) : 'haleeb';
+    $amountMode = isset($payload['amount_mode']) ? trim((string)$payload['amount_mode']) : 'account';
+    $amount = isset($payload['amount']) ? (float)$payload['amount'] : 0;
+    $note = isset($payload['note']) ? (string)$payload['note'] : '';
+    if($amount <= 0){ $error = 'Invalid payment amount.'; return false; }
+    if(!in_array($amountMode, ['cash', 'account'], true)){ $error = 'Invalid payment mode.'; return false; }
+
+    $paidStmt = $conn->prepare("SELECT COALESCE(SUM(amount),0) AS paid_total FROM account_entries WHERE haleeb_bilty_id=? AND entry_type='debit'");
+    $paidStmt->bind_param("i", $entityId);
+    $paidStmt->execute();
+    $paidRow = $paidStmt->get_result()->fetch_assoc();
+    $paidStmt->close();
+    $remaining = max(0, (float)$biltyRow['freight'] - (float)($paidRow['paid_total'] ?? 0));
+    if($amount > $remaining){
+        $error = 'Requested payment exceeds current remaining freight.';
+        return false;
+    }
+
+    $ins = $conn->prepare("INSERT INTO account_entries(entry_date, category, entry_type, amount_mode, bilty_id, haleeb_bilty_id, amount, note) VALUES(?, ?, 'debit', ?, NULL, ?, ?, ?)");
+    $ins->bind_param("sssids", $entryDate, $category, $amountMode, $entityId, $amount, $note);
+    $ok = $ins->execute();
+    $ins->close();
+    return (bool)$ok;
+}
+
 function apply_change_request_local($conn, $requestRow, &$error){
     $error = '';
     $payload = [];
@@ -184,6 +258,14 @@ function apply_change_request_local($conn, $requestRow, &$error){
         $ok = $stmt->affected_rows > 0;
         $stmt->close();
         return $ok;
+    }
+
+    if($actionType === 'feed_pay'){
+        return apply_feed_pay_local($conn, $entityId, $payload, $error);
+    }
+
+    if($actionType === 'haleeb_pay'){
+        return apply_haleeb_pay_local($conn, $entityId, $payload, $error);
     }
 
     $error = 'Unsupported action type.';

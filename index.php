@@ -5,7 +5,11 @@ require_once 'config/auth.php';
 $error = "";
 
 if(auth_sync_session_user($conn)){
-    header("location:dashboard.php");
+    if(auth_is_super_admin()){
+        header("location:super_admin.php");
+    } else {
+        header("location:dashboard.php");
+    }
     exit();
 }
 
@@ -27,7 +31,11 @@ if(isset($_POST['login'])){
             auth_store_session_local($userRow);
             unset($_SESSION['login_verified']);
             unset($_SESSION['pending_user']);
-            header("location:dashboard.php");
+            if((string)$userRow['role'] === 'super_admin'){
+                header("location:super_admin.php");
+            } else {
+                header("location:dashboard.php");
+            }
             exit();
             }
         } else {

@@ -2,6 +2,7 @@
 session_start();
 include 'config/db.php';
 require_once 'config/auth.php';
+require_once 'config/change_requests.php';
 auth_require_login($conn);
 auth_require_module_access('haleeb');
 
@@ -40,14 +41,30 @@ if(isset($_POST['pay_now'])){
     else {
         $baseNote = "Haleeb - Tok(" . $row['token_no'] . ") - ";
         $note = $formNote !== '' ? ($baseNote . " - " . $formNote) : $baseNote;
-        $conn->begin_transaction();
-        try {
-            $ins = $conn->prepare("INSERT INTO account_entries(entry_date, category, entry_type, amount_mode, bilty_id, haleeb_bilty_id, amount, note) VALUES(?, ?, 'debit', ?, NULL, ?, ?, ?)");
-            $ins->bind_param("sssids", $formDate, $formCategory, $formAmountMode, $id, $payAmount, $note);
-            $ins->execute(); $ins->close();
-            $conn->commit();
-            header("location:haleeb.php?pay=success"); exit();
-        } catch (Throwable $e) { $conn->rollback(); $err = 'Payment failed. Please try again.'; }
+        if(!auth_can_direct_modify()){
+            $payload = [
+                'entry_date' => $formDate,
+                'category' => $formCategory,
+                'amount_mode' => $formAmountMode,
+                'amount' => $payAmount,
+                'note' => $note
+            ];
+            $requestId = create_change_request_local($conn, 'haleeb', 'haleeb_bilty', $id, 'haleeb_pay', $payload, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0);
+            if($requestId > 0){
+                header("location:haleeb.php?pay=requested");
+                exit();
+            }
+            $err = 'Payment request could not be sent.';
+        } else {
+            $conn->begin_transaction();
+            try {
+                $ins = $conn->prepare("INSERT INTO account_entries(entry_date, category, entry_type, amount_mode, bilty_id, haleeb_bilty_id, amount, note) VALUES(?, ?, 'debit', ?, NULL, ?, ?, ?)");
+                $ins->bind_param("sssids", $formDate, $formCategory, $formAmountMode, $id, $payAmount, $note);
+                $ins->execute(); $ins->close();
+                $conn->commit();
+                header("location:haleeb.php?pay=success"); exit();
+            } catch (Throwable $e) { $conn->rollback(); $err = 'Payment failed. Please try again.'; }
+        }
     }
 }
 
