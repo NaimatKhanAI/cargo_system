@@ -1,2 +1,4 @@
 .env
 output/*.csv
+output/import_logs/*.csv
+output/source_images/*

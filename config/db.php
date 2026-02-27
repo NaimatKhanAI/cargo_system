@@ -1,12 +1,40 @@
 <?php
-$host="localhost";
-$user="root";
-$pass="";
-$db="cargo_system";
+require_once __DIR__ . '/env.php';
+load_env_file(dirname(__DIR__) . '/.env');
 
-$conn=new mysqli($host,$user,$pass);
-$conn->query("CREATE DATABASE IF NOT EXISTS $db");
-$conn->select_db($db);
+$host = env_get('DB_HOST', 'localhost');
+$user = env_get('DB_USER', 'root');
+$pass = env_get('DB_PASS', '');
+$db = env_get('DB_NAME', 'cargo_system');
+$port = (int)env_get('DB_PORT', '3306');
+$autoCreateDb = env_get('DB_AUTO_CREATE', '0') === '1';
+
+$db = preg_replace('/[^a-zA-Z0-9_]/', '', (string)$db);
+if($db === ''){
+http_response_code(500);
+exit('Invalid DB_NAME configuration.');
+}
+
+if($autoCreateDb){
+$conn = @new mysqli($host, $user, $pass, '', $port);
+if($conn->connect_errno){
+http_response_code(500);
+exit('Database connection failed. Check DB_HOST, DB_PORT, DB_USER and DB_PASS.');
+}
+$conn->query("CREATE DATABASE IF NOT EXISTS `$db`");
+if(!$conn->select_db($db)){
+http_response_code(500);
+exit('Database selection failed. Create DB manually or disable DB_AUTO_CREATE.');
+}
+} else {
+$conn = @new mysqli($host, $user, $pass, $db, $port);
+if($conn->connect_errno){
+http_response_code(500);
+exit('Database connection failed. Check DB_HOST, DB_PORT, DB_USER, DB_PASS and DB_NAME.');
+}
+}
+
+$conn->set_charset('utf8mb4');
 
 $conn->query("CREATE TABLE IF NOT EXISTS users(
 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -274,8 +302,19 @@ GROUP BY bilty_id
 SET b.original_freight = b.freight + COALESCE(p.paid_total, 0)
 WHERE b.original_freight IS NULL");
 
-$check=$conn->query("SELECT * FROM users WHERE username='admin'");
-if($check->num_rows==0){
-$conn->query("INSERT INTO users(username,password) VALUES('admin','1234')");
+$seedAdminUser = trim((string)env_get('SEED_ADMIN_USER', ''));
+$seedAdminPass = trim((string)env_get('SEED_ADMIN_PASS', ''));
+if($seedAdminUser !== '' && $seedAdminPass !== ''){
+$check = $conn->prepare("SELECT id FROM users WHERE username=? LIMIT 1");
+$check->bind_param("s", $seedAdminUser);
+$check->execute();
+$exists = $check->get_result()->num_rows > 0;
+$check->close();
+if(!$exists){
+$ins = $conn->prepare("INSERT INTO users(username,password) VALUES(?,?)");
+$ins->bind_param("ss", $seedAdminUser, $seedAdminPass);
+$ins->execute();
+$ins->close();
+}
 }
 ?>

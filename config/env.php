@@ -1,4 +1,27 @@
 <?php
+if(!function_exists('env_str_starts_with')){
+function env_str_starts_with($haystack, $needle){
+if($needle === ''){
+return true;
+}
+return substr((string)$haystack, 0, strlen((string)$needle)) === (string)$needle;
+}
+}
+
+if(!function_exists('env_str_ends_with')){
+function env_str_ends_with($haystack, $needle){
+if($needle === ''){
+return true;
+}
+$haystack = (string)$haystack;
+$needle = (string)$needle;
+if(strlen($needle) > strlen($haystack)){
+return false;
+}
+return substr($haystack, -strlen($needle)) === $needle;
+}
+}
+
 function load_env_file($path){
 if(!file_exists($path) || !is_readable($path)){
 return;
@@ -26,7 +49,7 @@ if($name === ''){
 continue;
 }
 
-if((str_starts_with($value, '"') && str_ends_with($value, '"')) || (str_starts_with($value, "'") && str_ends_with($value, "'"))){
+if((env_str_starts_with($value, '"') && env_str_ends_with($value, '"')) || (env_str_starts_with($value, "'") && env_str_ends_with($value, "'"))){
 $value = substr($value, 1, -1);
 }
 
@@ -45,4 +68,3 @@ return $default;
 }
 return $val;
 }
-

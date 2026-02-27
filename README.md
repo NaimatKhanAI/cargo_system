@@ -23,10 +23,12 @@ Final path ye honi chahiye:
 
 `C:\xampp\htdocs\cargo_system`
 
-## STEP 3 - Database auto create (no manual work)
+## STEP 3 - Database setup
 
-Is project me auto DB create hai.
-Aapko database manually banane ki zarurat nahi hai.
+### Local (XAMPP)
+
+- phpMyAdmin me `cargo_system` database bana lo, **ya**
+- `.env` me `DB_AUTO_CREATE=1` rakh do (local only).
 
 ## STEP 4 - Project open karo
 
@@ -36,8 +38,11 @@ Browser me open karo:
 
 ## LOGIN
 
-- username: `admin`
-- password: `1234`
+- Is app me login currently plain-text hai.
+- Default admin auto-create tab hoga jab `.env` me ye set karo:
+  - `SEED_ADMIN_USER=admin`
+  - `SEED_ADMIN_PASS=your-password`
+- First login ke baad ye values `.env` se hata do.
 
 ## PDF Generation Setup (Dompdf)
 
@@ -80,3 +85,18 @@ copy .env.example .env
 Phir `.env` me apni key set karo:
 
 `OPENAI_API_KEY=sk-...`
+
+## Hostinger Deploy (Business Hosting)
+
+1. hPanel me MySQL DB + user create karo.
+2. Project `public_html` me upload/extract karo.
+3. Root me `.env` banao (`.env.example` copy karke) aur DB values set karo:
+   - `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASS`
+   - `DB_AUTO_CREATE=0`
+4. `output`, `output/source_images`, `output/import_logs` writable hon.
+5. Agar OCR feature chahiye to `OPENAI_API_KEY` bhi set karo.
+
+## Public Repo Note
+
+- `.env` git me commit na karo.
+- Real DB credentials sirf server `.env` me rakho.
