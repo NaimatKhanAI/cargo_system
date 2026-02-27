@@ -1,11 +1,47 @@
 <?php
 session_start();
-if(!isset($_SESSION['user'])){
-    header("location:index.php");
-    exit();
-}
-
 include 'config/db.php';
+require_once 'config/auth.php';
+auth_require_login($conn);
+auth_require_module_access('haleeb');
+$canDirectModify = auth_can_direct_modify();
+$isSuperAdmin = auth_is_super_admin();
+
+if(isset($_GET['delete_all']) && $_GET['delete_all'] === '1'){
+    if(!auth_can_direct_modify()){
+        header("location:haleeb.php?clear=denied");
+        exit();
+    }
+    $conn->begin_transaction();
+    try{
+        $countRow = $conn->query("SELECT COUNT(*) AS c FROM haleeb_bilty")->fetch_assoc();
+        $deletedCount = $countRow ? (int)$countRow['c'] : 0;
+
+        if($deletedCount > 0){
+            $conn->query("INSERT INTO account_entries(entry_date, category, entry_type, amount_mode, bilty_id, haleeb_bilty_id, amount, note)
+                          SELECT CURDATE(),
+                                 COALESCE(NULLIF(e.category,''), 'haleeb'),
+                                 'credit',
+                                 COALESCE(NULLIF(e.amount_mode,''), 'cash'),
+                                 NULL,
+                                 NULL,
+                                 e.amount,
+                                 CONCAT('Auto Return - Bulk Delete Haleeb Token ', COALESCE(NULLIF(h.token_no,''), CONCAT('#', h.id)))
+                          FROM haleeb_bilty h
+                          JOIN account_entries e ON e.haleeb_bilty_id = h.id
+                          WHERE e.entry_type='debit' AND e.amount > 0");
+            $conn->query("DELETE FROM haleeb_bilty");
+        }
+
+        $conn->commit();
+        header("location:haleeb.php?clear=success&deleted=" . $deletedCount);
+        exit();
+    } catch (Throwable $e){
+        $conn->rollback();
+        header("location:haleeb.php?clear=error");
+        exit();
+    }
+}
 
 $total = $conn->query("SELECT SUM(tender - freight) AS t FROM haleeb_bilty")->fetch_assoc();
 $total_profit = $total && $total['t'] ? $total['t'] : 0;
@@ -42,6 +78,25 @@ if (isset($_GET['pay'])) {
     elseif ($_GET['pay'] === 'error') $pay_message = "Payment failed. Please try again.";
 }
 
+$clear_message = "";
+if(isset($_GET['clear'])){
+    if($_GET['clear'] === 'success'){
+        $deletedCount = isset($_GET['deleted']) ? (int)$_GET['deleted'] : 0;
+        $clear_message = "All Haleeb bilties deleted. Removed: " . $deletedCount;
+    } elseif($_GET['clear'] === 'error'){
+        $clear_message = "Delete all failed. Please try again.";
+    } elseif($_GET['clear'] === 'denied'){
+        $clear_message = "Only super admin can delete all bilties.";
+    }
+}
+
+$request_message = "";
+if(isset($_GET['req']) && $_GET['req'] === 'submitted'){
+    $request_message = "Change request sent to super admin for approval.";
+} elseif(isset($_GET['req']) && $_GET['req'] === 'failed'){
+    $request_message = "Could not create request. Please try again.";
+}
+
 $vehicleOptions = [];
 $vehicleRes = $conn->query("SELECT DISTINCT vehicle FROM haleeb_bilty WHERE vehicle IS NOT NULL AND vehicle <> '' ORDER BY vehicle ASC");
 while($vehicleRes && $vrow = $vehicleRes->fetch_assoc()){
@@ -53,8 +108,22 @@ if($dateFrom !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateFrom)){ $where[]
 if($dateTo !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateTo)){ $where[] = "date <= ?"; $bindTypes .= "s"; $bindValues[] = $dateTo; }
 if($vehicleSearch !== ''){ $where[] = "vehicle LIKE ?"; $bindTypes .= "s"; $bindValues[] = "%" . $vehicleSearch . "%"; }
 
-$sql = "SELECT *, (tender - freight) AS calc_profit FROM haleeb_bilty";
-if(count($where) > 0) $sql .= " WHERE " . implode(" AND ", $where);
+$sql = "SELECT h.*, (h.tender - h.freight) AS calc_profit,
+        GREATEST(h.freight - COALESCE(p.paid_total, 0), 0) AS remaining_balance
+        FROM haleeb_bilty h
+        LEFT JOIN (
+          SELECT haleeb_bilty_id, SUM(amount) AS paid_total
+          FROM account_entries
+          WHERE haleeb_bilty_id IS NOT NULL AND entry_type='debit'
+          GROUP BY haleeb_bilty_id
+        ) p ON p.haleeb_bilty_id = h.id";
+if(count($where) > 0){
+    $whereSql = [];
+    foreach($where as $w){
+        $whereSql[] = str_replace(["date", "vehicle"], ["h.date", "h.vehicle"], $w);
+    }
+    $sql .= " WHERE " . implode(" AND ", $whereSql);
+}
 $sql .= " ORDER BY id DESC";
 
 if(count($bindValues) > 0){
@@ -113,6 +182,8 @@ if(count($bindValues) > 0){
   .nav-btn:hover { background: var(--surface2); color: var(--text); border-color: var(--muted); }
   .nav-btn.primary { background: var(--accent); color: #0e0f11; border-color: var(--accent); }
   .nav-btn.primary:hover { background: #3b82f6; }
+  .nav-btn.danger { background: rgba(239,68,68,0.12); color: var(--red); border-color: rgba(239,68,68,0.25); }
+  .nav-btn.danger:hover { background: rgba(239,68,68,0.22); color: var(--red); border-color: rgba(239,68,68,0.35); }
 
   .menu-wrap { position: relative; }
   .menu-trigger {
@@ -193,6 +264,12 @@ if(count($bindValues) > 0){
   .act-pdf { background: rgba(168,85,247,0.15); color: #c084fc; border-color: rgba(168,85,247,0.25); }
   .act-pdf:hover { background: rgba(168,85,247,0.25); }
   .th-action { text-align: center; width: 90px; }
+  .rem-badge {
+    display: inline-block; padding: 3px 9px; font-size: 10px; font-weight: 700;
+    letter-spacing: 1px; text-transform: uppercase; border: 1px solid transparent;
+  }
+  .rem-zero { background: rgba(34,197,94,0.15); color: var(--green); border-color: rgba(34,197,94,0.25); }
+  .rem-pending { background: rgba(239,68,68,0.15); color: var(--red); border-color: rgba(239,68,68,0.25); }
 
   .vtype-badge {
     display: inline-block; padding: 2px 8px; font-size: 10px; font-weight: 700;
@@ -222,12 +299,16 @@ if(count($bindValues) > 0){
   <div class="nav-links">
     <a class="nav-btn primary" href="add_haleeb_bilty.php">Add Bilty</a>
     <a class="nav-btn" href="feed.php">Feed</a>
+    <?php if($isSuperAdmin): ?><a class="nav-btn" href="super_admin.php">Super Admin</a><?php endif; ?>
     <a class="nav-btn" href="dashboard.php">Dashboard</a>
     <div class="menu-wrap">
       <button class="menu-trigger" id="haleeb_menu_btn" type="button" aria-label="Menu">&#9776;</button>
       <div class="menu-pop" id="haleeb_menu_pop">
         <a class="nav-btn" href="haleeb_ratelist.php">Rate List</a>
         <a class="nav-btn" href="export_haleeb.php">Export CSV</a>
+        <?php if($canDirectModify): ?>
+          <a class="nav-btn danger" href="haleeb.php?delete_all=1" onclick="return confirm('Delete all Haleeb bilties?')">Delete All Bilties</a>
+        <?php endif; ?>
         <div class="menu-sep"></div>
         <div class="import-row">
           <form action="import_haleeb.php" method="post" enctype="multipart/form-data">
@@ -253,6 +334,14 @@ if(count($bindValues) > 0){
     <div class="alert <?php echo $pay_message === 'Payment failed. Please try again.' ? 'error' : ''; ?>">
       <?php echo htmlspecialchars($pay_message); ?>
     </div>
+  <?php endif; ?>
+  <?php if($clear_message !== ""): ?>
+    <div class="alert <?php echo strpos($clear_message,'failed') !== false ? 'error' : ''; ?>">
+      <?php echo htmlspecialchars($clear_message); ?>
+    </div>
+  <?php endif; ?>
+  <?php if($request_message !== ""): ?>
+    <div class="alert"><?php echo htmlspecialchars($request_message); ?></div>
   <?php endif; ?>
 
   <div class="profit-banner">
@@ -305,6 +394,7 @@ if(count($bindValues) > 0){
           <th>Stops</th>
           <th>Tender</th>
           <th>Freight</th>
+          <th>Remaining</th>
           <th>Profit</th>
           <th class="th-action">Actions</th>
         </tr>
@@ -324,6 +414,12 @@ if(count($bindValues) > 0){
           <td><?php echo htmlspecialchars(isset($row['stops']) ? $row['stops'] : ''); ?></td>
           <td>Rs <?php echo number_format((float)$row['tender'], 2); ?></td>
           <td>Rs <?php echo number_format((float)$row['freight'], 2); ?></td>
+          <?php $remaining = (float)($row['remaining_balance'] ?? 0); ?>
+          <td>
+            <span class="rem-badge <?php echo $remaining <= 0 ? 'rem-zero' : 'rem-pending'; ?>">
+              Rs <?php echo number_format($remaining, 2); ?>
+            </span>
+          </td>
           <td class="td-profit <?php echo $profit < 0 ? 'neg' : ''; ?>">
             Rs <?php echo number_format($profit, 2); ?>
           </td>

@@ -1,11 +1,12 @@
 <?php
 session_start();
-if(!isset($_SESSION['user']) && (!isset($_SESSION['login_verified']) || $_SESSION['login_verified'] !== true)){
-    header("location:index.php");
-    exit();
-}
-
 include 'config/db.php';
+require_once 'config/auth.php';
+require_once 'config/change_requests.php';
+auth_require_login($conn);
+auth_require_module_access('account');
+$canDirectModify = auth_can_direct_modify();
+$isSuperAdmin = auth_is_super_admin();
 
 function exec_prepared_result_local($conn, $sql, $types = '', $values = []){
     $stmt = $conn->prepare($sql);
@@ -33,11 +34,16 @@ $dateTo = isset($_GET['date_to']) ? trim((string)$_GET['date_to']) : '';
 if(isset($_GET['delete_id'])){
     $deleteId = (int)$_GET['delete_id'];
     if($deleteId > 0){
-        $deleteStmt = $conn->prepare("DELETE FROM account_entries WHERE id=?");
-        $deleteStmt->bind_param("i", $deleteId);
-        $deleteStmt->execute();
-        $deleteStmt->close();
-        $msg = 'Entry deleted.';
+        if(!$canDirectModify){
+            $requestId = create_change_request_local($conn, 'account', 'account_entries', $deleteId, 'account_delete', ['id' => $deleteId], isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0);
+            $msg = $requestId > 0 ? 'Delete request sent to super admin.' : 'Could not create delete request.';
+        } else {
+            $deleteStmt = $conn->prepare("DELETE FROM account_entries WHERE id=?");
+            $deleteStmt->bind_param("i", $deleteId);
+            $deleteStmt->execute();
+            $deleteStmt->close();
+            $msg = 'Entry deleted.';
+        }
     }
 }
 
@@ -58,6 +64,23 @@ if(isset($_POST['update_entry'])){
     elseif(!in_array($amountMode, $allowedModes, true)) $err = 'Invalid amount mode.';
     elseif($amount <= 0) $err = 'Amount must be greater than 0.';
     else {
+        if(!$canDirectModify){
+            $payload = [
+                'entry_date' => $entryDate,
+                'category' => $category,
+                'entry_type' => $entryType,
+                'amount_mode' => $amountMode,
+                'amount' => $amount,
+                'note' => $note
+            ];
+            $requestId = create_change_request_local($conn, 'account', 'account_entries', $editingId, 'account_update', $payload, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0);
+            if($requestId > 0){
+                $msg = 'Update request sent to super admin.';
+                $editingId = 0;
+            } else {
+                $err = 'Could not create update request.';
+            }
+        } else {
         $canUpdate = true;
         $linkStmt = $conn->prepare("SELECT bilty_id, haleeb_bilty_id, entry_type FROM account_entries WHERE id=? LIMIT 1");
         $linkStmt->bind_param("i", $editingId);
@@ -100,6 +123,7 @@ if(isset($_POST['update_entry'])){
             $msg = 'Entry updated.'; $editingId = 0;
             $formEntryDate = date('Y-m-d'); $formCategory = 'feed'; $formEntryType = 'debit';
             $formAmountMode = 'cash'; $formAmount = ''; $formNote = '';
+        }
         }
     }
 }
@@ -389,6 +413,7 @@ list($entryStmt, $entries) = exec_prepared_result_local($conn, $entriesSql, $bin
   <div class="nav-links">
     <a class="nav-btn" href="feed.php">Feed</a>
     <a class="nav-btn" href="haleeb.php">Haleeb</a>
+    <?php if($isSuperAdmin): ?><a class="nav-btn" href="super_admin.php">Super Admin</a><?php endif; ?>
     <a class="nav-btn" href="dashboard.php">Dashboard</a>
     <a class="nav-btn danger" href="logout.php">Logout</a>
   </div>

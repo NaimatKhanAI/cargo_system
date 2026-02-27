@@ -1,7 +1,21 @@
 <?php
+session_start();
 include 'config/db.php';
+require_once 'config/auth.php';
+require_once 'config/change_requests.php';
+auth_require_login($conn);
+auth_require_module_access('feed');
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 if($id > 0){
+if(!auth_can_direct_modify()){
+$requestId = create_change_request_local($conn, 'feed', 'bilty', $id, 'feed_delete', ['id' => $id], isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0);
+if($requestId > 0){
+header("location:feed.php?req=submitted");
+exit();
+}
+header("location:feed.php?req=failed");
+exit();
+}
 $conn->begin_transaction();
 try{
 $biltyStmt = $conn->prepare("SELECT bilty_no FROM bilty WHERE id=? LIMIT 1");

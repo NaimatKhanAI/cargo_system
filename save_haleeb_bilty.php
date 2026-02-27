@@ -1,5 +1,9 @@
 <?php
+session_start();
 include 'config/db.php';
+require_once 'config/auth.php';
+auth_require_login($conn);
+auth_require_module_access('haleeb');
 
 $d = isset($_POST['date']) ? $_POST['date'] : date('Y-m-d');
 $v = isset($_POST['vehicle']) ? trim($_POST['vehicle']) : '';

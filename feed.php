@@ -1,11 +1,47 @@
 <?php
 session_start();
-if(!isset($_SESSION['user'])){
-    header("location:index.php");
-    exit();
-}
-
 include 'config/db.php';
+require_once 'config/auth.php';
+auth_require_login($conn);
+auth_require_module_access('feed');
+$canDirectModify = auth_can_direct_modify();
+$isSuperAdmin = auth_is_super_admin();
+
+if(isset($_GET['delete_all']) && $_GET['delete_all'] === '1'){
+    if(!auth_can_direct_modify()){
+        header("location:feed.php?clear=denied");
+        exit();
+    }
+    $conn->begin_transaction();
+    try{
+        $countRow = $conn->query("SELECT COUNT(*) AS c FROM bilty")->fetch_assoc();
+        $deletedCount = $countRow ? (int)$countRow['c'] : 0;
+
+        if($deletedCount > 0){
+            $conn->query("INSERT INTO account_entries(entry_date, category, entry_type, amount_mode, bilty_id, haleeb_bilty_id, amount, note)
+                          SELECT CURDATE(),
+                                 COALESCE(NULLIF(e.category,''), 'feed'),
+                                 'credit',
+                                 COALESCE(NULLIF(e.amount_mode,''), 'cash'),
+                                 NULL,
+                                 NULL,
+                                 e.amount,
+                                 CONCAT('Auto Return - Bulk Delete Feed Bilty ', COALESCE(NULLIF(b.bilty_no,''), CONCAT('#', b.id)))
+                          FROM bilty b
+                          JOIN account_entries e ON e.bilty_id = b.id
+                          WHERE e.entry_type='debit' AND e.amount > 0");
+            $conn->query("DELETE FROM bilty");
+        }
+
+        $conn->commit();
+        header("location:feed.php?clear=success&deleted=" . $deletedCount);
+        exit();
+    } catch (Throwable $e){
+        $conn->rollback();
+        header("location:feed.php?clear=error");
+        exit();
+    }
+}
 
 $total = $conn->query("SELECT SUM(tender - freight) as t FROM bilty")->fetch_assoc();
 $total_profit = $total['t'] ? $total['t'] : 0;
@@ -35,6 +71,25 @@ $pay_message = "";
 if (isset($_GET['pay'])) {
     if ($_GET['pay'] === 'success') $pay_message = "Payment posted successfully.";
     elseif ($_GET['pay'] === 'error') $pay_message = "Payment failed. Please try again.";
+}
+
+$clear_message = "";
+if(isset($_GET['clear'])){
+    if($_GET['clear'] === 'success'){
+        $deletedCount = isset($_GET['deleted']) ? (int)$_GET['deleted'] : 0;
+        $clear_message = "All Feed bilties deleted. Removed: " . $deletedCount;
+    } elseif($_GET['clear'] === 'error'){
+        $clear_message = "Delete all failed. Please try again.";
+    } elseif($_GET['clear'] === 'denied'){
+        $clear_message = "Only super admin can delete all bilties.";
+    }
+}
+
+$request_message = "";
+if(isset($_GET['req']) && $_GET['req'] === 'submitted'){
+    $request_message = "Change request sent to super admin for approval.";
+} elseif(isset($_GET['req']) && $_GET['req'] === 'failed'){
+    $request_message = "Could not create request. Please try again.";
 }
 
 $vehicleOptions = [];
@@ -124,6 +179,8 @@ if(count($bindValues) > 0){
   .nav-btn:hover { background: var(--surface2); color: var(--text); border-color: var(--muted); }
   .nav-btn.primary { background: var(--accent); color: #0e0f11; border-color: var(--accent); }
   .nav-btn.primary:hover { background: #e0b030; }
+  .nav-btn.danger { background: rgba(239,68,68,0.12); color: var(--red); border-color: rgba(239,68,68,0.25); }
+  .nav-btn.danger:hover { background: rgba(239,68,68,0.22); color: var(--red); border-color: rgba(239,68,68,0.35); }
 
   /* MENU */
   .menu-wrap { position: relative; }
@@ -264,12 +321,16 @@ if(count($bindValues) > 0){
   <div class="nav-links">
     <a class="nav-btn primary" href="add_bilty.php">Add Bilty</a>
     <a class="nav-btn" href="haleeb.php">Haleeb</a>
+    <?php if($isSuperAdmin): ?><a class="nav-btn" href="super_admin.php">Super Admin</a><?php endif; ?>
     <a class="nav-btn" href="dashboard.php">Dashboard</a>
     <div class="menu-wrap">
       <button class="menu-trigger" id="feed_menu_btn" type="button" aria-label="Menu">&#9776;</button>
       <div class="menu-pop" id="feed_menu_pop">
         <a class="nav-btn" href="feed_ratelist.php">Rate List</a>
         <a class="nav-btn" href="export_bilty.php">Export CSV</a>
+        <?php if($canDirectModify): ?>
+          <a class="nav-btn danger" href="feed.php?delete_all=1" onclick="return confirm('Delete all Feed bilties?')">Delete All Bilties</a>
+        <?php endif; ?>
         <div class="menu-sep"></div>
         <div class="import-row">
           <form action="import_bilty.php" method="post" enctype="multipart/form-data">
@@ -295,6 +356,14 @@ if(count($bindValues) > 0){
     <div class="alert <?php echo $pay_message === 'Payment failed. Please try again.' ? 'error' : ''; ?>">
       <?php echo htmlspecialchars($pay_message); ?>
     </div>
+  <?php endif; ?>
+  <?php if($clear_message !== ""): ?>
+    <div class="alert <?php echo strpos($clear_message,'failed') !== false ? 'error' : ''; ?>">
+      <?php echo htmlspecialchars($clear_message); ?>
+    </div>
+  <?php endif; ?>
+  <?php if($request_message !== ""): ?>
+    <div class="alert"><?php echo htmlspecialchars($request_message); ?></div>
   <?php endif; ?>
 
   <div class="profit-banner">

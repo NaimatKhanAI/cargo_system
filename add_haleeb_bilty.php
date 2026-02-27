@@ -1,5 +1,9 @@
 <?php
+session_start();
 include 'config/db.php';
+require_once 'config/auth.php';
+auth_require_login($conn);
+auth_require_module_access('haleeb');
 $today = date('Y-m-d');
 
 function normalize_lookup_token($v){

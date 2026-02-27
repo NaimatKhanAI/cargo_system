@@ -1,11 +1,9 @@
 <?php
 session_start();
-if(!isset($_SESSION['user'])){
-header("location:index.php");
-exit();
-}
-
 include 'config/db.php';
+require_once 'config/auth.php';
+auth_require_login($conn);
+auth_require_module_access('feed');
 
 if($_SERVER['REQUEST_METHOD'] !== 'POST' || !isset($_FILES['csv_file']) || $_FILES['csv_file']['error'] !== UPLOAD_ERR_OK){
 header("location:feed_ratelist.php?import=error");

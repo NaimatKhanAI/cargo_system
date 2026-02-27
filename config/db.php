@@ -42,6 +42,46 @@ username VARCHAR(50),
 password VARCHAR(50)
 )");
 
+$userRoleColCheck = $conn->query("SHOW COLUMNS FROM users LIKE 'role'");
+if($userRoleColCheck && $userRoleColCheck->num_rows === 0){
+$conn->query("ALTER TABLE users ADD role VARCHAR(20) NOT NULL DEFAULT 'sub_admin' AFTER password");
+}
+
+$userActiveColCheck = $conn->query("SHOW COLUMNS FROM users LIKE 'is_active'");
+if($userActiveColCheck && $userActiveColCheck->num_rows === 0){
+$conn->query("ALTER TABLE users ADD is_active TINYINT(1) NOT NULL DEFAULT 1 AFTER role");
+}
+
+$userFeedAccessColCheck = $conn->query("SHOW COLUMNS FROM users LIKE 'can_access_feed'");
+if($userFeedAccessColCheck && $userFeedAccessColCheck->num_rows === 0){
+$conn->query("ALTER TABLE users ADD can_access_feed TINYINT(1) NOT NULL DEFAULT 0 AFTER is_active");
+}
+
+$userHaleebAccessColCheck = $conn->query("SHOW COLUMNS FROM users LIKE 'can_access_haleeb'");
+if($userHaleebAccessColCheck && $userHaleebAccessColCheck->num_rows === 0){
+$conn->query("ALTER TABLE users ADD can_access_haleeb TINYINT(1) NOT NULL DEFAULT 0 AFTER can_access_feed");
+}
+
+$userAccountAccessColCheck = $conn->query("SHOW COLUMNS FROM users LIKE 'can_access_account'");
+if($userAccountAccessColCheck && $userAccountAccessColCheck->num_rows === 0){
+$conn->query("ALTER TABLE users ADD can_access_account TINYINT(1) NOT NULL DEFAULT 0 AFTER can_access_haleeb");
+}
+
+$userManageColCheck = $conn->query("SHOW COLUMNS FROM users LIKE 'can_manage_users'");
+if($userManageColCheck && $userManageColCheck->num_rows === 0){
+$conn->query("ALTER TABLE users ADD can_manage_users TINYINT(1) NOT NULL DEFAULT 0 AFTER can_access_account");
+}
+
+$userCreatedByColCheck = $conn->query("SHOW COLUMNS FROM users LIKE 'created_by'");
+if($userCreatedByColCheck && $userCreatedByColCheck->num_rows === 0){
+$conn->query("ALTER TABLE users ADD created_by INT NULL AFTER can_manage_users");
+}
+
+$userCreatedAtColCheck = $conn->query("SHOW COLUMNS FROM users LIKE 'created_at'");
+if($userCreatedAtColCheck && $userCreatedAtColCheck->num_rows === 0){
+$conn->query("ALTER TABLE users ADD created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP AFTER created_by");
+}
+
 $conn->query("CREATE TABLE IF NOT EXISTS bilty(
 id INT AUTO_INCREMENT PRIMARY KEY,
 sr_no VARCHAR(50),
@@ -286,6 +326,21 @@ setting_value TEXT,
 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 )");
 
+$conn->query("CREATE TABLE IF NOT EXISTS change_requests(
+id INT AUTO_INCREMENT PRIMARY KEY,
+module_key VARCHAR(20) NOT NULL,
+entity_table VARCHAR(50) NOT NULL,
+entity_id INT NULL,
+action_type VARCHAR(20) NOT NULL,
+payload LONGTEXT,
+status VARCHAR(20) NOT NULL DEFAULT 'pending',
+requested_by INT NOT NULL,
+reviewed_by INT NULL,
+review_note VARCHAR(255) NULL,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+reviewed_at TIMESTAMP NULL DEFAULT NULL
+)");
+
 // Legacy migration: normalize old keys and remove any base-lock.
 $conn->query("UPDATE rate_list_columns SET column_key='rate1' WHERE column_key='rate_2026_01_01'");
 $conn->query("UPDATE rate_list_columns SET column_key='rate2' WHERE column_key='rate_2026_01_02'");
@@ -311,10 +366,36 @@ $check->execute();
 $exists = $check->get_result()->num_rows > 0;
 $check->close();
 if(!$exists){
-$ins = $conn->prepare("INSERT INTO users(username,password) VALUES(?,?)");
+$ins = $conn->prepare("INSERT INTO users(username,password,role,is_active,can_access_feed,can_access_haleeb,can_access_account,can_manage_users) VALUES(?,?,'super_admin',1,1,1,1,1)");
 $ins->bind_param("ss", $seedAdminUser, $seedAdminPass);
 $ins->execute();
 $ins->close();
+}
+}
+
+$superAdminCountRes = $conn->query("SELECT COUNT(*) AS c FROM users WHERE role='super_admin'");
+$superAdminCount = $superAdminCountRes ? (int)$superAdminCountRes->fetch_assoc()['c'] : 0;
+if($superAdminCount === 0){
+$fallbackSuperUser = trim((string)env_get('SUPER_ADMIN_USER', 'admin'));
+$fallbackSuperPass = trim((string)env_get('SUPER_ADMIN_PASS', '1234'));
+
+$promoteStmt = $conn->prepare("UPDATE users SET role='super_admin', is_active=1, can_access_feed=1, can_access_haleeb=1, can_access_account=1, can_manage_users=1 WHERE username=? LIMIT 1");
+$promoteStmt->bind_param("s", $fallbackSuperUser);
+$promoteStmt->execute();
+$promoteStmt->close();
+
+// Avoid duplicate usernames: insert only when fallback user does not already exist.
+$fallbackExistsStmt = $conn->prepare("SELECT id FROM users WHERE username=? LIMIT 1");
+$fallbackExistsStmt->bind_param("s", $fallbackSuperUser);
+$fallbackExistsStmt->execute();
+$fallbackExists = $fallbackExistsStmt->get_result()->num_rows > 0;
+$fallbackExistsStmt->close();
+
+if(!$fallbackExists){
+$insertSuper = $conn->prepare("INSERT INTO users(username,password,role,is_active,can_access_feed,can_access_haleeb,can_access_account,can_manage_users) VALUES(?,?,'super_admin',1,1,1,1,1)");
+$insertSuper->bind_param("ss", $fallbackSuperUser, $fallbackSuperPass);
+$insertSuper->execute();
+$insertSuper->close();
 }
 }
 ?>

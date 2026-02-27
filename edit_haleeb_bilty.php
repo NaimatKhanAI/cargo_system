@@ -1,5 +1,10 @@
 <?php
+session_start();
 include 'config/db.php';
+require_once 'config/auth.php';
+require_once 'config/change_requests.php';
+auth_require_login($conn);
+auth_require_module_access('haleeb');
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 if($id <= 0){ header("location:haleeb.php"); exit(); }
 
@@ -57,11 +62,31 @@ if(isset($_POST['update'])){
     $stops = encode_stops_counts($sameCityCount, $outCityCount);
     $t  = isset($_POST['tender']) ? (int)$_POST['tender'] : 0;
     $f  = isset($_POST['freight']) ? (int)$_POST['freight'] : 0;
-    $p  = $t - $f;
-    $stmt = $conn->prepare("UPDATE haleeb_bilty SET date=?, vehicle=?, vehicle_type=?, delivery_note=?, token_no=?, party=?, location=?, stops=?, freight=?, tender=?, profit=? WHERE id=?");
-    $stmt->bind_param("ssssssssiiii", $d, $v, $vt, $dn, $tn, $party, $l, $stops, $f, $t, $p, $id);
-    $stmt->execute(); $stmt->close();
-    header("location:haleeb.php"); exit();
+    if(!auth_can_direct_modify()){
+        $payload = [
+            'date' => $d,
+            'vehicle' => $v,
+            'vehicle_type' => $vt,
+            'delivery_note' => $dn,
+            'token_no' => $tn,
+            'party' => $party,
+            'location' => $l,
+            'stops' => $stops,
+            'freight' => $f,
+            'tender' => $t
+        ];
+        $requestId = create_change_request_local($conn, 'haleeb', 'haleeb_bilty', $id, 'haleeb_update', $payload, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0);
+        if($requestId > 0){
+            header("location:haleeb.php?req=submitted");
+            exit();
+        }
+    } else {
+        $p  = $t - $f;
+        $stmt = $conn->prepare("UPDATE haleeb_bilty SET date=?, vehicle=?, vehicle_type=?, delivery_note=?, token_no=?, party=?, location=?, stops=?, freight=?, tender=?, profit=? WHERE id=?");
+        $stmt->bind_param("ssssssssiiii", $d, $v, $vt, $dn, $tn, $party, $l, $stops, $f, $t, $p, $id);
+        $stmt->execute(); $stmt->close();
+        header("location:haleeb.php"); exit();
+    }
 }
 
 $stmt = $conn->prepare("SELECT * FROM haleeb_bilty WHERE id=? LIMIT 1");

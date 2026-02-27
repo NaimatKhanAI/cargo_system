@@ -1,11 +1,9 @@
 <?php
 session_start();
-if(!isset($_SESSION['user'])){
-    header("location:index.php");
-    exit();
-}
-
 include 'config/db.php';
+require_once 'config/auth.php';
+auth_require_login($conn);
+auth_require_module_access('haleeb');
 
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 if($id <= 0){ header("location:haleeb.php?pay=error"); exit(); }

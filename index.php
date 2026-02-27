@@ -1,9 +1,10 @@
 <?php
 session_start();
 include 'config/db.php';
+require_once 'config/auth.php';
 $error = "";
 
-if(isset($_SESSION['user']) && $_SESSION['user'] !== ''){
+if(auth_sync_session_user($conn)){
     header("location:dashboard.php");
     exit();
 }
@@ -14,16 +15,21 @@ if(isset($_POST['login'])){
     if($u === '' || $p === ''){
         $error = "Username and password are required.";
     } else {
-        $stmt = $conn->prepare("SELECT username FROM users WHERE username=? AND password=? LIMIT 1");
+        $stmt = $conn->prepare("SELECT id, username, role, is_active, can_access_feed, can_access_haleeb, can_access_account, can_manage_users FROM users WHERE username=? AND password=? LIMIT 1");
         $stmt->bind_param("ss", $u, $p);
         $stmt->execute();
         $res = $stmt->get_result();
         if($res->num_rows > 0){
-            $_SESSION['user'] = $u;
+            $userRow = $res->fetch_assoc();
+            if((int)$userRow['is_active'] !== 1){
+                $error = "User is inactive. Contact super admin.";
+            } else {
+            auth_store_session_local($userRow);
             unset($_SESSION['login_verified']);
             unset($_SESSION['pending_user']);
             header("location:dashboard.php");
             exit();
+            }
         } else {
             $error = "Wrong username or password.";
         }

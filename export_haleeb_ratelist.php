@@ -1,11 +1,9 @@
 <?php
 session_start();
-if(!isset($_SESSION['user'])){
-header("location:index.php");
-exit();
-}
-
 include 'config/db.php';
+require_once 'config/auth.php';
+auth_require_login($conn);
+auth_require_module_access('haleeb');
 
 $columns = [];
 $colRes = $conn->query("SELECT column_key, column_label, is_deleted FROM haleeb_rate_list_columns ORDER BY display_order ASC, id ASC");

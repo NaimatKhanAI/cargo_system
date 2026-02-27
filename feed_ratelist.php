@@ -1,11 +1,10 @@
 <?php
 session_start();
-if(!isset($_SESSION['user'])){
-    header("location:index.php");
-    exit();
-}
-
 include 'config/db.php';
+require_once 'config/auth.php';
+auth_require_login($conn);
+auth_require_module_access('feed');
+$canDirectModify = auth_can_direct_modify();
 
 function slugify_label_to_key($label){
     $key = strtolower(trim($label));
@@ -31,6 +30,20 @@ function detect_sr_column_key_local($columns){ foreach($columns as $c){ if(isset
 function sr_exists_local($conn, $srKey, $srValue, $excludeId = 0){ $srCanon = canonical_sr_local($srValue); if($srCanon === '' || $srKey === '') return false; $res = $conn->query("SELECT id, sr_no, extra_data FROM image_processed_rates"); while($res && $row = $res->fetch_assoc()){ $id = (int)$row['id']; if($excludeId > 0 && $id === $excludeId) continue; $candidate = ''; if($srKey === 'sr_no') $candidate = isset($row['sr_no']) ? (string)$row['sr_no'] : ''; else { $extra = json_decode((string)$row['extra_data'], true); if(is_array($extra) && isset($extra[$srKey])) $candidate = (string)$extra[$srKey]; } if(canonical_sr_local($candidate) === $srCanon) return true; } return false; }
 
 $msg = ''; $err = ''; $editingId = 0; $openAddRow = false; $openRateChange = false; $rateChangeSource = ''; $rateChangeMode = 'increment'; $rateChangePercent = ''; $rateChangeLabel = ''; $rateChangePetrolOld = ''; $rateChangePetrolNew = '';
+
+if(!$canDirectModify){
+  $blockedPostActions = ['add_column', 'apply_rate_change', 'save_columns', 'delete_column', 'delete_rate', 'update_rate', 'add_rate'];
+  foreach($blockedPostActions as $blockedKey){
+    if(isset($_POST[$blockedKey])){
+      $err = 'Only super admin can modify rate list.';
+      unset($_POST[$blockedKey]);
+    }
+  }
+  if(isset($_GET['delete_all']) && $_GET['delete_all'] === '1'){
+    $err = 'Only super admin can clear rate list.';
+    unset($_GET['delete_all']);
+  }
+}
 
 if(isset($_GET['delete_all']) && $_GET['delete_all'] === '1'){ $conn->query("DELETE FROM image_processed_rates"); $msg = 'Rate list cleared.'; }
 if(isset($_GET['import'])){ if($_GET['import'] === 'success'){ $ins = isset($_GET['ins']) ? (int)$_GET['ins'] : 0; $skip = isset($_GET['skip']) ? (int)$_GET['skip'] : 0; $msg = "Import completed. Inserted: $ins, Skipped: $skip"; } elseif($_GET['import'] === 'error'){ $reason = isset($_GET['reason']) ? trim((string)$_GET['reason']) : ''; $err = $reason === 'no_columns' ? 'Import failed. No active Rate List columns found.' : 'Import failed. Please upload a valid CSV file.'; } }

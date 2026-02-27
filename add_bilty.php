@@ -1,5 +1,9 @@
 <?php
+session_start();
 include 'config/db.php';
+require_once 'config/auth.php';
+auth_require_login($conn);
+auth_require_module_access('feed');
 
 function normalize_date_label_local($v){ $v = strtolower(trim((string)$v)); $v = str_replace(['.', '-', ' '], '/', $v); $v = preg_replace('#/+#', '/', $v); $parts = explode('/', $v); if(count($parts) === 3){ $m = ltrim($parts[0], '0'); $d = ltrim($parts[1], '0'); $y = trim($parts[2]); if($m === '') $m = '0'; if($d === '') $d = '0'; return $m . '/' . $d . '/' . $y; } return $v; }
 function normalize_header_local($v){ $v = strtolower(trim((string)$v)); $v = preg_replace('/\s+/', ' ', $v); $v = str_replace(['.', '(', ')'], '', $v); return $v; }

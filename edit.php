@@ -1,5 +1,10 @@
 <?php
+session_start();
 include 'config/db.php';
+require_once 'config/auth.php';
+require_once 'config/change_requests.php';
+auth_require_login($conn);
+auth_require_module_access('feed');
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 if($id <= 0){ header("location:feed.php"); exit(); }
 
@@ -13,11 +18,30 @@ if(isset($_POST['update'])){
     $bags = isset($_POST['bags']) ? (int)$_POST['bags'] : 0;
     $f = isset($_POST['freight']) ? (int)$_POST['freight'] : 0;
     $t = isset($_POST['tender']) ? (int)$_POST['tender'] : 0;
-    $p = $t - $f;
-    $stmt = $conn->prepare("UPDATE bilty SET sr_no=?, date=?, vehicle=?, bilty_no=?, party=?, location=?, bags=?, freight=?, original_freight=?, tender=?, profit=? WHERE id=?");
-    $stmt->bind_param("sssssssiiiii", $sr, $d, $v, $b, $party, $l, $bags, $f, $f, $t, $p, $id);
-    $stmt->execute(); $stmt->close();
-    header("location:feed.php"); exit();
+    if(!auth_can_direct_modify()){
+        $payload = [
+            'sr_no' => $sr,
+            'date' => $d,
+            'vehicle' => $v,
+            'bilty_no' => $b,
+            'party' => $party,
+            'location' => $l,
+            'bags' => $bags,
+            'freight' => $f,
+            'tender' => $t
+        ];
+        $requestId = create_change_request_local($conn, 'feed', 'bilty', $id, 'feed_update', $payload, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0);
+        if($requestId > 0){
+            header("location:feed.php?req=submitted");
+            exit();
+        }
+    } else {
+        $p = $t - $f;
+        $stmt = $conn->prepare("UPDATE bilty SET sr_no=?, date=?, vehicle=?, bilty_no=?, party=?, location=?, bags=?, freight=?, original_freight=?, tender=?, profit=? WHERE id=?");
+        $stmt->bind_param("sssssssiiiii", $sr, $d, $v, $b, $party, $l, $bags, $f, $f, $t, $p, $id);
+        $stmt->execute(); $stmt->close();
+        header("location:feed.php"); exit();
+    }
 }
 
 $row = $conn->query("SELECT * FROM bilty WHERE id=" . (int)$id)->fetch_assoc();

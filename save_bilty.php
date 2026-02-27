@@ -1,5 +1,9 @@
 <?php
+session_start();
 include 'config/db.php';
+require_once 'config/auth.php';
+auth_require_login($conn);
+auth_require_module_access('feed');
 
 $sr=isset($_POST['sr_no']) ? trim($_POST['sr_no']) : '';
 $d=$_POST['date'];

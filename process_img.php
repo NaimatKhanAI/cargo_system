@@ -1,7 +1,10 @@
 <?php
 session_start();
-if(!isset($_SESSION['user'])){
-    header("location:index.php");
+include 'config/db.php';
+require_once 'config/auth.php';
+auth_require_login($conn);
+if(!auth_has_module_access('feed') && !auth_has_module_access('haleeb')){
+    header("location:dashboard.php?denied=process");
     exit();
 }
 ?>

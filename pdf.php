@@ -1,28 +1,43 @@
 <?php
 $projectRoot = __DIR__;
-$autoloadPaths = [
-    $projectRoot . '/vendor/autoload.php',
-    $projectRoot . '/dompdf/vendor/autoload.php',
-    $projectRoot . '/dompdf/autoload.inc.php',
-];
+function try_load_dompdf_autoloader($projectRoot){
+    $autoloadPaths = [
+        $projectRoot . '/vendor/autoload.php',
+        $projectRoot . '/dompdf/vendor/autoload.php',
+        $projectRoot . '/dompdf/autoload.inc.php',
+    ];
 
-$autoloadLoaded = false;
-foreach ($autoloadPaths as $autoloadPath) {
-    if (file_exists($autoloadPath)) {
+    foreach($autoloadPaths as $autoloadPath){
+        if(!file_exists($autoloadPath)){
+            continue;
+        }
+
+        if(substr($autoloadPath, -strlen('/dompdf/vendor/autoload.php')) === '/dompdf/vendor/autoload.php'){
+            $safeFile = $projectRoot . '/dompdf/vendor/thecodingmachine/safe/lib/special_cases.php';
+            if(!file_exists($safeFile)){
+                continue;
+            }
+        }
+
         require_once $autoloadPath;
-        $autoloadLoaded = true;
-        break;
+        return true;
     }
+
+    return false;
 }
 
-if (!$autoloadLoaded) {
+if(!try_load_dompdf_autoloader($projectRoot)){
     http_response_code(500);
-    die('Dompdf autoloader not found. Install Dompdf with Composer or provide a valid autoload file.');
+    die('Dompdf dependencies are incomplete. Re-upload dompdf/vendor or run composer install in dompdf folder.');
 }
 
 use Dompdf\Dompdf;
 
+session_start();
 include 'config/db.php';
+require_once 'config/auth.php';
+auth_require_login($conn);
+auth_require_module_access('feed');
 
 $id = $_GET['id'];
 $row = $conn->query("SELECT * FROM bilty WHERE id=$id")->fetch_assoc();
