@@ -30,7 +30,7 @@ function canonical_sr_local($v){ $v = normalize_digits_local((string)$v); $v = s
 function detect_sr_column_key_local($columns){ foreach($columns as $c){ if(isset($c['column_key']) && $c['column_key'] === 'sr_no') return 'sr_no'; } foreach($columns as $c){ $lbl = isset($c['column_label']) ? normalize_header_local($c['column_label']) : ''; if(in_array($lbl, ['sr','sr no','serial','serial no','serial number'], true)) return (string)$c['column_key']; } return ''; }
 function sr_exists_local($conn, $srKey, $srValue, $excludeId = 0){ $srCanon = canonical_sr_local($srValue); if($srCanon === '' || $srKey === '') return false; $res = $conn->query("SELECT id, sr_no, extra_data FROM image_processed_rates"); while($res && $row = $res->fetch_assoc()){ $id = (int)$row['id']; if($excludeId > 0 && $id === $excludeId) continue; $candidate = ''; if($srKey === 'sr_no') $candidate = isset($row['sr_no']) ? (string)$row['sr_no'] : ''; else { $extra = json_decode((string)$row['extra_data'], true); if(is_array($extra) && isset($extra[$srKey])) $candidate = (string)$extra[$srKey]; } if(canonical_sr_local($candidate) === $srCanon) return true; } return false; }
 
-$msg = ''; $err = ''; $editingId = 0; $openAddRow = false; $openRateChange = false; $rateChangeSource = ''; $rateChangeMode = 'increment'; $rateChangePercent = ''; $rateChangeLabel = '';
+$msg = ''; $err = ''; $editingId = 0; $openAddRow = false; $openRateChange = false; $rateChangeSource = ''; $rateChangeMode = 'increment'; $rateChangePercent = ''; $rateChangeLabel = ''; $rateChangePetrolOld = ''; $rateChangePetrolNew = '';
 
 if(isset($_GET['delete_all']) && $_GET['delete_all'] === '1'){ $conn->query("DELETE FROM image_processed_rates"); $msg = 'Rate list cleared.'; }
 if(isset($_GET['import'])){ if($_GET['import'] === 'success'){ $ins = isset($_GET['ins']) ? (int)$_GET['ins'] : 0; $skip = isset($_GET['skip']) ? (int)$_GET['skip'] : 0; $msg = "Import completed. Inserted: $ins, Skipped: $skip"; } elseif($_GET['import'] === 'error'){ $reason = isset($_GET['reason']) ? trim((string)$_GET['reason']) : ''; $err = $reason === 'no_columns' ? 'Import failed. No active Rate List columns found.' : 'Import failed. Please upload a valid CSV file.'; } }
@@ -42,6 +42,16 @@ if(isset($_POST['apply_rate_change'])){
   $rateChangeMode = isset($_POST['rc_mode']) ? trim((string)$_POST['rc_mode']) : 'increment';
   $rateChangePercent = isset($_POST['rc_percent']) ? trim((string)$_POST['rc_percent']) : '';
   $rateChangeLabel = isset($_POST['rc_new_column_label']) ? trim((string)$_POST['rc_new_column_label']) : '';
+  $rateChangePetrolOld = isset($_POST['rc_petrol_old']) ? trim((string)$_POST['rc_petrol_old']) : '';
+  $rateChangePetrolNew = isset($_POST['rc_petrol_new']) ? trim((string)$_POST['rc_petrol_new']) : '';
+
+  $oldPetrolValue = parse_rate_numeric_local($rateChangePetrolOld);
+  $newPetrolValue = parse_rate_numeric_local($rateChangePetrolNew);
+  if($oldPetrolValue !== null && $newPetrolValue !== null && $oldPetrolValue > 0){
+    $petrolChangePercent = (($newPetrolValue - $oldPetrolValue) / $oldPetrolValue) * 100;
+    $rateChangeMode = $petrolChangePercent >= 0 ? 'increment' : 'decrement';
+    $rateChangePercent = (string)(abs($petrolChangePercent) / 2);
+  }
 
   $allCols = load_columns($conn);
   $activeCols = array_values(array_filter($allCols, function($c){ return (int)$c['is_deleted'] === 0; }));
@@ -115,7 +125,7 @@ if(isset($_POST['apply_rate_change'])){
       $upd->close();
       $msg = "Rate Change applied. New column created and {$updatedCount} rows updated.";
       $openRateChange = false;
-      $rateChangeSource = ''; $rateChangeMode = 'increment'; $rateChangePercent = ''; $rateChangeLabel = '';
+      $rateChangeSource = ''; $rateChangeMode = 'increment'; $rateChangePercent = ''; $rateChangeLabel = ''; $rateChangePetrolOld = ''; $rateChangePetrolNew = '';
     }
   }
 }
@@ -328,11 +338,13 @@ $rows = $conn->query("SELECT id, source_file, source_image_path, sr_no, station_
               </option>
             <?php endforeach; ?>
           </select>
-          <select name="rc_mode" required>
+          <input type="number" step="0.01" min="0" id="rc_petrol_old" name="rc_petrol_old" placeholder="Old petrol rate" value="<?php echo htmlspecialchars($rateChangePetrolOld); ?>">
+          <input type="number" step="0.01" min="0" id="rc_petrol_new" name="rc_petrol_new" placeholder="New petrol rate" value="<?php echo htmlspecialchars($rateChangePetrolNew); ?>">
+          <select id="rc_mode" name="rc_mode" required>
             <option value="increment" <?php echo $rateChangeMode === 'increment' ? 'selected' : ''; ?>>Increment</option>
             <option value="decrement" <?php echo $rateChangeMode === 'decrement' ? 'selected' : ''; ?>>Decrement</option>
           </select>
-          <input type="number" step="0.01" min="0" name="rc_percent" placeholder="Percent e.g. 2" value="<?php echo htmlspecialchars($rateChangePercent); ?>" required>
+          <input type="number" step="0.01" min="0" id="rc_percent" name="rc_percent" placeholder="Percent e.g. 2" value="<?php echo htmlspecialchars($rateChangePercent); ?>" required>
           <input type="text" name="rc_new_column_label" placeholder="New column name e.g. AA" value="<?php echo htmlspecialchars($rateChangeLabel); ?>" required>
           <button class="nav-btn primary" type="submit" name="apply_rate_change">Apply</button>
         </div>
@@ -482,6 +494,26 @@ $rows = $conn->query("SELECT id, source_file, source_image_path, sr_no, station_
     importFile.addEventListener('change', function(){
       if(importFile.files && importFile.files.length > 0) importForm.submit();
     });
+  }
+
+  var rcPetrolOld = document.getElementById('rc_petrol_old');
+  var rcPetrolNew = document.getElementById('rc_petrol_new');
+  var rcMode = document.getElementById('rc_mode');
+  var rcPercent = document.getElementById('rc_percent');
+  function autoCalcRateChange(){
+    if(!rcPetrolOld || !rcPetrolNew || !rcMode || !rcPercent) return;
+    var oldValue = parseFloat(rcPetrolOld.value);
+    var newValue = parseFloat(rcPetrolNew.value);
+    if(!isFinite(oldValue) || !isFinite(newValue) || oldValue <= 0) return;
+    var percentChange = ((newValue - oldValue) / oldValue) * 100;
+    rcMode.value = percentChange >= 0 ? 'increment' : 'decrement';
+    var halfPercent = Math.abs(percentChange) / 2;
+    rcPercent.value = halfPercent.toFixed(4).replace(/\.?0+$/, '');
+  }
+  if(rcPetrolOld && rcPetrolNew){
+    rcPetrolOld.addEventListener('input', autoCalcRateChange);
+    rcPetrolNew.addEventListener('input', autoCalcRateChange);
+    autoCalcRateChange();
   }
 
   if(rateChangeBtn){
