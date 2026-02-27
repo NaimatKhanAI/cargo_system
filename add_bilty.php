@@ -83,7 +83,12 @@ $today = date('Y-m-d');
     width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text);
     padding: 11px 14px; font-family: var(--font); font-size: 14px; transition: border-color 0.15s;
   }
+  .field select {
+    width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    padding: 11px 14px; font-family: var(--font); font-size: 14px; transition: border-color 0.15s;
+  }
   .field input:focus { outline: none; border-color: var(--accent); }
+  .field select:focus { outline: none; border-color: var(--accent); }
   .field input::-webkit-calendar-picker-indicator { filter: invert(0.5); cursor: pointer; }
   .field input::placeholder { color: var(--muted); }
   .field-meta { margin-top: 5px; font-size: 11px; font-family: var(--mono); color: var(--muted); }
@@ -127,7 +132,6 @@ $today = date('Y-m-d');
     <h1>Add Bilty</h1>
   </div>
   <div class="topbar-right">
-    <button type="button" class="settings-btn" id="open_settings" title="Tender Settings">&#9881;</button>
     <a class="nav-btn" href="feed.php">Back</a>
   </div>
 </div>
@@ -137,6 +141,16 @@ $today = date('Y-m-d');
     <div class="form-title">Add Bilty</div>
     <form action="save_bilty.php" method="post">
       <div class="grid">
+        <div class="field">
+          <label for="rate_value_column">Tender Column</label>
+          <select id="rate_value_column" name="rate_value_column" required>
+            <?php foreach($activeColumns as $c): ?>
+              <option value="<?php echo htmlspecialchars($c['key']); ?>" <?php echo $c['key'] === $savedValueLookupColumn ? 'selected' : ''; ?>>
+                <?php echo htmlspecialchars($c['label'] . ' (' . $c['key'] . ')'); ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+        </div>
         <div class="field">
           <label for="sr_no">SR No</label>
           <input id="sr_no" name="sr_no" placeholder="SR number" required>
@@ -182,93 +196,84 @@ $today = date('Y-m-d');
   </div>
 </div>
 
-<div class="modal" id="settings_modal" aria-hidden="true">
-  <div class="modal-card">
-    <div class="modal-title">Tender Settings</div>
-    <div class="modal-desc">SR matching is fixed to SR column. Select which column value should auto-fill the Tender field.</div>
-    <form id="settings_form">
-      <div class="modal-field">
-        <label for="rate_value_column">Tender column</label>
-        <select id="rate_value_column" name="rate_value_column" required>
-          <?php foreach($activeColumns as $c): ?>
-            <option value="<?php echo htmlspecialchars($c['key']); ?>" <?php echo $c['key'] === $savedValueLookupColumn ? 'selected' : ''; ?>>
-              <?php echo htmlspecialchars($c['label'] . ' (' . $c['key'] . ')'); ?>
-            </option>
-          <?php endforeach; ?>
-        </select>
-      </div>
-      <div class="modal-actions">
-        <button class="btn-cancel" type="button" id="close_settings">Cancel</button>
-        <button class="btn-save" type="submit">Save</button>
-      </div>
-    </form>
-  </div>
-</div>
-
 <script>
 (function(){
   var srInput = document.getElementById('sr_no');
   var tenderInput = document.getElementById('tender');
-  var help = document.getElementById('tender_help');
-  var openBtn = document.getElementById('open_settings');
-  var closeBtn = document.getElementById('close_settings');
-  var modal = document.getElementById('settings_modal');
-  var settingsForm = document.getElementById('settings_form');
   var valueLookupSelect = document.getElementById('rate_value_column');
   var valueLookupName = document.getElementById('value_lookup_name');
-
   var reqId = 0, timer = null;
 
   function setHelp(text, type){
     var el = document.getElementById('tender_help');
+    if(!el) return;
     el.textContent = text || '';
     el.className = 'field-meta' + (type ? ' ' + type : '');
   }
 
-  function openModal(){ modal.classList.add('show'); modal.setAttribute('aria-hidden', 'false'); }
-  function closeModal(){ modal.classList.remove('show'); modal.setAttribute('aria-hidden', 'true'); }
-
   function lookupTender(){
-    var sr = (srInput.value || '').trim();
-    if(sr === ''){ setHelp('Tender column: ' + (valueLookupName ? valueLookupName.textContent : ''), ''); return; }
+    var sr = (srInput && srInput.value ? srInput.value : '').trim();
+    if(sr === ''){
+      setHelp('Tender column: ' + (valueLookupName ? valueLookupName.textContent : ''), '');
+      return;
+    }
+
     reqId++;
     var cur = reqId;
     setHelp('Checking rate...', 'info');
+
     fetch('add_bilty.php?lookup_tender=1&sr_no=' + encodeURIComponent(sr), { headers: { 'Accept': 'application/json' } })
-    .then(function(r){ return r.json(); })
-    .then(function(data){
-      if(cur !== reqId) return;
-      if(data && data.ok){ tenderInput.value = data.rate; setHelp('✓ Auto fill: ' + (data.value_column_label || data.column_label || 'selected'), 'ok'); }
-      else { setHelp('✗ ' + ((data && data.message) ? data.message : 'Rate not found'), 'err'); }
-    })
-    .catch(function(){ if(cur !== reqId) return; setHelp('✗ Cannot get rate.', 'err'); });
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        if(cur !== reqId) return;
+        if(data && data.ok){
+          if(tenderInput) tenderInput.value = data.rate;
+          setHelp('Auto fill: ' + (data.value_column_label || data.column_label || 'selected'), 'ok');
+        } else {
+          setHelp((data && data.message) ? data.message : 'Rate not found', 'err');
+        }
+      })
+      .catch(function(){
+        if(cur !== reqId) return;
+        setHelp('Cannot get rate.', 'err');
+      });
   }
 
-  function scheduleLookup(){ if(timer) clearTimeout(timer); timer = setTimeout(lookupTender, 250); }
-  srInput.addEventListener('input', scheduleLookup);
-  srInput.addEventListener('blur', lookupTender);
-  if(openBtn) openBtn.addEventListener('click', openModal);
-  if(closeBtn) closeBtn.addEventListener('click', closeModal);
-  if(modal) modal.addEventListener('click', function(e){ if(e.target === modal) closeModal(); });
-  if(settingsForm){
-    settingsForm.addEventListener('submit', function(e){
-      e.preventDefault();
-      var col = valueLookupSelect ? valueLookupSelect.value : '';
+  if(srInput){
+    srInput.addEventListener('input', function(){
+      if(timer) clearTimeout(timer);
+      timer = setTimeout(lookupTender, 250);
+    });
+    srInput.addEventListener('blur', lookupTender);
+  }
+
+  if(valueLookupSelect){
+    valueLookupSelect.addEventListener('change', function(){
+      var col = valueLookupSelect.value || '';
       if(col === '') return;
-      fetch('add_bilty.php', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' }, body: 'save_lookup_setting=1&rate_value_column=' + encodeURIComponent(col) })
+
+      fetch('add_bilty.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
+        body: 'save_lookup_setting=1&rate_value_column=' + encodeURIComponent(col)
+      })
       .then(function(r){ return r.json(); })
       .then(function(data){
         if(data && data.ok){
           var label = valueLookupSelect.options[valueLookupSelect.selectedIndex] ? valueLookupSelect.options[valueLookupSelect.selectedIndex].text : '';
           if(valueLookupName) valueLookupName.textContent = label;
-          closeModal();
           lookupTender();
-        } else { setHelp('✗ ' + ((data && data.message) ? data.message : 'Could not save.'), 'err'); }
+        } else {
+          setHelp((data && data.message) ? data.message : 'Could not save.', 'err');
+        }
       })
-      .catch(function(){ setHelp('✗ Could not save.', 'err'); });
+      .catch(function(){
+        setHelp('Could not save.', 'err');
+      });
     });
   }
 })();
 </script>
 </body>
 </html>
+

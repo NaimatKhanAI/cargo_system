@@ -21,18 +21,104 @@ function load_columns($conn){
     while($r = $res->fetch_assoc()) $cols[] = $r;
     return $cols;
 }
+function parse_rate_numeric_local($value){ $value = trim((string)$value); if($value === '') return null; $clean = str_replace([',', ' '], '', $value); $clean = preg_replace('/[^0-9.\-]/', '', $clean); if($clean === '' || $clean === '-' || $clean === '.' || $clean === '-.') return null; if(!is_numeric($clean)) return null; return (float)$clean; }
+function decimal_places_local($value){ $clean = preg_replace('/[^0-9.\-]/', '', trim((string)$value)); if($clean === '' || strpos($clean, '.') === false) return 0; $parts = explode('.', $clean, 2); if(count($parts) < 2) return 0; return min(4, max(0, strlen(rtrim($parts[1], '0')))); }
+function format_rate_numeric_local($number, $sourceRaw){ $dec = decimal_places_local($sourceRaw); if($dec <= 0) return number_format((float)round($number), 0, '.', ','); return number_format((float)$number, $dec, '.', ','); }
 function normalize_header_local($v){ $v = strtolower(trim((string)$v)); $v = preg_replace('/\s+/', ' ', $v); $v = str_replace(['.','(',')'], '', $v); return $v; }
 function normalize_digits_local($v){ $v = (string)$v; $map = ['٠'=>'0','١'=>'1','٢'=>'2','٣'=>'3','٤'=>'4','٥'=>'5','٦'=>'6','٧'=>'7','٨'=>'8','٩'=>'9','۰'=>'0','۱'=>'1','۲'=>'2','۳'=>'3','۴'=>'4','۵'=>'5','۶'=>'6','۷'=>'7','۸'=>'8','۹'=>'9']; return strtr($v, $map); }
 function canonical_sr_local($v){ $v = normalize_digits_local((string)$v); $v = strtolower(trim($v)); return preg_replace('/[^a-z0-9]/u', '', $v); }
 function detect_sr_column_key_local($columns){ foreach($columns as $c){ if(isset($c['column_key']) && $c['column_key'] === 'sr_no') return 'sr_no'; } foreach($columns as $c){ $lbl = isset($c['column_label']) ? normalize_header_local($c['column_label']) : ''; if(in_array($lbl, ['sr','sr no','serial','serial no','serial number'], true)) return (string)$c['column_key']; } return ''; }
 function sr_exists_local($conn, $srKey, $srValue, $excludeId = 0){ $srCanon = canonical_sr_local($srValue); if($srCanon === '' || $srKey === '') return false; $res = $conn->query("SELECT id, sr_no, extra_data FROM image_processed_rates"); while($res && $row = $res->fetch_assoc()){ $id = (int)$row['id']; if($excludeId > 0 && $id === $excludeId) continue; $candidate = ''; if($srKey === 'sr_no') $candidate = isset($row['sr_no']) ? (string)$row['sr_no'] : ''; else { $extra = json_decode((string)$row['extra_data'], true); if(is_array($extra) && isset($extra[$srKey])) $candidate = (string)$extra[$srKey]; } if(canonical_sr_local($candidate) === $srCanon) return true; } return false; }
 
-$msg = ''; $err = ''; $editingId = 0; $openAddRow = false;
+$msg = ''; $err = ''; $editingId = 0; $openAddRow = false; $openRateChange = false; $rateChangeSource = ''; $rateChangeMode = 'increment'; $rateChangePercent = ''; $rateChangeLabel = '';
 
 if(isset($_GET['delete_all']) && $_GET['delete_all'] === '1'){ $conn->query("DELETE FROM image_processed_rates"); $msg = 'Rate list cleared.'; }
 if(isset($_GET['import'])){ if($_GET['import'] === 'success'){ $ins = isset($_GET['ins']) ? (int)$_GET['ins'] : 0; $skip = isset($_GET['skip']) ? (int)$_GET['skip'] : 0; $msg = "Import completed. Inserted: $ins, Skipped: $skip"; } elseif($_GET['import'] === 'error'){ $reason = isset($_GET['reason']) ? trim((string)$_GET['reason']) : ''; $err = $reason === 'no_columns' ? 'Import failed. No active Rate List columns found.' : 'Import failed. Please upload a valid CSV file.'; } }
 
 if(isset($_POST['add_column'])){ $label = isset($_POST['new_column_label']) ? trim($_POST['new_column_label']) : ''; if($label === ''){ $err = 'Column name required.'; } else { $baseKey = slugify_label_to_key($label); $key = $baseKey; $suffix = 1; while(true){ $chk = $conn->prepare("SELECT id FROM rate_list_columns WHERE column_key=? LIMIT 1"); $chk->bind_param("s", $key); $chk->execute(); $exists = $chk->get_result()->num_rows > 0; $chk->close(); if(!$exists) break; $suffix++; $key = $baseKey . '_' . $suffix; } $maxOrderRes = $conn->query("SELECT COALESCE(MAX(display_order),0) AS m FROM rate_list_columns")->fetch_assoc(); $nextOrder = ((int)$maxOrderRes['m']) + 1; $ins = $conn->prepare("INSERT INTO rate_list_columns(column_key, column_label, is_hidden, is_deleted, display_order, is_base) VALUES(?, ?, 0, 0, ?, 0)"); $ins->bind_param("ssi", $key, $label, $nextOrder); $ins->execute(); $ins->close(); $msg = 'New column added.'; } }
+if(isset($_POST['apply_rate_change'])){
+  $openRateChange = true;
+  $rateChangeSource = isset($_POST['rc_source_column']) ? trim((string)$_POST['rc_source_column']) : '';
+  $rateChangeMode = isset($_POST['rc_mode']) ? trim((string)$_POST['rc_mode']) : 'increment';
+  $rateChangePercent = isset($_POST['rc_percent']) ? trim((string)$_POST['rc_percent']) : '';
+  $rateChangeLabel = isset($_POST['rc_new_column_label']) ? trim((string)$_POST['rc_new_column_label']) : '';
+
+  $allCols = load_columns($conn);
+  $activeCols = array_values(array_filter($allCols, function($c){ return (int)$c['is_deleted'] === 0; }));
+  $activeKeys = array_map(function($c){ return (string)$c['column_key']; }, $activeCols);
+
+  if($rateChangeSource === '' || !in_array($rateChangeSource, $activeKeys, true)){
+    $err = 'Rate Change: select a valid source column.';
+  } elseif($rateChangeLabel === ''){
+    $err = 'Rate Change: new column name required.';
+  } elseif($rateChangePercent === '' || !is_numeric($rateChangePercent)){
+    $err = 'Rate Change: enter a valid percent value.';
+  } else {
+    $percent = abs((float)$rateChangePercent);
+    $factor = $rateChangeMode === 'decrement' ? (1 - ($percent / 100)) : (1 + ($percent / 100));
+    if($factor < 0) $factor = 0;
+
+    $baseKey = slugify_label_to_key($rateChangeLabel);
+    $newKey = $baseKey;
+    $suffix = 1;
+    while(true){
+      $chk = $conn->prepare("SELECT id FROM rate_list_columns WHERE column_key=? LIMIT 1");
+      $chk->bind_param("s", $newKey);
+      $chk->execute();
+      $exists = $chk->get_result()->num_rows > 0;
+      $chk->close();
+      if(!$exists) break;
+      $suffix++;
+      $newKey = $baseKey . '_' . $suffix;
+    }
+
+    $maxOrderRes = $conn->query("SELECT COALESCE(MAX(display_order),0) AS m FROM rate_list_columns")->fetch_assoc();
+    $nextOrder = ((int)$maxOrderRes['m']) + 1;
+    $ins = $conn->prepare("INSERT INTO rate_list_columns(column_key, column_label, is_hidden, is_deleted, display_order, is_base) VALUES(?, ?, 0, 0, ?, 0)");
+    $ins->bind_param("ssi", $newKey, $rateChangeLabel, $nextOrder);
+    $okIns = $ins->execute();
+    $ins->close();
+
+    if(!$okIns){
+      $err = 'Rate Change: could not create new column.';
+    } else {
+      $rowsRes = $conn->query("SELECT id, sr_no, station_english, station_urdu, rate1, rate2, extra_data FROM image_processed_rates ORDER BY id ASC");
+      $upd = $conn->prepare("UPDATE image_processed_rates SET extra_data=? WHERE id=?");
+      $updatedCount = 0;
+
+      while($rowsRes && $row = $rowsRes->fetch_assoc()){
+        $sourceRaw = '';
+        $extra = [];
+        if(isset($row['extra_data']) && $row['extra_data'] !== ''){
+          $decoded = json_decode((string)$row['extra_data'], true);
+          if(is_array($decoded)) $extra = $decoded;
+        }
+
+        if(array_key_exists($rateChangeSource, $row)){
+          $sourceRaw = (string)$row[$rateChangeSource];
+        } elseif(isset($extra[$rateChangeSource])){
+          $sourceRaw = (string)$extra[$rateChangeSource];
+        }
+
+        $sourceNumber = parse_rate_numeric_local($sourceRaw);
+        if($sourceNumber === null) continue;
+
+        $newNumber = $sourceNumber * $factor;
+        $extra[$newKey] = format_rate_numeric_local($newNumber, $sourceRaw);
+        $extraJson = json_encode($extra, JSON_UNESCAPED_UNICODE);
+        if($extraJson === false) $extraJson = '{}';
+        $rowId = (int)$row['id'];
+        $upd->bind_param("si", $extraJson, $rowId);
+        if($upd->execute()) $updatedCount++;
+      }
+
+      $upd->close();
+      $msg = "Rate Change applied. New column created and {$updatedCount} rows updated.";
+      $openRateChange = false;
+      $rateChangeSource = ''; $rateChangeMode = 'increment'; $rateChangePercent = ''; $rateChangeLabel = '';
+    }
+  }
+}
 if(isset($_POST['save_columns'])){ $cols = load_columns($conn); foreach($cols as $c){ $key = $c['column_key']; $labelField = 'label_' . $key; $hideField = 'hide_' . $key; $newLabel = isset($_POST[$labelField]) ? trim($_POST[$labelField]) : $c['column_label']; $isHidden = isset($_POST[$hideField]) ? 1 : 0; if($newLabel === '') $newLabel = $c['column_label']; $upd = $conn->prepare("UPDATE rate_list_columns SET column_label=?, is_hidden=? WHERE column_key=?"); $upd->bind_param("sis", $newLabel, $isHidden, $key); $upd->execute(); $upd->close(); } $msg = 'Column settings updated.'; }
 if(isset($_POST['delete_column'])){ $key = isset($_POST['column_key']) ? trim($_POST['column_key']) : ''; if($key !== ''){ $upd = $conn->prepare("UPDATE rate_list_columns SET is_deleted=1 WHERE column_key=?"); $upd->bind_param("s", $key); $upd->execute(); $upd->close(); $msg = 'Column deleted.'; } }
 if(isset($_POST['delete_rate'])){ $deleteId = isset($_POST['edit_id']) ? (int)$_POST['edit_id'] : 0; if($deleteId > 0){ $del = $conn->prepare("DELETE FROM image_processed_rates WHERE id=?"); $del->bind_param("i", $deleteId); $del->execute(); $del->close(); $msg = 'Rate row deleted.'; $editingId = 0; } else { $err = 'Invalid row selected.'; } }
@@ -100,7 +186,9 @@ $rows = $conn->query("SELECT id, source_file, source_image_path, sr_no, station_
   /* COLUMN SETTINGS */
   .add-col-row { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; }
   .add-col-row input { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 9px 12px; font-family: var(--font); font-size: 13px; width: 260px; }
+  .add-col-row select { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 9px 12px; font-family: var(--font); font-size: 13px; min-width: 170px; }
   .add-col-row input:focus { outline: none; border-color: var(--accent); }
+  .add-col-row select:focus { outline: none; border-color: var(--accent); }
   .col-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; margin-bottom: 14px; }
   .col-item { background: var(--surface2); border: 1px solid var(--border); padding: 12px; }
   .col-item-key { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; font-family: var(--mono); }
@@ -165,6 +253,7 @@ $rows = $conn->query("SELECT id, source_file, source_image_path, sr_no, station_
           <input class="menu-import-input" id="menu_import_file" type="file" name="csv_file" accept=".csv" required>
           <button class="menu-item" type="button" id="menu_import_btn">Import</button>
         </form>
+        <button class="menu-item" type="button" id="menu_rate_change_btn">Rate Change</button>
         <a class="menu-item" href="export_rate_list.php">Export</a>
         <a class="menu-item danger" href="feed_ratelist.php?delete_all=1" onclick="return confirm('Delete entire rate list?')">Clear List</a>
       </div>
@@ -218,6 +307,35 @@ $rows = $conn->query("SELECT id, source_file, source_image_path, sr_no, station_
         </div>
         <input type="hidden" id="delete_col_key" name="column_key" value="">
         <button class="nav-btn primary" type="submit" name="save_columns">Save Columns</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- RATE CHANGE -->
+  <div class="panel">
+    <div class="panel-head" id="rc_head">
+      <span class="panel-title">Rate Change</span>
+      <span class="panel-toggle <?php echo $openRateChange ? 'open' : ''; ?>" id="rc_toggle">+</span>
+    </div>
+    <div class="panel-body <?php echo $openRateChange ? 'open' : ''; ?>" id="rc_body">
+      <form method="post">
+        <div class="add-col-row" style="flex-wrap:wrap;">
+          <select name="rc_source_column" required>
+            <option value="">Select source column</option>
+            <?php foreach($displayColumns as $c): ?>
+              <option value="<?php echo htmlspecialchars($c['column_key']); ?>" <?php echo $rateChangeSource === $c['column_key'] ? 'selected' : ''; ?>>
+                <?php echo htmlspecialchars($c['column_label'] . ' (' . $c['column_key'] . ')'); ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+          <select name="rc_mode" required>
+            <option value="increment" <?php echo $rateChangeMode === 'increment' ? 'selected' : ''; ?>>Increment</option>
+            <option value="decrement" <?php echo $rateChangeMode === 'decrement' ? 'selected' : ''; ?>>Decrement</option>
+          </select>
+          <input type="number" step="0.01" min="0" name="rc_percent" placeholder="Percent e.g. 2" value="<?php echo htmlspecialchars($rateChangePercent); ?>" required>
+          <input type="text" name="rc_new_column_label" placeholder="New column name e.g. AA" value="<?php echo htmlspecialchars($rateChangeLabel); ?>" required>
+          <button class="nav-btn primary" type="submit" name="apply_rate_change">Apply</button>
+        </div>
       </form>
     </div>
   </div>
@@ -334,11 +452,13 @@ $rows = $conn->query("SELECT id, source_file, source_image_path, sr_no, station_
     });
   }
   initToggle('col_head', 'col_toggle', 'col_body');
+  initToggle('rc_head', 'rc_toggle', 'rc_body');
   initToggle('add_head', 'add_toggle', 'add_body');
 
   var menuToggle = document.getElementById('menu_toggle');
   var menuDropdown = document.getElementById('menu_dropdown');
   var importBtn = document.getElementById('menu_import_btn');
+  var rateChangeBtn = document.getElementById('menu_rate_change_btn');
   var importFile = document.getElementById('menu_import_file');
   var importForm = document.getElementById('menu_import_form');
 
@@ -361,6 +481,21 @@ $rows = $conn->query("SELECT id, source_file, source_image_path, sr_no, station_
     importBtn.addEventListener('click', function(){ importFile.click(); });
     importFile.addEventListener('change', function(){
       if(importFile.files && importFile.files.length > 0) importForm.submit();
+    });
+  }
+
+  if(rateChangeBtn){
+    rateChangeBtn.addEventListener('click', function(){
+      var body = document.getElementById('rc_body');
+      var toggle = document.getElementById('rc_toggle');
+      if(body){
+        body.classList.add('open');
+        if(toggle) toggle.classList.add('open');
+      }
+      if(menuDropdown){
+        menuDropdown.classList.remove('open');
+        if(menuToggle) menuToggle.setAttribute('aria-expanded', 'false');
+      }
     });
   }
 })();
