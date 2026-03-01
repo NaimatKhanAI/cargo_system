@@ -65,6 +65,7 @@ $items = activity_fetch_items_local($conn, $statusFilter, 300, !$isSuperAdmin);
 <title>Activity Review</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/mobile.css">
 <style>
   :root {
     --bg: #0e0f11;
@@ -272,3 +273,4 @@ $items = activity_fetch_items_local($conn, $statusFilter, 300, !$isSuperAdmin);
 </div>
 </body>
 </html>
+

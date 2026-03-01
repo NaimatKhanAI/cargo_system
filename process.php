@@ -55,6 +55,12 @@ a.button{display:inline-block;background:#2563eb;color:#fff;text-decoration:none
 padding:12px 18px;border-radius:10px;margin-right:8px;}
 a.secondary{display:inline-block;border:1px solid #e5e7eb;color:#111827;text-decoration:none;
 padding:12px 18px;border-radius:10px;background:#fafafa;}
+@media(max-width:700px){
+body{padding:12px;}
+.card{padding:16px;margin:10px auto;}
+.item{flex-direction:column;align-items:flex-start;gap:6px;}
+a.button,a.secondary{display:block;width:100%;margin:8px 0 0 0;text-align:center;}
+}
 </style></head><body>";
 echo "<div class='card'>";
 echo "<h2>Processing Images</h2>";

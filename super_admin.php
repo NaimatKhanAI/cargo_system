@@ -168,6 +168,7 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
 <title>Super Admin Panel</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/mobile.css">
 <style>
   :root {
     --bg: #0e0f11; --surface: #16181c; --surface2: #1e2128; --border: #2a2d35;
@@ -504,3 +505,4 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
 </div>
 </body>
 </html>
+

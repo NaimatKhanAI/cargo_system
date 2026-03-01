@@ -1,0 +1,104 @@
+/* Shared mobile responsiveness for the full system */
+
+html, body {
+  max-width: 100%;
+}
+
+img, video, canvas, svg {
+  max-width: 100%;
+  height: auto;
+}
+
+@media (max-width: 900px) {
+  .topbar {
+    padding: 14px 16px !important;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .topbar h1 {
+    font-size: 16px !important;
+  }
+
+  .nav-links,
+  .topbar-right {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .nav-btn {
+    font-size: 12px !important;
+    padding: 8px 10px !important;
+  }
+
+  .main {
+    padding: 16px !important;
+  }
+
+  .layout {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  .form-card,
+  .upload-card,
+  .card,
+  .modal-card {
+    padding: 20px 14px !important;
+  }
+}
+
+@media (max-width: 700px) {
+  .grid,
+  .form-row,
+  .search-form,
+  .stats-grid,
+  .cat-cards,
+  .info-grid,
+  .stops-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .search-actions,
+  .form-actions,
+  .decision-btns,
+  .pay-req-btns {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .search-actions > *,
+  .form-actions > *,
+  .decision-btns > *,
+  .pay-req-btns > * {
+    flex: 1 1 auto;
+  }
+
+  .table-wrap,
+  .users-table,
+  .req-table {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  table {
+    min-width: 760px;
+  }
+}
+
+@media (max-width: 480px) {
+  body {
+    font-size: 14px;
+  }
+
+  .main {
+    padding: 12px !important;
+  }
+
+  .card-title,
+  .form-title {
+    font-size: 18px !important;
+  }
+}
