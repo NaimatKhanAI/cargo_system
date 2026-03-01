@@ -23,6 +23,66 @@ function exec_prepared_result_local($conn, $sql, $types = '', $values = []){
     return [$stmt, $res];
 }
 
+function payment_request_remaining_local($conn, $actionType, $entityId, &$error = ''){
+    static $cache = [];
+    $error = '';
+    $actionType = trim((string)$actionType);
+    $entityId = (int)$entityId;
+    $cacheKey = $actionType . '|' . $entityId;
+    if(isset($cache[$cacheKey])){
+        return (float)$cache[$cacheKey];
+    }
+    if($entityId <= 0){
+        $error = 'Invalid request entity.';
+        return 0.0;
+    }
+
+    if($actionType === 'feed_pay'){
+        $freightStmt = $conn->prepare("SELECT COALESCE(original_freight, freight) AS freight_total FROM bilty WHERE id=? LIMIT 1");
+        $freightStmt->bind_param("i", $entityId);
+        $freightStmt->execute();
+        $freightRow = $freightStmt->get_result()->fetch_assoc();
+        $freightStmt->close();
+        if(!$freightRow){
+            $error = 'Linked feed bilty not found.';
+            return 0.0;
+        }
+
+        $paidStmt = $conn->prepare("SELECT COALESCE(SUM(amount),0) AS paid_total FROM account_entries WHERE bilty_id=? AND entry_type='debit'");
+        $paidStmt->bind_param("i", $entityId);
+        $paidStmt->execute();
+        $paidRow = $paidStmt->get_result()->fetch_assoc();
+        $paidStmt->close();
+        $remaining = max(0, (float)$freightRow['freight_total'] - (float)($paidRow['paid_total'] ?? 0));
+        $cache[$cacheKey] = $remaining;
+        return (float)$remaining;
+    }
+
+    if($actionType === 'haleeb_pay'){
+        $freightStmt = $conn->prepare("SELECT freight AS freight_total FROM haleeb_bilty WHERE id=? LIMIT 1");
+        $freightStmt->bind_param("i", $entityId);
+        $freightStmt->execute();
+        $freightRow = $freightStmt->get_result()->fetch_assoc();
+        $freightStmt->close();
+        if(!$freightRow){
+            $error = 'Linked haleeb bilty not found.';
+            return 0.0;
+        }
+
+        $paidStmt = $conn->prepare("SELECT COALESCE(SUM(amount),0) AS paid_total FROM account_entries WHERE haleeb_bilty_id=? AND entry_type='debit'");
+        $paidStmt->bind_param("i", $entityId);
+        $paidStmt->execute();
+        $paidRow = $paidStmt->get_result()->fetch_assoc();
+        $paidStmt->close();
+        $remaining = max(0, (float)$freightRow['freight_total'] - (float)($paidRow['paid_total'] ?? 0));
+        $cache[$cacheKey] = $remaining;
+        return (float)$remaining;
+    }
+
+    $error = 'Unsupported payment request type.';
+    return 0.0;
+}
+
 $allowedCategories = ['feed', 'haleeb', 'loan'];
 $allowedTypes = ['debit', 'credit'];
 $allowedModes = ['cash', 'account'];
@@ -40,12 +100,72 @@ if(isset($_POST['approve_pay_request']) || isset($_POST['reject_pay_request'])){
     } else {
         $requestId = isset($_POST['request_id']) ? (int)$_POST['request_id'] : 0;
         $reviewNote = isset($_POST['review_note']) ? trim((string)$_POST['review_note']) : '';
+        $isApprove = isset($_POST['approve_pay_request']);
         $reviewError = '';
-        $ok = review_change_request_local($conn, $requestId, $currentUserId, isset($_POST['approve_pay_request']), $reviewNote, $reviewError, ['feed_pay', 'haleeb_pay']);
+
+        if($isApprove){
+            $requestRow = fetch_pending_change_request_by_id_local($conn, $requestId);
+            if(!$requestRow){
+                $err = 'Request not found or already reviewed.';
+            } else {
+                $actionType = isset($requestRow['action_type']) ? (string)$requestRow['action_type'] : '';
+                if(!in_array($actionType, ['feed_pay', 'haleeb_pay'], true)){
+                    $err = 'Invalid payment request type.';
+                } else {
+                    $payload = request_payload_decode_local(isset($requestRow['payload']) ? (string)$requestRow['payload'] : '');
+                    $rawAmount = isset($_POST['request_amount']) ? trim((string)$_POST['request_amount']) : '';
+                    $rawAmount = str_replace(',', '', $rawAmount);
+                    $updatedAmount = $rawAmount !== '' ? (float)$rawAmount : (float)($payload['amount'] ?? 0);
+                    if($updatedAmount <= 0){
+                        $err = 'Amount must be greater than 0.';
+                    } else {
+                        $remainingError = '';
+                        $remaining = payment_request_remaining_local(
+                            $conn,
+                            $actionType,
+                            isset($requestRow['entity_id']) ? (int)$requestRow['entity_id'] : 0,
+                            $remainingError
+                        );
+                        if($remainingError !== ''){
+                            $err = $remainingError;
+                        } elseif($updatedAmount > $remaining){
+                            $err = 'Amount exceeds current remaining balance.';
+                        } else {
+                            $currentAmount = (float)($payload['amount'] ?? 0);
+                            if(abs($updatedAmount - $currentAmount) > 0.0001){
+                                $payload['amount'] = round($updatedAmount, 2);
+                                $payloadJson = json_encode($payload, JSON_UNESCAPED_UNICODE);
+                                if($payloadJson === false){
+                                    $err = 'Could not update request amount.';
+                                } else {
+                                    $upd = $conn->prepare("UPDATE change_requests SET payload=? WHERE id=? AND status='pending'");
+                                    $upd->bind_param("si", $payloadJson, $requestId);
+                                    $updOk = $upd->execute();
+                                    $updAffected = $upd->affected_rows;
+                                    $upd->close();
+                                    if(!$updOk || $updAffected <= 0){
+                                        $err = 'Could not save updated amount.';
+                                    } elseif($reviewNote === ''){
+                                        $reviewNote = 'Amount updated by account admin before approval.';
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        $ok = false;
+        if($err === ''){
+            $ok = review_change_request_local($conn, $requestId, $currentUserId, $isApprove, $reviewNote, $reviewError, ['feed_pay', 'haleeb_pay']);
+        }
         if($ok){
-            $msg = isset($_POST['approve_pay_request']) ? 'Payment request approved.' : 'Payment request rejected.';
+            $msg = $isApprove ? 'Payment request approved.' : 'Payment request rejected.';
         } else {
-            $err = $reviewError !== '' ? $reviewError : 'Payment request review failed.';
+            if($err === ''){
+                $err = $reviewError !== '' ? $reviewError : 'Payment request review failed.';
+            }
         }
     }
 }
@@ -350,6 +470,22 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
   .pay-req-table tbody tr:hover { background: var(--surface2); }
   .pay-req-note { color: var(--muted); font-size: 11px; font-family: var(--font); }
   .pay-req-act { display: flex; flex-direction: column; gap: 6px; min-width: 180px; }
+  .pay-req-field-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.1px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .pay-req-amount-input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 7px 9px;
+    font-family: var(--font);
+    font-size: 12px;
+  }
   .pay-req-note-input {
     width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text);
     padding: 7px 9px; font-family: var(--font); font-size: 12px;
@@ -573,6 +709,13 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
                   $category = isset($p['category']) ? (string)$p['category'] : '';
                   $entryDate = isset($p['entry_date']) ? (string)$p['entry_date'] : '';
                   $note = isset($p['note']) ? (string)$p['note'] : '';
+                  $remainingErr = '';
+                  $remainingAmt = payment_request_remaining_local(
+                    $conn,
+                    isset($r['action_type']) ? (string)$r['action_type'] : '',
+                    isset($r['entity_id']) ? (int)$r['entity_id'] : 0,
+                    $remainingErr
+                  );
                 ?>
                 <tr>
                   <td>#<?php echo (int)$r['id']; ?></td>
@@ -582,11 +725,26 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
                     <div>Amount: <strong>Rs <?php echo number_format($amt, 2); ?></strong></div>
                     <div class="pay-req-note">Mode: <?php echo htmlspecialchars($mode); ?> | Category: <?php echo htmlspecialchars($category); ?> | Date: <?php echo htmlspecialchars($entryDate); ?></div>
                     <?php if($note !== ''): ?><div class="pay-req-note">Note: <?php echo htmlspecialchars($note); ?></div><?php endif; ?>
+                    <?php if($remainingErr !== ''): ?>
+                      <div class="pay-req-note">Remaining: <?php echo htmlspecialchars($remainingErr); ?></div>
+                    <?php else: ?>
+                      <div class="pay-req-note">Remaining now: Rs <?php echo number_format($remainingAmt, 2); ?></div>
+                    <?php endif; ?>
                   </td>
                   <td><?php echo htmlspecialchars((string)$r['created_at']); ?></td>
                   <td>
                     <form method="post" class="pay-req-act">
                       <input type="hidden" name="request_id" value="<?php echo (int)$r['id']; ?>">
+                      <label class="pay-req-field-label" for="req_amt_<?php echo (int)$r['id']; ?>">Approve Amount (Rs)</label>
+                      <input
+                        id="req_amt_<?php echo (int)$r['id']; ?>"
+                        class="pay-req-amount-input"
+                        type="number"
+                        name="request_amount"
+                        step="0.01"
+                        value="<?php echo htmlspecialchars(number_format($amt, 2, '.', '')); ?>"
+                        placeholder="0.00"
+                      >
                       <input class="pay-req-note-input" type="text" name="review_note" placeholder="Optional note">
                       <div class="pay-req-btns">
                         <button class="btn-approve" type="submit" name="approve_pay_request">Approve</button>
