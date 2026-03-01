@@ -67,9 +67,14 @@ if($userAccountAccessColCheck && $userAccountAccessColCheck->num_rows === 0){
 $conn->query("ALTER TABLE users ADD can_access_account TINYINT(1) NOT NULL DEFAULT 0 AFTER can_access_haleeb");
 }
 
+$userImageAccessColCheck = $conn->query("SHOW COLUMNS FROM users LIKE 'can_access_image_processing'");
+if($userImageAccessColCheck && $userImageAccessColCheck->num_rows === 0){
+$conn->query("ALTER TABLE users ADD can_access_image_processing TINYINT(1) NOT NULL DEFAULT 0 AFTER can_access_account");
+}
+
 $userManageColCheck = $conn->query("SHOW COLUMNS FROM users LIKE 'can_manage_users'");
 if($userManageColCheck && $userManageColCheck->num_rows === 0){
-$conn->query("ALTER TABLE users ADD can_manage_users TINYINT(1) NOT NULL DEFAULT 0 AFTER can_access_account");
+$conn->query("ALTER TABLE users ADD can_manage_users TINYINT(1) NOT NULL DEFAULT 0 AFTER can_access_image_processing");
 }
 
 $userCreatedByColCheck = $conn->query("SHOW COLUMNS FROM users LIKE 'created_by'");
@@ -341,6 +346,53 @@ created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 reviewed_at TIMESTAMP NULL DEFAULT NULL
 )");
 
+$conn->query("CREATE TABLE IF NOT EXISTS activity_notifications(
+id INT AUTO_INCREMENT PRIMARY KEY,
+module_key VARCHAR(30) NOT NULL,
+activity_type VARCHAR(60) NOT NULL,
+reference_type VARCHAR(40) NOT NULL,
+reference_id INT NOT NULL DEFAULT 0,
+message VARCHAR(255) NOT NULL,
+payload LONGTEXT,
+status VARCHAR(20) NOT NULL DEFAULT 'new',
+flagged_for_admin TINYINT(1) NOT NULL DEFAULT 0,
+created_by INT NOT NULL DEFAULT 0,
+reviewed_by INT NULL,
+review_note VARCHAR(255) NULL,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+reviewed_at TIMESTAMP NULL DEFAULT NULL
+)");
+
+$activityStatusColCheck = $conn->query("SHOW COLUMNS FROM activity_notifications LIKE 'status'");
+if($activityStatusColCheck && $activityStatusColCheck->num_rows === 0){
+$conn->query("ALTER TABLE activity_notifications ADD status VARCHAR(20) NOT NULL DEFAULT 'new' AFTER payload");
+}
+
+$activityFlagColCheck = $conn->query("SHOW COLUMNS FROM activity_notifications LIKE 'flagged_for_admin'");
+if($activityFlagColCheck && $activityFlagColCheck->num_rows === 0){
+$conn->query("ALTER TABLE activity_notifications ADD flagged_for_admin TINYINT(1) NOT NULL DEFAULT 0 AFTER status");
+}
+
+$activityCreatedByColCheck = $conn->query("SHOW COLUMNS FROM activity_notifications LIKE 'created_by'");
+if($activityCreatedByColCheck && $activityCreatedByColCheck->num_rows === 0){
+$conn->query("ALTER TABLE activity_notifications ADD created_by INT NOT NULL DEFAULT 0 AFTER flagged_for_admin");
+}
+
+$activityReviewedByColCheck = $conn->query("SHOW COLUMNS FROM activity_notifications LIKE 'reviewed_by'");
+if($activityReviewedByColCheck && $activityReviewedByColCheck->num_rows === 0){
+$conn->query("ALTER TABLE activity_notifications ADD reviewed_by INT NULL AFTER created_by");
+}
+
+$activityReviewNoteColCheck = $conn->query("SHOW COLUMNS FROM activity_notifications LIKE 'review_note'");
+if($activityReviewNoteColCheck && $activityReviewNoteColCheck->num_rows === 0){
+$conn->query("ALTER TABLE activity_notifications ADD review_note VARCHAR(255) NULL AFTER reviewed_by");
+}
+
+$activityReviewedAtColCheck = $conn->query("SHOW COLUMNS FROM activity_notifications LIKE 'reviewed_at'");
+if($activityReviewedAtColCheck && $activityReviewedAtColCheck->num_rows === 0){
+$conn->query("ALTER TABLE activity_notifications ADD reviewed_at TIMESTAMP NULL DEFAULT NULL AFTER created_at");
+}
+
 // Legacy migration: normalize old keys and remove any base-lock.
 $conn->query("UPDATE rate_list_columns SET column_key='rate1' WHERE column_key='rate_2026_01_01'");
 $conn->query("UPDATE rate_list_columns SET column_key='rate2' WHERE column_key='rate_2026_01_02'");
@@ -366,7 +418,7 @@ $check->execute();
 $exists = $check->get_result()->num_rows > 0;
 $check->close();
 if(!$exists){
-$ins = $conn->prepare("INSERT INTO users(username,password,role,is_active,can_access_feed,can_access_haleeb,can_access_account,can_manage_users) VALUES(?,?,'super_admin',1,1,1,1,1)");
+$ins = $conn->prepare("INSERT INTO users(username,password,role,is_active,can_access_feed,can_access_haleeb,can_access_account,can_access_image_processing,can_manage_users) VALUES(?,?,'super_admin',1,1,1,1,1,1)");
 $ins->bind_param("ss", $seedAdminUser, $seedAdminPass);
 $ins->execute();
 $ins->close();
@@ -378,8 +430,10 @@ $superAdminCount = $superAdminCountRes ? (int)$superAdminCountRes->fetch_assoc()
 if($superAdminCount === 0){
 $fallbackSuperUser = trim((string)env_get('SUPER_ADMIN_USER', 'admin'));
 $fallbackSuperPass = trim((string)env_get('SUPER_ADMIN_PASS', '1234'));
+if($fallbackSuperUser === '') $fallbackSuperUser = 'admin';
+if($fallbackSuperPass === '') $fallbackSuperPass = '1234';
 
-$promoteStmt = $conn->prepare("UPDATE users SET role='super_admin', is_active=1, can_access_feed=1, can_access_haleeb=1, can_access_account=1, can_manage_users=1 WHERE username=? LIMIT 1");
+$promoteStmt = $conn->prepare("UPDATE users SET role='super_admin', is_active=1, can_access_feed=1, can_access_haleeb=1, can_access_account=1, can_access_image_processing=1, can_manage_users=1 WHERE username=? LIMIT 1");
 $promoteStmt->bind_param("s", $fallbackSuperUser);
 $promoteStmt->execute();
 $promoteStmt->close();
@@ -392,7 +446,7 @@ $fallbackExists = $fallbackExistsStmt->get_result()->num_rows > 0;
 $fallbackExistsStmt->close();
 
 if(!$fallbackExists){
-$insertSuper = $conn->prepare("INSERT INTO users(username,password,role,is_active,can_access_feed,can_access_haleeb,can_access_account,can_manage_users) VALUES(?,?,'super_admin',1,1,1,1,1)");
+$insertSuper = $conn->prepare("INSERT INTO users(username,password,role,is_active,can_access_feed,can_access_haleeb,can_access_account,can_access_image_processing,can_manage_users) VALUES(?,?,'super_admin',1,1,1,1,1,1)");
 $insertSuper->bind_param("ss", $fallbackSuperUser, $fallbackSuperPass);
 $insertSuper->execute();
 $insertSuper->close();

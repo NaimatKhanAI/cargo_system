@@ -1,4 +1,29 @@
 <?php
+require_once __DIR__ . '/activity_notifications.php';
+
+function request_payload_decode_local($raw){
+    if(trim((string)$raw) === '') return [];
+    $decoded = json_decode((string)$raw, true);
+    return is_array($decoded) ? $decoded : [];
+}
+
+function request_action_summary_local($actionType, $entityId, $payload){
+    $actionType = (string)$actionType;
+    $entityId = (int)$entityId;
+    if($actionType === 'feed_pay' || $actionType === 'haleeb_pay'){
+        $amt = isset($payload['amount']) ? (float)$payload['amount'] : 0;
+        $mode = isset($payload['amount_mode']) ? (string)$payload['amount_mode'] : '';
+        return 'Payment request: Rs ' . number_format($amt, 2) . ' (' . $mode . ')';
+    }
+    if($actionType === 'feed_update' || $actionType === 'haleeb_update' || $actionType === 'account_update'){
+        return 'Update request for entity #' . $entityId;
+    }
+    if($actionType === 'feed_delete' || $actionType === 'haleeb_delete' || $actionType === 'account_delete'){
+        return 'Delete request for entity #' . $entityId;
+    }
+    return 'Change request submitted for entity #' . $entityId;
+}
+
 function create_change_request_local($conn, $moduleKey, $entityTable, $entityId, $actionType, $payload, $requestedBy){
     $payloadJson = json_encode($payload, JSON_UNESCAPED_UNICODE);
     if($payloadJson === false){
@@ -11,10 +36,27 @@ function create_change_request_local($conn, $moduleKey, $entityTable, $entityId,
     $requestId = $stmt->insert_id;
     $stmt->close();
     if(!$ok) return 0;
+
+    $summary = request_action_summary_local($actionType, $entityId, is_array($payload) ? $payload : []);
+    activity_notify_local(
+        $conn,
+        (string)$moduleKey,
+        'change_request_created',
+        'change_request',
+        (int)$requestId,
+        $summary,
+        [
+            'action_type' => (string)$actionType,
+            'entity_table' => (string)$entityTable,
+            'entity_id' => (int)$entityId
+        ],
+        (int)$requestedBy
+    );
+
     return (int)$requestId;
 }
 
-function fetch_pending_change_requests_local($conn){
+function fetch_pending_change_requests_local($conn, $excludeActionTypes = [], $includeActionTypes = []){
     $rows = [];
     $sql = "SELECT r.id, r.module_key, r.entity_table, r.entity_id, r.action_type, r.payload, r.status, r.requested_by, r.created_at,
                    u.username AS requested_by_name
@@ -24,9 +66,95 @@ function fetch_pending_change_requests_local($conn){
             ORDER BY r.id DESC";
     $res = $conn->query($sql);
     while($res && $row = $res->fetch_assoc()){
+        $actionType = isset($row['action_type']) ? (string)$row['action_type'] : '';
+        if(count($includeActionTypes) > 0 && !in_array($actionType, $includeActionTypes, true)) continue;
+        if(count($excludeActionTypes) > 0 && in_array($actionType, $excludeActionTypes, true)) continue;
         $rows[] = $row;
     }
     return $rows;
+}
+
+function review_change_request_local($conn, $requestId, $reviewedBy, $isApprove, $reviewNote, &$error, $allowedActionTypes = []){
+    $error = '';
+    $requestId = (int)$requestId;
+    $reviewedBy = (int)$reviewedBy;
+    $reviewNote = trim((string)$reviewNote);
+    if($requestId <= 0){
+        $error = 'Invalid request.';
+        return false;
+    }
+
+    $rs = $conn->prepare("SELECT * FROM change_requests WHERE id=? AND status='pending' LIMIT 1");
+    $rs->bind_param("i", $requestId);
+    $rs->execute();
+    $requestRow = $rs->get_result()->fetch_assoc();
+    $rs->close();
+    if(!$requestRow){
+        $error = 'Request not found or already reviewed.';
+        return false;
+    }
+
+    $actionType = isset($requestRow['action_type']) ? (string)$requestRow['action_type'] : '';
+    if(count($allowedActionTypes) > 0 && !in_array($actionType, $allowedActionTypes, true)){
+        $error = 'This request cannot be reviewed here.';
+        return false;
+    }
+
+    if($isApprove){
+        $conn->begin_transaction();
+        try {
+            $applyError = '';
+            $ok = apply_change_request_local($conn, $requestRow, $applyError);
+            if(!$ok){
+                throw new Exception($applyError ?: 'Could not apply request.');
+            }
+
+            $status = 'approved';
+            $u = $conn->prepare("UPDATE change_requests SET status=?, reviewed_by=?, review_note=?, reviewed_at=NOW() WHERE id=?");
+            $u->bind_param("sisi", $status, $reviewedBy, $reviewNote, $requestId);
+            $u->execute();
+            $u->close();
+            $conn->commit();
+
+            activity_notify_local(
+                $conn,
+                (string)$requestRow['module_key'],
+                'change_request_approved',
+                'change_request',
+                $requestId,
+                'Request approved: ' . $actionType,
+                ['review_note' => $reviewNote],
+                $reviewedBy
+            );
+            return true;
+        } catch(Throwable $e){
+            $conn->rollback();
+            $error = 'Approve failed: ' . $e->getMessage();
+            return false;
+        }
+    }
+
+    $status = 'rejected';
+    $u = $conn->prepare("UPDATE change_requests SET status=?, reviewed_by=?, review_note=?, reviewed_at=NOW() WHERE id=?");
+    $u->bind_param("sisi", $status, $reviewedBy, $reviewNote, $requestId);
+    $ok = $u->execute();
+    $u->close();
+    if(!$ok){
+        $error = 'Reject failed.';
+        return false;
+    }
+
+    activity_notify_local(
+        $conn,
+        (string)$requestRow['module_key'],
+        'change_request_rejected',
+        'change_request',
+        $requestId,
+        'Request rejected: ' . $actionType,
+        ['review_note' => $reviewNote],
+        $reviewedBy
+    );
+    return true;
 }
 
 function apply_feed_delete_local($conn, $id){

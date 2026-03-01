@@ -4,6 +4,7 @@ include 'config/db.php';
 require_once 'config/auth.php';
 auth_require_login($conn);
 auth_require_module_access('feed');
+auth_require_super_admin('dashboard.php');
 
 header('Content-Type: text/csv; charset=utf-8');
 header('Content-Disposition: attachment; filename=bilty_entries_' . date('Y-m-d_H-i-s') . '.csv');

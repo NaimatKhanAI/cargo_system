@@ -76,7 +76,7 @@ $pay_message = "";
 if (isset($_GET['pay'])) {
     if ($_GET['pay'] === 'success') $pay_message = "Payment posted successfully.";
     elseif ($_GET['pay'] === 'error') $pay_message = "Payment failed. Please try again.";
-    elseif ($_GET['pay'] === 'requested') $pay_message = "Payment request sent to super admin for approval.";
+    elseif ($_GET['pay'] === 'requested') $pay_message = "Payment request sent to account ledger admin for approval.";
 }
 
 $clear_message = "";
@@ -299,24 +299,31 @@ if(count($bindValues) > 0){
   </div>
   <div class="nav-links">
     <a class="nav-btn primary" href="add_haleeb_bilty.php">Add Bilty</a>
-    <a class="nav-btn" href="feed.php">Feed</a>
-    <?php if($isSuperAdmin): ?><a class="nav-btn" href="super_admin.php">Super Admin</a><?php endif; ?>
-    <a class="nav-btn" href="dashboard.php">Dashboard</a>
+    <?php if($isSuperAdmin): ?>
+      <a class="nav-btn" href="feed.php">Feed</a>
+      <a class="nav-btn" href="super_admin.php">Super Admin</a>
+      <a class="nav-btn" href="dashboard.php">Dashboard</a>
+    <?php endif; ?>
     <div class="menu-wrap">
       <button class="menu-trigger" id="haleeb_menu_btn" type="button" aria-label="Menu">&#9776;</button>
       <div class="menu-pop" id="haleeb_menu_pop">
-        <a class="nav-btn" href="haleeb_ratelist.php">Rate List</a>
-        <a class="nav-btn" href="export_haleeb.php">Export CSV</a>
-        <?php if($canDirectModify): ?>
-          <a class="nav-btn danger" href="haleeb.php?delete_all=1" onclick="return confirm('Delete all Haleeb bilties?')">Delete All Bilties</a>
+        <a class="nav-btn" href="dashboard.php">Dashboard</a>
+        <a class="nav-btn" href="request_status.php">View Request Status</a>
+        <?php if($isSuperAdmin): ?>
+          <div class="menu-sep"></div>
+          <a class="nav-btn" href="haleeb_ratelist.php">Rate List</a>
+          <a class="nav-btn" href="export_haleeb.php">Export CSV</a>
+          <?php if($canDirectModify): ?>
+            <a class="nav-btn danger" href="haleeb.php?delete_all=1" onclick="return confirm('Delete all Haleeb bilties?')">Delete All Bilties</a>
+          <?php endif; ?>
+          <div class="menu-sep"></div>
+          <div class="import-row">
+            <form action="import_haleeb.php" method="post" enctype="multipart/form-data">
+              <input type="file" name="csv_file" accept=".csv" required>
+              <button class="nav-btn" type="submit" style="width:100%">Import CSV</button>
+            </form>
+          </div>
         <?php endif; ?>
-        <div class="menu-sep"></div>
-        <div class="import-row">
-          <form action="import_haleeb.php" method="post" enctype="multipart/form-data">
-            <input type="file" name="csv_file" accept=".csv" required>
-            <button class="nav-btn" type="submit" style="width:100%">Import CSV</button>
-          </form>
-        </div>
       </div>
     </div>
   </div>

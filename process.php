@@ -3,10 +3,7 @@ session_start();
 include 'config/db.php';
 require_once __DIR__ . '/config/auth.php';
 auth_require_login($conn);
-if(!auth_has_module_access('feed') && !auth_has_module_access('haleeb')){
-header("location:dashboard.php?denied=process");
-exit();
-}
+auth_require_module_access('image_processing');
 
 require_once __DIR__ . '/config/env.php';
 load_env_file(__DIR__ . '/.env');

@@ -3,10 +3,12 @@ session_start();
 include 'config/db.php';
 require_once 'config/auth.php';
 require_once 'config/change_requests.php';
+require_once 'config/activity_notifications.php';
 auth_require_login($conn);
 auth_require_module_access('account');
-$canDirectModify = auth_can_direct_modify();
 $isSuperAdmin = auth_is_super_admin();
+$canManageLedger = $isSuperAdmin;
+$currentUserId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 
 function exec_prepared_result_local($conn, $sql, $types = '', $values = []){
     $stmt = $conn->prepare($sql);
@@ -31,18 +33,52 @@ $editingId = 0;
 $dateFrom = isset($_GET['date_from']) ? trim((string)$_GET['date_from']) : '';
 $dateTo = isset($_GET['date_to']) ? trim((string)$_GET['date_to']) : '';
 
+if(isset($_POST['approve_pay_request']) || isset($_POST['reject_pay_request'])){
+    if(!$canManageLedger){
+        $err = 'Account ledger is view-only for your account.';
+    } else {
+        $requestId = isset($_POST['request_id']) ? (int)$_POST['request_id'] : 0;
+        $reviewNote = isset($_POST['review_note']) ? trim((string)$_POST['review_note']) : '';
+        $reviewError = '';
+        $ok = review_change_request_local($conn, $requestId, $currentUserId, isset($_POST['approve_pay_request']), $reviewNote, $reviewError, ['feed_pay', 'haleeb_pay']);
+        if($ok){
+            $msg = isset($_POST['approve_pay_request']) ? 'Payment request approved.' : 'Payment request rejected.';
+        } else {
+            $err = $reviewError !== '' ? $reviewError : 'Payment request review failed.';
+        }
+    }
+}
+
 if(isset($_GET['delete_id'])){
     $deleteId = (int)$_GET['delete_id'];
     if($deleteId > 0){
-        if(!$canDirectModify){
-            $requestId = create_change_request_local($conn, 'account', 'account_entries', $deleteId, 'account_delete', ['id' => $deleteId], isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0);
-            $msg = $requestId > 0 ? 'Delete request sent to super admin.' : 'Could not create delete request.';
+        if(!$canManageLedger){
+            $err = 'Account ledger is view-only for your account.';
         } else {
+            $rowStmt = $conn->prepare("SELECT entry_date, category, entry_type, amount_mode, amount, note FROM account_entries WHERE id=? LIMIT 1");
+            $rowStmt->bind_param("i", $deleteId);
+            $rowStmt->execute();
+            $deleteRow = $rowStmt->get_result()->fetch_assoc();
+            $rowStmt->close();
+
             $deleteStmt = $conn->prepare("DELETE FROM account_entries WHERE id=?");
             $deleteStmt->bind_param("i", $deleteId);
             $deleteStmt->execute();
+            $ok = $deleteStmt->affected_rows > 0;
             $deleteStmt->close();
-            $msg = 'Entry deleted.';
+            if($ok){
+                activity_notify_local(
+                    $conn,
+                    'account',
+                    'ledger_entry_deleted',
+                    'account_entry',
+                    $deleteId,
+                    'Account entry deleted by ledger admin.',
+                    $deleteRow ?: ['id' => $deleteId],
+                    $currentUserId
+                );
+                $msg = 'Entry deleted.';
+            }
         }
     }
 }
@@ -58,30 +94,20 @@ if(isset($_POST['update_entry'])){
     $formEntryDate = $entryDate; $formCategory = $category; $formEntryType = $entryType;
     $formAmountMode = $amountMode; $formAmount = $amount > 0 ? (string)$amount : ''; $formNote = $note;
 
-    if($editingId <= 0) $err = 'Invalid entry id.';
+    if(!$canManageLedger) $err = 'Account ledger is view-only for your account.';
+    elseif($editingId <= 0) $err = 'Invalid entry id.';
     elseif(!in_array($category, $allowedCategories, true)) $err = 'Invalid category.';
     elseif(!in_array($entryType, $allowedTypes, true)) $err = 'Invalid entry type.';
     elseif(!in_array($amountMode, $allowedModes, true)) $err = 'Invalid amount mode.';
     elseif($amount <= 0) $err = 'Amount must be greater than 0.';
     else {
-        if(!$canDirectModify){
-            $payload = [
-                'entry_date' => $entryDate,
-                'category' => $category,
-                'entry_type' => $entryType,
-                'amount_mode' => $amountMode,
-                'amount' => $amount,
-                'note' => $note
-            ];
-            $requestId = create_change_request_local($conn, 'account', 'account_entries', $editingId, 'account_update', $payload, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0);
-            if($requestId > 0){
-                $msg = 'Update request sent to super admin.';
-                $editingId = 0;
-            } else {
-                $err = 'Could not create update request.';
-            }
-        } else {
         $canUpdate = true;
+        $oldStmt = $conn->prepare("SELECT entry_date, category, entry_type, amount_mode, amount, note FROM account_entries WHERE id=? LIMIT 1");
+        $oldStmt->bind_param("i", $editingId);
+        $oldStmt->execute();
+        $oldRow = $oldStmt->get_result()->fetch_assoc();
+        $oldStmt->close();
+
         $linkStmt = $conn->prepare("SELECT bilty_id, haleeb_bilty_id, entry_type FROM account_entries WHERE id=? LIMIT 1");
         $linkStmt->bind_param("i", $editingId);
         $linkStmt->execute();
@@ -120,10 +146,29 @@ if(isset($_POST['update_entry'])){
             $stmt = $conn->prepare("UPDATE account_entries SET entry_date=?, category=?, entry_type=?, amount_mode=?, amount=?, note=? WHERE id=?");
             $stmt->bind_param("ssssdsi", $entryDate, $category, $entryType, $amountMode, $amount, $note, $editingId);
             $stmt->execute(); $stmt->close();
+            activity_notify_local(
+                $conn,
+                'account',
+                'ledger_entry_updated',
+                'account_entry',
+                $editingId,
+                'Account entry updated by ledger admin.',
+                [
+                    'old' => $oldRow ?: [],
+                    'new' => [
+                        'entry_date' => $entryDate,
+                        'category' => $category,
+                        'entry_type' => $entryType,
+                        'amount_mode' => $amountMode,
+                        'amount' => $amount,
+                        'note' => $note
+                    ]
+                ],
+                $currentUserId
+            );
             $msg = 'Entry updated.'; $editingId = 0;
             $formEntryDate = date('Y-m-d'); $formCategory = 'feed'; $formEntryType = 'debit';
             $formAmountMode = 'cash'; $formAmount = ''; $formNote = '';
-        }
         }
     }
 }
@@ -135,15 +180,39 @@ if(isset($_POST['add_entry'])){
     $amountMode = isset($_POST['amount_mode']) ? strtolower(trim($_POST['amount_mode'])) : '';
     $amount = isset($_POST['amount']) ? (float)$_POST['amount'] : 0;
     $note = isset($_POST['note']) ? trim($_POST['note']) : '';
-    if(!in_array($category, $allowedCategories, true)) $err = 'Invalid category.';
+    if(!$canManageLedger) $err = 'Account ledger is view-only for your account.';
+    elseif(!in_array($category, $allowedCategories, true)) $err = 'Invalid category.';
     elseif(!in_array($entryType, $allowedTypes, true)) $err = 'Invalid entry type.';
     elseif(!in_array($amountMode, $allowedModes, true)) $err = 'Invalid amount mode.';
     elseif($amount <= 0) $err = 'Amount must be greater than 0.';
     else {
         $stmt = $conn->prepare("INSERT INTO account_entries(entry_date, category, entry_type, amount_mode, amount, note) VALUES(?, ?, ?, ?, ?, ?)");
         $stmt->bind_param("ssssds", $entryDate, $category, $entryType, $amountMode, $amount, $note);
-        $stmt->execute(); $stmt->close();
-        $msg = 'Entry saved.';
+        $ok = $stmt->execute();
+        $entryId = $stmt->insert_id;
+        $stmt->close();
+        if($ok){
+            activity_notify_local(
+                $conn,
+                'account',
+                'ledger_entry_added',
+                'account_entry',
+                (int)$entryId,
+                'New account ledger entry created.',
+                [
+                    'entry_date' => $entryDate,
+                    'category' => $category,
+                    'entry_type' => $entryType,
+                    'amount_mode' => $amountMode,
+                    'amount' => $amount,
+                    'note' => $note
+                ],
+                $currentUserId
+            );
+            $msg = 'Entry saved.';
+        } else {
+            $err = 'Could not save entry.';
+        }
     }
 }
 
@@ -159,7 +228,7 @@ $dateQueryTail = '';
 if($dateFrom !== '') $dateQueryTail .= '&date_from=' . urlencode($dateFrom);
 if($dateTo !== '') $dateQueryTail .= '&date_to=' . urlencode($dateTo);
 
-if(isset($_GET['edit_id']) && !isset($_POST['update_entry'])){
+if($canManageLedger && isset($_GET['edit_id']) && !isset($_POST['update_entry'])){
     $requestedEditId = (int)$_GET['edit_id'];
     if($requestedEditId > 0){
         $editStmt = $conn->prepare("SELECT id, entry_date, category, entry_type, amount_mode, amount, note FROM account_entries WHERE id=? LIMIT 1");
@@ -197,6 +266,8 @@ if($catStmt) $catStmt->close();
 
 $entriesSql = "SELECT * FROM account_entries" . $whereSql . " ORDER BY entry_date DESC, id DESC";
 list($entryStmt, $entries) = exec_prepared_result_local($conn, $entriesSql, $bindTypes, $bindValues);
+$pendingPayRequests = $canManageLedger ? fetch_pending_change_requests_local($conn, [], ['feed_pay', 'haleeb_pay']) : [];
+$flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -251,6 +322,46 @@ list($entryStmt, $entries) = exec_prepared_result_local($conn, $entriesSql, $bin
 
   .alert { padding: 12px 16px; margin-bottom: 16px; font-size: 13px; border-left: 3px solid var(--green); background: rgba(34,197,94,0.08); color: var(--green); }
   .alert.error { border-color: var(--red); background: rgba(239,68,68,0.08); color: var(--red); }
+
+  .pay-req-panel {
+    background: var(--surface); border: 1px solid var(--border); margin-bottom: 20px;
+  }
+  .pay-req-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 13px 16px; border-bottom: 1px solid var(--border);
+  }
+  .pay-req-title {
+    font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--muted);
+  }
+  .pay-req-count { font-family: var(--mono); font-size: 11px; color: var(--accent); }
+  .pay-req-table { width: 100%; border-collapse: collapse; }
+  .pay-req-table thead tr { background: var(--surface2); }
+  .pay-req-table th {
+    padding: 10px 12px; text-align: left; font-size: 10px; font-weight: 700;
+    letter-spacing: 1.3px; text-transform: uppercase; color: var(--muted);
+    border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  .pay-req-table td {
+    padding: 10px 12px; font-size: 12px; border-bottom: 1px solid rgba(42,45,53,0.6); vertical-align: top;
+  }
+  .pay-req-table tbody tr:hover { background: var(--surface2); }
+  .pay-req-note { color: var(--muted); font-size: 11px; font-family: var(--font); }
+  .pay-req-act { display: flex; flex-direction: column; gap: 6px; min-width: 180px; }
+  .pay-req-note-input {
+    width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    padding: 7px 9px; font-family: var(--font); font-size: 12px;
+  }
+  .pay-req-btns { display: flex; gap: 6px; }
+  .btn-approve {
+    flex: 1; padding: 8px 10px; background: rgba(34,197,94,0.12); color: var(--green);
+    border: 1px solid rgba(34,197,94,0.3); cursor: pointer; font-family: var(--font); font-size: 12px; font-weight: 700;
+  }
+  .btn-approve:hover { background: rgba(34,197,94,0.22); }
+  .btn-reject {
+    flex: 1; padding: 8px 10px; background: rgba(239,68,68,0.08); color: var(--red);
+    border: 1px solid rgba(239,68,68,0.24); cursor: pointer; font-family: var(--font); font-size: 12px; font-weight: 700;
+  }
+  .btn-reject:hover { background: rgba(239,68,68,0.18); }
 
   /* FORM */
   .form-panel {
@@ -411,8 +522,7 @@ list($entryStmt, $entries) = exec_prepared_result_local($conn, $entriesSql, $bin
     <h1>Account</h1>
   </div>
   <div class="nav-links">
-    <a class="nav-btn" href="feed.php">Feed</a>
-    <a class="nav-btn" href="haleeb.php">Haleeb</a>
+    <a class="nav-btn" href="activity_review.php">Activity Review<?php echo $flaggedActivityCount > 0 ? ' (' . $flaggedActivityCount . ')' : ''; ?></a>
     <?php if($isSuperAdmin): ?><a class="nav-btn" href="super_admin.php">Super Admin</a><?php endif; ?>
     <a class="nav-btn" href="dashboard.php">Dashboard</a>
     <a class="nav-btn danger" href="logout.php">Logout</a>
@@ -427,58 +537,125 @@ list($entryStmt, $entries) = exec_prepared_result_local($conn, $entriesSql, $bin
     <div class="alert error"><?php echo htmlspecialchars($err); ?></div>
   <?php endif; ?>
 
-  <!-- ENTRY FORM -->
-  <div class="form-panel">
-    <div class="form-panel-title"><?php echo $editingId > 0 ? 'Edit Entry' : 'New Entry'; ?></div>
-    <form method="post">
-      <div class="form-row">
-        <div class="form-field">
-          <label>Date</label>
-          <input type="date" name="entry_date" value="<?php echo htmlspecialchars($formEntryDate); ?>" required>
-        </div>
-        <div class="form-field">
-          <label>Category</label>
-          <select name="category" required>
-            <option value="feed" <?php echo $formCategory==='feed'?'selected':''; ?>>Feed</option>
-            <option value="haleeb" <?php echo $formCategory==='haleeb'?'selected':''; ?>>Haleeb</option>
-            <option value="loan" <?php echo $formCategory==='loan'?'selected':''; ?>>Loan</option>
-          </select>
-        </div>
-        <div class="form-field">
-          <label>Type</label>
-          <select name="entry_type" required>
-            <option value="debit" <?php echo $formEntryType==='debit'?'selected':''; ?>>Debit</option>
-            <option value="credit" <?php echo $formEntryType==='credit'?'selected':''; ?>>Credit</option>
-          </select>
-        </div>
-        <div class="form-field">
-          <label>Mode</label>
-          <select name="amount_mode" required>
-            <option value="cash" <?php echo $formAmountMode==='cash'?'selected':''; ?>>Cash</option>
-            <option value="account" <?php echo $formAmountMode==='account'?'selected':''; ?>>Account</option>
-          </select>
-        </div>
-        <div class="form-field">
-          <label>Amount (Rs)</label>
-          <input type="number" step="0.01" min="0.01" name="amount" placeholder="0.00" value="<?php echo htmlspecialchars($formAmount); ?>" required>
-        </div>
-        <div class="form-field">
-          <label>Note (optional)</label>
-          <input type="text" name="note" placeholder="Note" value="<?php echo htmlspecialchars($formNote); ?>">
-        </div>
-        <div class="form-actions">
-          <?php if($editingId > 0): ?>
-            <input type="hidden" name="edit_id" value="<?php echo (int)$editingId; ?>">
-            <button class="btn-submit" type="submit" name="update_entry">Update</button>
-            <a class="btn-cancel" href="account.php?cat=<?php echo urlencode($cat); ?>&date_from=<?php echo urlencode($dateFrom); ?>&date_to=<?php echo urlencode($dateTo); ?>">Cancel</a>
-            <a class="btn-del" href="account.php?cat=<?php echo urlencode($cat); ?>&date_from=<?php echo urlencode($dateFrom); ?>&date_to=<?php echo urlencode($dateTo); ?>&delete_id=<?php echo (int)$editingId; ?>" onclick="return confirm('Delete this entry?')" title="Delete">&#128465;</a>
-          <?php else: ?>
-            <button class="btn-submit" type="submit" name="add_entry">Save</button>
-          <?php endif; ?>
-        </div>
+  <?php if($canManageLedger): ?>
+    <div class="pay-req-panel">
+      <div class="pay-req-head">
+        <span class="pay-req-title">Feed/Haleeb Payment Requests</span>
+        <span class="pay-req-count"><?php echo count($pendingPayRequests); ?> pending</span>
       </div>
-    </form>
-  </div>
+      <?php if(count($pendingPayRequests) === 0): ?>
+        <div style="padding:14px 16px;" class="pay-req-note">No pending payment requests.</div>
+      <?php else: ?>
+        <div style="overflow-x:auto;">
+          <table class="pay-req-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Module</th>
+                <th>Requested By</th>
+                <th>Details</th>
+                <th>Requested At</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <?php foreach($pendingPayRequests as $r): ?>
+                <?php
+                  $p = json_decode((string)$r['payload'], true);
+                  if(!is_array($p)) $p = [];
+                  $amt = isset($p['amount']) ? (float)$p['amount'] : 0;
+                  $mode = isset($p['amount_mode']) ? (string)$p['amount_mode'] : '';
+                  $category = isset($p['category']) ? (string)$p['category'] : '';
+                  $entryDate = isset($p['entry_date']) ? (string)$p['entry_date'] : '';
+                  $note = isset($p['note']) ? (string)$p['note'] : '';
+                ?>
+                <tr>
+                  <td>#<?php echo (int)$r['id']; ?></td>
+                  <td><?php echo htmlspecialchars(strtoupper((string)$r['module_key'])); ?></td>
+                  <td><?php echo htmlspecialchars((string)($r['requested_by_name'] ?: ('User#' . (int)$r['requested_by']))); ?></td>
+                  <td>
+                    <div>Amount: <strong>Rs <?php echo number_format($amt, 2); ?></strong></div>
+                    <div class="pay-req-note">Mode: <?php echo htmlspecialchars($mode); ?> | Category: <?php echo htmlspecialchars($category); ?> | Date: <?php echo htmlspecialchars($entryDate); ?></div>
+                    <?php if($note !== ''): ?><div class="pay-req-note">Note: <?php echo htmlspecialchars($note); ?></div><?php endif; ?>
+                  </td>
+                  <td><?php echo htmlspecialchars((string)$r['created_at']); ?></td>
+                  <td>
+                    <form method="post" class="pay-req-act">
+                      <input type="hidden" name="request_id" value="<?php echo (int)$r['id']; ?>">
+                      <input class="pay-req-note-input" type="text" name="review_note" placeholder="Optional note">
+                      <div class="pay-req-btns">
+                        <button class="btn-approve" type="submit" name="approve_pay_request">Approve</button>
+                        <button class="btn-reject" type="submit" name="reject_pay_request">Reject</button>
+                      </div>
+                    </form>
+                  </td>
+                </tr>
+              <?php endforeach; ?>
+            </tbody>
+          </table>
+        </div>
+      <?php endif; ?>
+    </div>
+  <?php endif; ?>
+
+  <!-- ENTRY FORM -->
+  <?php if($canManageLedger): ?>
+    <div class="form-panel">
+      <div class="form-panel-title"><?php echo $editingId > 0 ? 'Edit Entry' : 'New Entry'; ?></div>
+      <form method="post">
+        <div class="form-row">
+          <div class="form-field">
+            <label>Date</label>
+            <input type="date" name="entry_date" value="<?php echo htmlspecialchars($formEntryDate); ?>" required>
+          </div>
+          <div class="form-field">
+            <label>Category</label>
+            <select name="category" required>
+              <option value="feed" <?php echo $formCategory==='feed'?'selected':''; ?>>Feed</option>
+              <option value="haleeb" <?php echo $formCategory==='haleeb'?'selected':''; ?>>Haleeb</option>
+              <option value="loan" <?php echo $formCategory==='loan'?'selected':''; ?>>Loan</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label>Type</label>
+            <select name="entry_type" required>
+              <option value="debit" <?php echo $formEntryType==='debit'?'selected':''; ?>>Debit</option>
+              <option value="credit" <?php echo $formEntryType==='credit'?'selected':''; ?>>Credit</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label>Mode</label>
+            <select name="amount_mode" required>
+              <option value="cash" <?php echo $formAmountMode==='cash'?'selected':''; ?>>Cash</option>
+              <option value="account" <?php echo $formAmountMode==='account'?'selected':''; ?>>Account</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label>Amount (Rs)</label>
+            <input type="number" step="0.01" min="0.01" name="amount" placeholder="0.00" value="<?php echo htmlspecialchars($formAmount); ?>" required>
+          </div>
+          <div class="form-field">
+            <label>Note (optional)</label>
+            <input type="text" name="note" placeholder="Note" value="<?php echo htmlspecialchars($formNote); ?>">
+          </div>
+          <div class="form-actions">
+            <?php if($editingId > 0): ?>
+              <input type="hidden" name="edit_id" value="<?php echo (int)$editingId; ?>">
+              <button class="btn-submit" type="submit" name="update_entry">Update</button>
+              <a class="btn-cancel" href="account.php?cat=<?php echo urlencode($cat); ?>&date_from=<?php echo urlencode($dateFrom); ?>&date_to=<?php echo urlencode($dateTo); ?>">Cancel</a>
+              <a class="btn-del" href="account.php?cat=<?php echo urlencode($cat); ?>&date_from=<?php echo urlencode($dateFrom); ?>&date_to=<?php echo urlencode($dateTo); ?>&delete_id=<?php echo (int)$editingId; ?>" onclick="return confirm('Delete this entry?')" title="Delete">&#128465;</a>
+            <?php else: ?>
+              <button class="btn-submit" type="submit" name="add_entry">Save</button>
+            <?php endif; ?>
+          </div>
+        </div>
+      </form>
+    </div>
+  <?php else: ?>
+    <div class="form-panel" style="padding:14px 16px;">
+      <div class="pay-req-note">View-only mode: you can only see ledger entries.</div>
+    </div>
+  <?php endif; ?>
 
   <!-- FILTER -->
   <div class="cat-panel">
@@ -579,7 +756,7 @@ list($entryStmt, $entries) = exec_prepared_result_local($conn, $entriesSql, $bin
           <th>Mode</th>
           <th>Amount</th>
           <th>Note</th>
-          <th class="col-action">Edit</th>
+          <?php if($canManageLedger): ?><th class="col-action">Edit</th><?php endif; ?>
         </tr>
       </thead>
       <tbody>
@@ -594,9 +771,11 @@ list($entryStmt, $entries) = exec_prepared_result_local($conn, $entriesSql, $bin
           <td><span class="mode-badge mode-<?php echo $rMode; ?>"><?php echo ucfirst($rMode); ?></span></td>
           <td class="<?php echo $rType==='debit'?'val-debit':'val-credit'; ?>">Rs <?php echo number_format((float)$row['amount'],2); ?></td>
           <td class="td-note"><?php echo htmlspecialchars($row['note']); ?></td>
-          <td class="col-action">
-            <a class="act-edit" href="account.php?cat=<?php echo urlencode($cat); ?>&date_from=<?php echo urlencode($dateFrom); ?>&date_to=<?php echo urlencode($dateTo); ?>&edit_id=<?php echo (int)$row['id']; ?>" title="Edit">&#9998;</a>
-          </td>
+          <?php if($canManageLedger): ?>
+            <td class="col-action">
+              <a class="act-edit" href="account.php?cat=<?php echo urlencode($cat); ?>&date_from=<?php echo urlencode($dateFrom); ?>&date_to=<?php echo urlencode($dateTo); ?>&edit_id=<?php echo (int)$row['id']; ?>" title="Edit">&#9998;</a>
+            </td>
+          <?php endif; ?>
         </tr>
         <?php endwhile; ?>
       </tbody>

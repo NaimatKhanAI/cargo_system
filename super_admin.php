@@ -66,11 +66,11 @@ if(isset($_POST['create_user'])){
         $chk = $conn->prepare("SELECT id FROM users WHERE username=? LIMIT 1"); $chk->bind_param("s", $username); $chk->execute(); $exists = $chk->get_result()->num_rows > 0; $chk->close();
         if($exists){ $err = 'Username already exists.'; }
         else {
-            $af = bool_post_local('can_access_feed'); $ah = bool_post_local('can_access_haleeb'); $aa = bool_post_local('can_access_account'); $ia = bool_post_local('is_active');
-            if($role === 'super_admin'){ $af = 1; $ah = 1; $aa = 1; $cmu = 1; } else { $cmu = 0; }
+            $af = bool_post_local('can_access_feed'); $ah = bool_post_local('can_access_haleeb'); $aa = bool_post_local('can_access_account'); $aip = bool_post_local('can_access_image_processing'); $ia = bool_post_local('is_active');
+            if($role === 'super_admin'){ $af = 1; $ah = 1; $aa = 1; $aip = 1; $cmu = 1; } else { $cmu = 0; }
             $cb = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null;
-            $ins = $conn->prepare("INSERT INTO users(username, password, role, is_active, can_access_feed, can_access_haleeb, can_access_account, can_manage_users, created_by) VALUES(?,?,?,?,?,?,?,?,?)");
-            $ins->bind_param("sssiiiiii", $username, $password, $role, $ia, $af, $ah, $aa, $cmu, $cb); $ins->execute(); $ins->close();
+            $ins = $conn->prepare("INSERT INTO users(username, password, role, is_active, can_access_feed, can_access_haleeb, can_access_account, can_access_image_processing, can_manage_users, created_by) VALUES(?,?,?,?,?,?,?,?,?,?)");
+            $ins->bind_param("sssiiiiiii", $username, $password, $role, $ia, $af, $ah, $aa, $aip, $cmu, $cb); $ins->execute(); $ins->close();
             $msg = 'User created.';
         }
     }
@@ -79,7 +79,7 @@ if(isset($_POST['update_user'])){
     $userId = isset($_POST['user_id']) ? (int)$_POST['user_id'] : 0;
     $selfId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
     $role = isset($_POST['role']) ? trim((string)$_POST['role']) : 'sub_admin';
-    $ia = bool_post_local('is_active'); $af = bool_post_local('can_access_feed'); $ah = bool_post_local('can_access_haleeb'); $aa = bool_post_local('can_access_account');
+    $ia = bool_post_local('is_active'); $af = bool_post_local('can_access_feed'); $ah = bool_post_local('can_access_haleeb'); $aa = bool_post_local('can_access_account'); $aip = bool_post_local('can_access_image_processing');
     $password = isset($_POST['new_password']) ? trim((string)$_POST['new_password']) : '';
     if($userId <= 0){ $err = 'Invalid user.'; }
     elseif(!in_array($role, ['super_admin','sub_admin'], true)){ $err = 'Invalid role.'; }
@@ -96,15 +96,15 @@ if(isset($_POST['update_user'])){
                 $msg = 'Own role/access cannot be changed.';
             }
         } else {
-            if($role === 'super_admin'){ $af = 1; $ah = 1; $aa = 1; $cmu = 1; } else { $cmu = 0; }
+            if($role === 'super_admin'){ $af = 1; $ah = 1; $aa = 1; $aip = 1; $cmu = 1; } else { $cmu = 0; }
             if($role !== 'super_admin'){
                 $sc = $conn->query("SELECT COUNT(*) AS c FROM users WHERE role='super_admin'")->fetch_assoc()['c'];
                 $srStmt = $conn->prepare("SELECT role FROM users WHERE id=? LIMIT 1"); $srStmt->bind_param("i", $userId); $srStmt->execute(); $srRow = $srStmt->get_result()->fetch_assoc(); $srStmt->close();
                 if($srRow && $srRow['role'] === 'super_admin' && $sc <= 1) $err = 'Last super admin cannot be downgraded.';
             }
             if($err === ''){
-                $upd = $conn->prepare("UPDATE users SET role=?, is_active=?, can_access_feed=?, can_access_haleeb=?, can_access_account=?, can_manage_users=? WHERE id=?");
-                $upd->bind_param("siiiiii", $role, $ia, $af, $ah, $aa, $cmu, $userId); $upd->execute(); $upd->close();
+                $upd = $conn->prepare("UPDATE users SET role=?, is_active=?, can_access_feed=?, can_access_haleeb=?, can_access_account=?, can_access_image_processing=?, can_manage_users=? WHERE id=?");
+                $upd->bind_param("siiiiiii", $role, $ia, $af, $ah, $aa, $aip, $cmu, $userId); $upd->execute(); $upd->close();
                 if($password !== ''){ $pwd = $conn->prepare("UPDATE users SET password=? WHERE id=?"); $pwd->bind_param("si", $password, $userId); $pwd->execute(); $pwd->close(); }
                 $msg = 'User updated.';
             }
@@ -125,36 +125,27 @@ if(isset($_POST['delete_user'])){
 if(isset($_POST['approve_request']) || isset($_POST['reject_request'])){
     $requestId = isset($_POST['request_id']) ? (int)$_POST['request_id'] : 0;
     $reviewNote = isset($_POST['review_note']) ? trim((string)$_POST['review_note']) : '';
-    if($requestId <= 0){ $err = 'Invalid request.'; }
-    else {
-        $rs = $conn->prepare("SELECT * FROM change_requests WHERE id=? AND status='pending' LIMIT 1"); $rs->bind_param("i", $requestId); $rs->execute(); $requestRow = $rs->get_result()->fetch_assoc(); $rs->close();
-        if(!$requestRow){ $err = 'Request not found or already reviewed.'; }
-        else {
-            $reviewedBy = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
-            if(isset($_POST['approve_request'])){
-                $conn->begin_transaction();
-                try {
-                    $applyError = '';
-                    $ok = apply_change_request_local($conn, $requestRow, $applyError);
-                    if(!$ok) throw new Exception($applyError ?: 'Could not apply request.');
-                    $status = 'approved';
-                    $u = $conn->prepare("UPDATE change_requests SET status=?, reviewed_by=?, review_note=?, reviewed_at=NOW() WHERE id=?"); $u->bind_param("sisi", $status, $reviewedBy, $reviewNote, $requestId); $u->execute(); $u->close();
-                    $conn->commit(); $msg = 'Request approved and applied.';
-                } catch(Throwable $e){ $conn->rollback(); $err = 'Approve failed: ' . $e->getMessage(); }
-            } else {
-                $status = 'rejected';
-                $u = $conn->prepare("UPDATE change_requests SET status=?, reviewed_by=?, review_note=?, reviewed_at=NOW() WHERE id=?"); $u->bind_param("sisi", $status, $reviewedBy, $reviewNote, $requestId); $u->execute(); $u->close();
-                $msg = 'Request rejected.';
-            }
+    if($requestId <= 0){
+        $err = 'Invalid request.';
+    } else {
+        $reviewedBy = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
+        $reviewError = '';
+        $isApprove = isset($_POST['approve_request']);
+        $ok = review_change_request_local($conn, $requestId, $reviewedBy, $isApprove, $reviewNote, $reviewError, ['feed_update', 'feed_delete', 'haleeb_update', 'haleeb_delete', 'account_update', 'account_delete']);
+        if($ok){
+            $msg = $isApprove ? 'Request approved and applied.' : 'Request rejected.';
+        } else {
+            $err = $reviewError !== '' ? $reviewError : 'Request review failed.';
         }
     }
 }
 
 $users = [];
-$usersRes = $conn->query("SELECT id, username, role, is_active, can_access_feed, can_access_haleeb, can_access_account, created_at FROM users ORDER BY id ASC");
+$usersRes = $conn->query("SELECT id, username, role, is_active, can_access_feed, can_access_haleeb, can_access_account, can_access_image_processing, created_at FROM users ORDER BY id ASC");
 while($usersRes && $u = $usersRes->fetch_assoc()) $users[] = $u;
-$pendingRequests = fetch_pending_change_requests_local($conn);
+$pendingRequests = fetch_pending_change_requests_local($conn, ['feed_pay', 'haleeb_pay']);
 $selfId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
+$flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -287,6 +278,7 @@ $selfId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
     <h1>Super Admin Panel</h1>
   </div>
   <div class="nav-links">
+    <a class="nav-btn" href="activity_review.php">Activity Review<?php echo $flaggedActivityCount > 0 ? ' (' . $flaggedActivityCount . ')' : ''; ?></a>
     <a class="nav-btn" href="dashboard.php">Dashboard</a>
     <a class="nav-btn" href="logout.php">Logout</a>
   </div>
@@ -330,6 +322,7 @@ $selfId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
               <label class="chk-label"><input type="checkbox" name="can_access_feed"> Feed</label>
               <label class="chk-label"><input type="checkbox" name="can_access_haleeb"> Haleeb</label>
               <label class="chk-label"><input type="checkbox" name="can_access_account"> Account</label>
+              <label class="chk-label"><input type="checkbox" name="can_access_image_processing"> Image Processing</label>
             </div>
           </div>
           <button class="btn-create" type="submit" name="create_user">Create User</button>
@@ -354,6 +347,7 @@ $selfId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
             <th>Feed</th>
             <th>Haleeb</th>
             <th>Account</th>
+            <th>Image Proc</th>
             <th>New Password</th>
             <th>Update</th>
             <th>Delete</th>
@@ -387,6 +381,7 @@ $selfId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
               <td><label class="chk-label"><input type="checkbox" name="can_access_feed" <?php echo (int)$u['can_access_feed'] ? 'checked' : ''; ?> <?php echo $isSelf ? 'disabled' : ''; ?>></label></td>
               <td><label class="chk-label"><input type="checkbox" name="can_access_haleeb" <?php echo (int)$u['can_access_haleeb'] ? 'checked' : ''; ?> <?php echo $isSelf ? 'disabled' : ''; ?>></label></td>
               <td><label class="chk-label"><input type="checkbox" name="can_access_account" <?php echo (int)$u['can_access_account'] ? 'checked' : ''; ?> <?php echo $isSelf ? 'disabled' : ''; ?>></label></td>
+              <td><label class="chk-label"><input type="checkbox" name="can_access_image_processing" <?php echo (int)$u['can_access_image_processing'] ? 'checked' : ''; ?> <?php echo $isSelf ? 'disabled' : ''; ?>></label></td>
               <td><input class="tbl-input" type="password" name="new_password" placeholder="keep same"></td>
               <td>
                 <input type="hidden" name="user_id" value="<?php echo (int)$u['id']; ?>">

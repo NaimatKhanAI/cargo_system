@@ -7,6 +7,7 @@ $authUser = auth_require_login($conn);
 $canFeed = auth_has_module_access('feed');
 $canHaleeb = auth_has_module_access('haleeb');
 $canAccount = auth_has_module_access('account');
+$canImage = auth_has_module_access('image_processing');
 $isSuperAdmin = auth_is_super_admin();
 
 $deniedModule = isset($_GET['denied']) ? trim((string)$_GET['denied']) : '';
@@ -63,6 +64,7 @@ if($deniedModule !== ''){
   .card-haleeb::before { background: var(--blue); }
   .card-account::before { background: var(--green); }
   .card-image::before { background: var(--purple); }
+  .card-review::before { background: var(--blue); }
   .card-admin::before { background: var(--red); }
 
   .card-icon { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; font-size: 18px; }
@@ -70,6 +72,7 @@ if($deniedModule !== ''){
   .icon-haleeb { background: rgba(96,165,250,0.12); border: 1px solid rgba(96,165,250,0.2); color: var(--blue); }
   .icon-account { background: rgba(34,197,94,0.12); border: 1px solid rgba(34,197,94,0.2); color: var(--green); }
   .icon-image { background: rgba(192,132,252,0.12); border: 1px solid rgba(192,132,252,0.2); color: var(--purple); }
+  .icon-review { background: rgba(96,165,250,0.12); border: 1px solid rgba(96,165,250,0.2); color: var(--blue); }
   .icon-admin { background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.2); color: var(--red); }
   .card-title { font-size: 17px; font-weight: 800; letter-spacing: -0.3px; }
   .card-desc { font-size: 13px; color: var(--muted); line-height: 1.5; }
@@ -129,9 +132,16 @@ if($deniedModule !== ''){
         <div class="card-desc">Manage debit, credit, and balance.</div>
         <span class="card-arrow">&gt;</span>
       </a>
+
+      <a class="card card-review" href="activity_review.php">
+        <div class="card-icon icon-review">&#128065;</div>
+        <div class="card-title">Activity Review</div>
+        <div class="card-desc">Review notifications and flag issues for admin.</div>
+        <span class="card-arrow">&gt;</span>
+      </a>
     <?php endif; ?>
 
-    <?php if($canFeed || $canHaleeb): ?>
+    <?php if($canImage): ?>
       <a class="card card-image" href="process_img.php">
         <div class="card-icon icon-image">&#9741;</div>
         <div class="card-title">Image Processing</div>

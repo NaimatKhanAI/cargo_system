@@ -150,7 +150,7 @@ $today = date('Y-m-d');
           <select id="rate_value_column" name="rate_value_column" required>
             <?php foreach($activeColumns as $c): ?>
               <option value="<?php echo htmlspecialchars($c['key']); ?>" <?php echo $c['key'] === $savedValueLookupColumn ? 'selected' : ''; ?>>
-                <?php echo htmlspecialchars($c['label'] . ' (' . $c['key'] . ')'); ?>
+                <?php echo htmlspecialchars($c['label']); ?>
               </option>
             <?php endforeach; ?>
           </select>

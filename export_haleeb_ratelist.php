@@ -4,6 +4,7 @@ include 'config/db.php';
 require_once 'config/auth.php';
 auth_require_login($conn);
 auth_require_module_access('haleeb');
+auth_require_super_admin('dashboard.php');
 
 $columns = [];
 $colRes = $conn->query("SELECT column_key, column_label, is_deleted FROM haleeb_rate_list_columns ORDER BY display_order ASC, id ASC");

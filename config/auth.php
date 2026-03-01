@@ -4,7 +4,7 @@ session_start();
 }
 
 function auth_get_user_by_id_local($conn, $userId){
-    $stmt = $conn->prepare("SELECT id, username, role, is_active, can_access_feed, can_access_haleeb, can_access_account, can_manage_users FROM users WHERE id=? LIMIT 1");
+    $stmt = $conn->prepare("SELECT id, username, role, is_active, can_access_feed, can_access_haleeb, can_access_account, can_access_image_processing, can_manage_users FROM users WHERE id=? LIMIT 1");
     $stmt->bind_param("i", $userId);
     $stmt->execute();
     $row = $stmt->get_result()->fetch_assoc();
@@ -13,7 +13,7 @@ function auth_get_user_by_id_local($conn, $userId){
 }
 
 function auth_get_user_by_username_local($conn, $username){
-    $stmt = $conn->prepare("SELECT id, username, role, is_active, can_access_feed, can_access_haleeb, can_access_account, can_manage_users FROM users WHERE username=? LIMIT 1");
+    $stmt = $conn->prepare("SELECT id, username, role, is_active, can_access_feed, can_access_haleeb, can_access_account, can_access_image_processing, can_manage_users FROM users WHERE username=? LIMIT 1");
     $stmt->bind_param("s", $username);
     $stmt->execute();
     $row = $stmt->get_result()->fetch_assoc();
@@ -28,6 +28,7 @@ function auth_store_session_local($row){
     $_SESSION['can_access_feed'] = (int)$row['can_access_feed'];
     $_SESSION['can_access_haleeb'] = (int)$row['can_access_haleeb'];
     $_SESSION['can_access_account'] = (int)$row['can_access_account'];
+    $_SESSION['can_access_image_processing'] = isset($row['can_access_image_processing']) ? (int)$row['can_access_image_processing'] : 0;
     $_SESSION['can_manage_users'] = (int)$row['can_manage_users'];
 }
 
@@ -72,6 +73,7 @@ function auth_has_module_access($module){
     if($module === 'feed') return isset($_SESSION['can_access_feed']) && (int)$_SESSION['can_access_feed'] === 1;
     if($module === 'haleeb') return isset($_SESSION['can_access_haleeb']) && (int)$_SESSION['can_access_haleeb'] === 1;
     if($module === 'account') return isset($_SESSION['can_access_account']) && (int)$_SESSION['can_access_account'] === 1;
+    if($module === 'image_processing') return isset($_SESSION['can_access_image_processing']) && (int)$_SESSION['can_access_image_processing'] === 1;
     return false;
 }
 
