@@ -396,6 +396,15 @@ function apply_change_request_local($conn, $requestRow, &$error){
         return apply_haleeb_pay_local($conn, $entityId, $payload, $error);
     }
 
+    if($actionType === 'activity_flag'){
+        if($entityId <= 0){ $error = 'Invalid activity notification id.'; return false; }
+        $stmt = $conn->prepare("UPDATE activity_notifications SET status='ok', flagged_for_admin=0 WHERE id=?");
+        $stmt->bind_param("i", $entityId);
+        $ok = $stmt->execute();
+        $stmt->close();
+        return (bool)$ok;
+    }
+
     $error = 'Unsupported action type.';
     return false;
 }

@@ -2,6 +2,7 @@
 session_start();
 include 'config/db.php';
 require_once 'config/auth.php';
+require_once 'config/activity_notifications.php';
 auth_require_login($conn);
 auth_require_module_access('feed');
 
@@ -17,8 +18,31 @@ $t=$_POST['tender'];
 
 $p=$t-$f;
 
-$conn->query("INSERT INTO bilty(sr_no,date,vehicle,bilty_no,party,location,bags,freight,original_freight,tender,profit)
-VALUES('$sr','$d','$v','$b','$party','$l','$bags','$f','$f','$t','$p')");
+$stmt = $conn->prepare("INSERT INTO bilty(sr_no, date, vehicle, bilty_no, party, location, bags, freight, original_freight, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+$stmt->bind_param("ssssssiiiii", $sr, $d, $v, $b, $party, $l, $bags, $f, $f, $t, $p);
+$ok = $stmt->execute();
+$newId = (int)$stmt->insert_id;
+$stmt->close();
+
+if($ok){
+    activity_notify_local(
+        $conn,
+        'feed',
+        'bilty_added',
+        'bilty',
+        $newId,
+        'Feed bilty added.',
+        [
+            'sr_no' => $sr,
+            'bilty_no' => $b,
+            'vehicle' => $v,
+            'party' => $party,
+            'freight' => $f,
+            'tender' => $t
+        ],
+        isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0
+    );
+}
 
 header("location:feed.php");
 ?>

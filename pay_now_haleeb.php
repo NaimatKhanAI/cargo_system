@@ -3,6 +3,7 @@ session_start();
 include 'config/db.php';
 require_once 'config/auth.php';
 require_once 'config/change_requests.php';
+require_once 'config/activity_notifications.php';
 auth_require_login($conn);
 auth_require_module_access('haleeb');
 
@@ -60,7 +61,24 @@ if(isset($_POST['pay_now'])){
             try {
                 $ins = $conn->prepare("INSERT INTO account_entries(entry_date, category, entry_type, amount_mode, bilty_id, haleeb_bilty_id, amount, note) VALUES(?, ?, 'debit', ?, NULL, ?, ?, ?)");
                 $ins->bind_param("sssids", $formDate, $formCategory, $formAmountMode, $id, $payAmount, $note);
-                $ins->execute(); $ins->close();
+                $ins->execute();
+                $entryId = (int)$ins->insert_id;
+                $ins->close();
+                activity_notify_local(
+                    $conn,
+                    'haleeb',
+                    'payment_added_direct',
+                    'account_entry',
+                    $entryId,
+                    'Haleeb payment posted directly.',
+                    [
+                        'haleeb_bilty_id' => $id,
+                        'amount' => $payAmount,
+                        'mode' => $formAmountMode,
+                        'category' => $formCategory
+                    ],
+                    isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0
+                );
                 $conn->commit();
                 header("location:haleeb.php?pay=success"); exit();
             } catch (Throwable $e) { $conn->rollback(); $err = 'Payment failed. Please try again.'; }

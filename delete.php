@@ -3,6 +3,7 @@ session_start();
 include 'config/db.php';
 require_once 'config/auth.php';
 require_once 'config/change_requests.php';
+require_once 'config/activity_notifications.php';
 auth_require_login($conn);
 auth_require_module_access('feed');
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
@@ -51,9 +52,22 @@ $entriesStmt->close();
 $delStmt = $conn->prepare("DELETE FROM bilty WHERE id=?");
 $delStmt->bind_param("i", $id);
 $delStmt->execute();
+$deleted = $delStmt->affected_rows > 0;
 $delStmt->close();
 
 $conn->commit();
+if($deleted){
+activity_notify_local(
+$conn,
+'feed',
+'bilty_deleted_direct',
+'bilty',
+$id,
+'Feed bilty deleted directly.',
+['bilty_no' => $biltyNo],
+isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0
+);
+}
 } catch (Throwable $e){
 $conn->rollback();
 }

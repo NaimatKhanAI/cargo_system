@@ -49,6 +49,20 @@ function build_change_lines_local($conn, $requestRow){
         $lines[] = ['label'=>'Mode / Category','old'=>'','new'=>($payload['amount_mode'] ?? '') . ' / ' . ($payload['category'] ?? '')];
         $lines[] = ['label'=>'Amount','old'=>'','new'=>'Rs ' . ($payload['amount'] ?? '')];
         $lines[] = ['label'=>'Note','old'=>'','new'=>$payload['note'] ?? ''];
+    } elseif($actionType === 'activity_flag'){
+        $stmt = $conn->prepare("SELECT module_key, activity_type, message, review_note FROM activity_notifications WHERE id=? LIMIT 1");
+        $stmt->bind_param("i", $entityId);
+        $stmt->execute();
+        $n = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        if($n){
+            $lines[] = ['label'=>'Flagged Module','old'=>'','new'=>$n['module_key']];
+            $lines[] = ['label'=>'Activity Type','old'=>'','new'=>$n['activity_type']];
+            $lines[] = ['label'=>'Activity Message','old'=>'','new'=>$n['message']];
+            $lines[] = ['label'=>'Reviewer Note','old'=>'','new'=>$n['review_note']];
+        } else {
+            $lines[] = ['label'=>'Flagged Notification ID','old'=>'','new'=>$entityId];
+        }
     }
 
     if(count($lines) === 0) $lines[] = ['label'=>'No diff available','old'=>'','new'=>''];
@@ -66,11 +80,11 @@ if(isset($_POST['create_user'])){
         $chk = $conn->prepare("SELECT id FROM users WHERE username=? LIMIT 1"); $chk->bind_param("s", $username); $chk->execute(); $exists = $chk->get_result()->num_rows > 0; $chk->close();
         if($exists){ $err = 'Username already exists.'; }
         else {
-            $af = bool_post_local('can_access_feed'); $ah = bool_post_local('can_access_haleeb'); $aa = bool_post_local('can_access_account'); $aip = bool_post_local('can_access_image_processing'); $ia = bool_post_local('is_active');
-            if($role === 'super_admin'){ $af = 1; $ah = 1; $aa = 1; $aip = 1; $cmu = 1; } else { $cmu = 0; }
+            $af = bool_post_local('can_access_feed'); $ah = bool_post_local('can_access_haleeb'); $aa = bool_post_local('can_access_account'); $aip = bool_post_local('can_access_image_processing'); $cra = bool_post_local('can_review_activity'); $ia = bool_post_local('is_active');
+            if($role === 'super_admin'){ $af = 1; $ah = 1; $aa = 1; $aip = 1; $cmu = 1; $cra = 1; } else { $cmu = 0; }
             $cb = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null;
-            $ins = $conn->prepare("INSERT INTO users(username, password, role, is_active, can_access_feed, can_access_haleeb, can_access_account, can_access_image_processing, can_manage_users, created_by) VALUES(?,?,?,?,?,?,?,?,?,?)");
-            $ins->bind_param("sssiiiiiii", $username, $password, $role, $ia, $af, $ah, $aa, $aip, $cmu, $cb); $ins->execute(); $ins->close();
+            $ins = $conn->prepare("INSERT INTO users(username, password, role, is_active, can_access_feed, can_access_haleeb, can_access_account, can_access_image_processing, can_manage_users, can_review_activity, created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?)");
+            $ins->bind_param("sssiiiiiiii", $username, $password, $role, $ia, $af, $ah, $aa, $aip, $cmu, $cra, $cb); $ins->execute(); $ins->close();
             $msg = 'User created.';
         }
     }
@@ -79,7 +93,7 @@ if(isset($_POST['update_user'])){
     $userId = isset($_POST['user_id']) ? (int)$_POST['user_id'] : 0;
     $selfId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
     $role = isset($_POST['role']) ? trim((string)$_POST['role']) : 'sub_admin';
-    $ia = bool_post_local('is_active'); $af = bool_post_local('can_access_feed'); $ah = bool_post_local('can_access_haleeb'); $aa = bool_post_local('can_access_account'); $aip = bool_post_local('can_access_image_processing');
+    $ia = bool_post_local('is_active'); $af = bool_post_local('can_access_feed'); $ah = bool_post_local('can_access_haleeb'); $aa = bool_post_local('can_access_account'); $aip = bool_post_local('can_access_image_processing'); $cra = bool_post_local('can_review_activity');
     $password = isset($_POST['new_password']) ? trim((string)$_POST['new_password']) : '';
     if($userId <= 0){ $err = 'Invalid user.'; }
     elseif(!in_array($role, ['super_admin','sub_admin'], true)){ $err = 'Invalid role.'; }
@@ -96,15 +110,15 @@ if(isset($_POST['update_user'])){
                 $msg = 'Own role/access cannot be changed.';
             }
         } else {
-            if($role === 'super_admin'){ $af = 1; $ah = 1; $aa = 1; $aip = 1; $cmu = 1; } else { $cmu = 0; }
+            if($role === 'super_admin'){ $af = 1; $ah = 1; $aa = 1; $aip = 1; $cmu = 1; $cra = 1; } else { $cmu = 0; }
             if($role !== 'super_admin'){
                 $sc = $conn->query("SELECT COUNT(*) AS c FROM users WHERE role='super_admin'")->fetch_assoc()['c'];
                 $srStmt = $conn->prepare("SELECT role FROM users WHERE id=? LIMIT 1"); $srStmt->bind_param("i", $userId); $srStmt->execute(); $srRow = $srStmt->get_result()->fetch_assoc(); $srStmt->close();
                 if($srRow && $srRow['role'] === 'super_admin' && $sc <= 1) $err = 'Last super admin cannot be downgraded.';
             }
             if($err === ''){
-                $upd = $conn->prepare("UPDATE users SET role=?, is_active=?, can_access_feed=?, can_access_haleeb=?, can_access_account=?, can_access_image_processing=?, can_manage_users=? WHERE id=?");
-                $upd->bind_param("siiiiiii", $role, $ia, $af, $ah, $aa, $aip, $cmu, $userId); $upd->execute(); $upd->close();
+                $upd = $conn->prepare("UPDATE users SET role=?, is_active=?, can_access_feed=?, can_access_haleeb=?, can_access_account=?, can_access_image_processing=?, can_manage_users=?, can_review_activity=? WHERE id=?");
+                $upd->bind_param("siiiiiiii", $role, $ia, $af, $ah, $aa, $aip, $cmu, $cra, $userId); $upd->execute(); $upd->close();
                 if($password !== ''){ $pwd = $conn->prepare("UPDATE users SET password=? WHERE id=?"); $pwd->bind_param("si", $password, $userId); $pwd->execute(); $pwd->close(); }
                 $msg = 'User updated.';
             }
@@ -131,7 +145,7 @@ if(isset($_POST['approve_request']) || isset($_POST['reject_request'])){
         $reviewedBy = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
         $reviewError = '';
         $isApprove = isset($_POST['approve_request']);
-        $ok = review_change_request_local($conn, $requestId, $reviewedBy, $isApprove, $reviewNote, $reviewError, ['feed_update', 'feed_delete', 'haleeb_update', 'haleeb_delete', 'account_update', 'account_delete']);
+        $ok = review_change_request_local($conn, $requestId, $reviewedBy, $isApprove, $reviewNote, $reviewError, ['feed_update', 'feed_delete', 'haleeb_update', 'haleeb_delete', 'account_update', 'account_delete', 'activity_flag']);
         if($ok){
             $msg = $isApprove ? 'Request approved and applied.' : 'Request rejected.';
         } else {
@@ -141,7 +155,7 @@ if(isset($_POST['approve_request']) || isset($_POST['reject_request'])){
 }
 
 $users = [];
-$usersRes = $conn->query("SELECT id, username, role, is_active, can_access_feed, can_access_haleeb, can_access_account, can_access_image_processing, created_at FROM users ORDER BY id ASC");
+$usersRes = $conn->query("SELECT id, username, role, is_active, can_access_feed, can_access_haleeb, can_access_account, can_access_image_processing, can_review_activity, created_at FROM users ORDER BY id ASC");
 while($usersRes && $u = $usersRes->fetch_assoc()) $users[] = $u;
 $pendingRequests = fetch_pending_change_requests_local($conn, ['feed_pay', 'haleeb_pay']);
 $selfId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
@@ -323,6 +337,7 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
               <label class="chk-label"><input type="checkbox" name="can_access_haleeb"> Haleeb</label>
               <label class="chk-label"><input type="checkbox" name="can_access_account"> Account</label>
               <label class="chk-label"><input type="checkbox" name="can_access_image_processing"> Image Processing</label>
+              <label class="chk-label"><input type="checkbox" name="can_review_activity"> Activity Review</label>
             </div>
           </div>
           <button class="btn-create" type="submit" name="create_user">Create User</button>
@@ -348,6 +363,7 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
             <th>Haleeb</th>
             <th>Account</th>
             <th>Image Proc</th>
+            <th>Act Review</th>
             <th>New Password</th>
             <th>Update</th>
             <th>Delete</th>
@@ -382,6 +398,7 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
               <td><label class="chk-label"><input type="checkbox" name="can_access_haleeb" <?php echo (int)$u['can_access_haleeb'] ? 'checked' : ''; ?> <?php echo $isSelf ? 'disabled' : ''; ?>></label></td>
               <td><label class="chk-label"><input type="checkbox" name="can_access_account" <?php echo (int)$u['can_access_account'] ? 'checked' : ''; ?> <?php echo $isSelf ? 'disabled' : ''; ?>></label></td>
               <td><label class="chk-label"><input type="checkbox" name="can_access_image_processing" <?php echo (int)$u['can_access_image_processing'] ? 'checked' : ''; ?> <?php echo $isSelf ? 'disabled' : ''; ?>></label></td>
+              <td><label class="chk-label"><input type="checkbox" name="can_review_activity" <?php echo (int)$u['can_review_activity'] ? 'checked' : ''; ?> <?php echo $isSelf ? 'disabled' : ''; ?>></label></td>
               <td><input class="tbl-input" type="password" name="new_password" placeholder="keep same"></td>
               <td>
                 <input type="hidden" name="user_id" value="<?php echo (int)$u['id']; ?>">

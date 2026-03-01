@@ -3,6 +3,7 @@ session_start();
 include 'config/db.php';
 require_once 'config/auth.php';
 require_once 'config/change_requests.php';
+require_once 'config/activity_notifications.php';
 auth_require_login($conn);
 auth_require_module_access('feed');
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
@@ -37,9 +38,33 @@ if(isset($_POST['update'])){
         }
     } else {
         $p = $t - $f;
+        $oldData = $conn->query("SELECT sr_no, date, vehicle, bilty_no, party, location, bags, freight, tender FROM bilty WHERE id=" . (int)$id . " LIMIT 1")->fetch_assoc();
         $stmt = $conn->prepare("UPDATE bilty SET sr_no=?, date=?, vehicle=?, bilty_no=?, party=?, location=?, bags=?, freight=?, original_freight=?, tender=?, profit=? WHERE id=?");
         $stmt->bind_param("sssssssiiiii", $sr, $d, $v, $b, $party, $l, $bags, $f, $f, $t, $p, $id);
         $stmt->execute(); $stmt->close();
+        activity_notify_local(
+            $conn,
+            'feed',
+            'bilty_updated_direct',
+            'bilty',
+            $id,
+            'Feed bilty updated directly.',
+            [
+                'old' => $oldData ?: [],
+                'new' => [
+                    'sr_no' => $sr,
+                    'date' => $d,
+                    'vehicle' => $v,
+                    'bilty_no' => $b,
+                    'party' => $party,
+                    'location' => $l,
+                    'bags' => $bags,
+                    'freight' => $f,
+                    'tender' => $t
+                ]
+            ],
+            isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0
+        );
         header("location:feed.php"); exit();
     }
 }

@@ -4,7 +4,7 @@ include 'config/db.php';
 require_once 'config/auth.php';
 require_once 'config/activity_notifications.php';
 auth_require_login($conn);
-auth_require_module_access('account');
+auth_require_activity_review('dashboard.php');
 
 $userId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 $isSuperAdmin = auth_is_super_admin();
@@ -16,6 +16,11 @@ if($_SERVER['REQUEST_METHOD'] === 'POST'){
     $reviewNote = isset($_POST['review_note']) ? trim((string)$_POST['review_note']) : '';
     if($notificationId <= 0){
         $err = 'Invalid notification.';
+    } elseif(isset($_POST['mark_new'])){
+        $reviewError = '';
+        $ok = activity_mark_new_local($conn, $notificationId, $userId, $reviewError);
+        if($ok) $msg = 'Status reset to New.';
+        else $err = $reviewError !== '' ? $reviewError : 'Could not reset status.';
     } elseif(isset($_POST['mark_ok'])){
         $reviewError = '';
         $ok = activity_review_mark_local($conn, $notificationId, $userId, false, $reviewNote, $reviewError);
@@ -27,7 +32,10 @@ if($_SERVER['REQUEST_METHOD'] === 'POST'){
         } else {
             $reviewError = '';
             $ok = activity_review_mark_local($conn, $notificationId, $userId, true, $reviewNote, $reviewError);
-            if($ok) $msg = 'Issue flagged for admin review.';
+            if($ok){
+                activity_raise_admin_flag_request_local($conn, $notificationId, $userId, $reviewNote);
+                $msg = 'Issue flagged for admin review.';
+            }
             else $err = $reviewError !== '' ? $reviewError : 'Could not flag for admin.';
         }
     }
@@ -35,6 +43,7 @@ if($_SERVER['REQUEST_METHOD'] === 'POST'){
 
 $statusFilter = isset($_GET['status']) ? strtolower(trim((string)$_GET['status'])) : 'new';
 if(!in_array($statusFilter, ['all', 'new', 'ok', 'flagged'], true)) $statusFilter = 'new';
+if(!$isSuperAdmin && $statusFilter === 'flagged') $statusFilter = 'new';
 
 $countAll = 0; $countNew = 0; $countOk = 0; $countFlagged = 0;
 $countRes = $conn->query("SELECT status, COUNT(*) AS c FROM activity_notifications GROUP BY status");
@@ -47,7 +56,7 @@ while($countRes && $cRow = $countRes->fetch_assoc()){
     elseif($st === 'flagged') $countFlagged = $cv;
 }
 
-$items = activity_fetch_items_local($conn, $statusFilter, 300);
+$items = activity_fetch_items_local($conn, $statusFilter, 300, !$isSuperAdmin);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -136,6 +145,18 @@ $items = activity_fetch_items_local($conn, $statusFilter, 300);
   .btn-mini:hover { border-color: var(--muted); }
   .btn-mini.flag { color: var(--red); border-color: rgba(239,68,68,0.28); background: rgba(239,68,68,0.08); }
   .btn-mini.flag:hover { background: rgba(239,68,68,0.14); }
+  .review-ok {
+    display: inline-flex; align-items: center; gap: 6px;
+    color: var(--green); font-size: 12px; font-weight: 700; font-family: var(--font);
+  }
+  .review-flagged {
+    display: inline-flex; align-items: center; gap: 6px;
+    color: var(--red); font-size: 12px; font-weight: 700; font-family: var(--font);
+  }
+  .review-new {
+    display: inline-flex; align-items: center; gap: 6px;
+    color: var(--blue); font-size: 12px; font-weight: 700; font-family: var(--font);
+  }
   .empty { padding: 24px 14px; text-align: center; color: var(--muted); font-size: 13px; }
 
   @media(max-width: 780px){
@@ -165,7 +186,9 @@ $items = activity_fetch_items_local($conn, $statusFilter, 300);
   <div class="filters">
     <a class="f-btn <?php echo $statusFilter === 'new' ? 'active' : ''; ?>" href="activity_review.php?status=new">New (<?php echo $countNew; ?>)</a>
     <a class="f-btn <?php echo $statusFilter === 'ok' ? 'active' : ''; ?>" href="activity_review.php?status=ok">OK (<?php echo $countOk; ?>)</a>
-    <a class="f-btn <?php echo $statusFilter === 'flagged' ? 'active' : ''; ?>" href="activity_review.php?status=flagged">Flagged (<?php echo $countFlagged; ?>)</a>
+    <?php if($isSuperAdmin): ?>
+      <a class="f-btn <?php echo $statusFilter === 'flagged' ? 'active' : ''; ?>" href="activity_review.php?status=flagged">Flagged (<?php echo $countFlagged; ?>)</a>
+    <?php endif; ?>
     <a class="f-btn <?php echo $statusFilter === 'all' ? 'active' : ''; ?>" href="activity_review.php?status=all">All (<?php echo $countAll; ?>)</a>
   </div>
 
@@ -219,13 +242,25 @@ $items = activity_fetch_items_local($conn, $statusFilter, 300);
                 <?php endif; ?>
               </td>
               <td>
-                <form method="post" class="actions">
+                <?php if($st === 'ok'): ?>
+                  <span class="review-ok">&#10003; Reviewed</span>
+                <?php elseif($st === 'flagged'): ?>
+                  <span class="review-flagged">&#9873; Flagged to Admin</span>
+                <?php else: ?>
+                  <span class="review-new">&#9679; New</span>
+                <?php endif; ?>
+                <form method="post" class="actions" style="margin-top:8px;">
                   <input type="hidden" name="notification_id" value="<?php echo (int)$it['id']; ?>">
                   <input type="text" name="review_note" placeholder="Review note (required for flag)">
                   <div class="act-row">
                     <button class="btn-mini" type="submit" name="mark_ok">Mark OK</button>
                     <button class="btn-mini flag" type="submit" name="flag_admin">Flag to Admin</button>
                   </div>
+                  <?php if($st !== 'new'): ?>
+                    <div class="act-row">
+                      <button class="btn-mini" type="submit" name="mark_new">Set New</button>
+                    </div>
+                  <?php endif; ?>
                 </form>
               </td>
             </tr>
@@ -237,4 +272,3 @@ $items = activity_fetch_items_local($conn, $statusFilter, 300);
 </div>
 </body>
 </html>
-

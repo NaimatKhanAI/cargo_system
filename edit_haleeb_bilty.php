@@ -3,6 +3,7 @@ session_start();
 include 'config/db.php';
 require_once 'config/auth.php';
 require_once 'config/change_requests.php';
+require_once 'config/activity_notifications.php';
 auth_require_login($conn);
 auth_require_module_access('haleeb');
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
@@ -82,9 +83,34 @@ if(isset($_POST['update'])){
         }
     } else {
         $p  = $t - $f;
+        $oldData = $conn->query("SELECT date, vehicle, vehicle_type, delivery_note, token_no, party, location, stops, freight, tender FROM haleeb_bilty WHERE id=" . (int)$id . " LIMIT 1")->fetch_assoc();
         $stmt = $conn->prepare("UPDATE haleeb_bilty SET date=?, vehicle=?, vehicle_type=?, delivery_note=?, token_no=?, party=?, location=?, stops=?, freight=?, tender=?, profit=? WHERE id=?");
         $stmt->bind_param("ssssssssiiii", $d, $v, $vt, $dn, $tn, $party, $l, $stops, $f, $t, $p, $id);
         $stmt->execute(); $stmt->close();
+        activity_notify_local(
+            $conn,
+            'haleeb',
+            'bilty_updated_direct',
+            'haleeb_bilty',
+            $id,
+            'Haleeb bilty updated directly.',
+            [
+                'old' => $oldData ?: [],
+                'new' => [
+                    'date' => $d,
+                    'vehicle' => $v,
+                    'vehicle_type' => $vt,
+                    'delivery_note' => $dn,
+                    'token_no' => $tn,
+                    'party' => $party,
+                    'location' => $l,
+                    'stops' => $stops,
+                    'freight' => $f,
+                    'tender' => $t
+                ]
+            ],
+            isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0
+        );
         header("location:haleeb.php"); exit();
     }
 }

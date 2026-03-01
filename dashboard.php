@@ -8,6 +8,7 @@ $canFeed = auth_has_module_access('feed');
 $canHaleeb = auth_has_module_access('haleeb');
 $canAccount = auth_has_module_access('account');
 $canImage = auth_has_module_access('image_processing');
+$canReviewActivity = auth_can_review_activity();
 $isSuperAdmin = auth_is_super_admin();
 
 $deniedModule = isset($_GET['denied']) ? trim((string)$_GET['denied']) : '';
@@ -132,7 +133,9 @@ if($deniedModule !== ''){
         <div class="card-desc">Manage debit, credit, and balance.</div>
         <span class="card-arrow">&gt;</span>
       </a>
+    <?php endif; ?>
 
+    <?php if($canReviewActivity): ?>
       <a class="card card-review" href="activity_review.php">
         <div class="card-icon icon-review">&#128065;</div>
         <div class="card-title">Activity Review</div>

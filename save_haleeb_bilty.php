@@ -2,6 +2,7 @@
 session_start();
 include 'config/db.php';
 require_once 'config/auth.php';
+require_once 'config/activity_notifications.php';
 auth_require_login($conn);
 auth_require_module_access('haleeb');
 
@@ -22,8 +23,28 @@ $p = $t - $f;
 
 $stmt = $conn->prepare("INSERT INTO haleeb_bilty(date, vehicle, vehicle_type, delivery_note, token_no, party, location, stops, freight, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
 $stmt->bind_param("ssssssssiii", $d, $v, $vt, $dn, $tn, $party, $l, $stops, $f, $t, $p);
-$stmt->execute();
+$ok = $stmt->execute();
+$newId = (int)$stmt->insert_id;
 $stmt->close();
+
+if($ok){
+    activity_notify_local(
+        $conn,
+        'haleeb',
+        'bilty_added',
+        'haleeb_bilty',
+        $newId,
+        'Haleeb bilty added.',
+        [
+            'token_no' => $tn,
+            'vehicle' => $v,
+            'party' => $party,
+            'freight' => $f,
+            'tender' => $t
+        ],
+        isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0
+    );
+}
 
 header("location:haleeb.php");
 ?>

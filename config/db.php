@@ -77,9 +77,14 @@ if($userManageColCheck && $userManageColCheck->num_rows === 0){
 $conn->query("ALTER TABLE users ADD can_manage_users TINYINT(1) NOT NULL DEFAULT 0 AFTER can_access_image_processing");
 }
 
+$userReviewActivityColCheck = $conn->query("SHOW COLUMNS FROM users LIKE 'can_review_activity'");
+if($userReviewActivityColCheck && $userReviewActivityColCheck->num_rows === 0){
+$conn->query("ALTER TABLE users ADD can_review_activity TINYINT(1) NOT NULL DEFAULT 0 AFTER can_manage_users");
+}
+
 $userCreatedByColCheck = $conn->query("SHOW COLUMNS FROM users LIKE 'created_by'");
 if($userCreatedByColCheck && $userCreatedByColCheck->num_rows === 0){
-$conn->query("ALTER TABLE users ADD created_by INT NULL AFTER can_manage_users");
+$conn->query("ALTER TABLE users ADD created_by INT NULL AFTER can_review_activity");
 }
 
 $userCreatedAtColCheck = $conn->query("SHOW COLUMNS FROM users LIKE 'created_at'");
@@ -418,7 +423,7 @@ $check->execute();
 $exists = $check->get_result()->num_rows > 0;
 $check->close();
 if(!$exists){
-$ins = $conn->prepare("INSERT INTO users(username,password,role,is_active,can_access_feed,can_access_haleeb,can_access_account,can_access_image_processing,can_manage_users) VALUES(?,?,'super_admin',1,1,1,1,1,1)");
+$ins = $conn->prepare("INSERT INTO users(username,password,role,is_active,can_access_feed,can_access_haleeb,can_access_account,can_access_image_processing,can_manage_users,can_review_activity) VALUES(?,?,'super_admin',1,1,1,1,1,1,1)");
 $ins->bind_param("ss", $seedAdminUser, $seedAdminPass);
 $ins->execute();
 $ins->close();
@@ -433,7 +438,7 @@ $fallbackSuperPass = trim((string)env_get('SUPER_ADMIN_PASS', '1234'));
 if($fallbackSuperUser === '') $fallbackSuperUser = 'admin';
 if($fallbackSuperPass === '') $fallbackSuperPass = '1234';
 
-$promoteStmt = $conn->prepare("UPDATE users SET role='super_admin', is_active=1, can_access_feed=1, can_access_haleeb=1, can_access_account=1, can_access_image_processing=1, can_manage_users=1 WHERE username=? LIMIT 1");
+$promoteStmt = $conn->prepare("UPDATE users SET role='super_admin', is_active=1, can_access_feed=1, can_access_haleeb=1, can_access_account=1, can_access_image_processing=1, can_manage_users=1, can_review_activity=1 WHERE username=? LIMIT 1");
 $promoteStmt->bind_param("s", $fallbackSuperUser);
 $promoteStmt->execute();
 $promoteStmt->close();
@@ -446,7 +451,7 @@ $fallbackExists = $fallbackExistsStmt->get_result()->num_rows > 0;
 $fallbackExistsStmt->close();
 
 if(!$fallbackExists){
-$insertSuper = $conn->prepare("INSERT INTO users(username,password,role,is_active,can_access_feed,can_access_haleeb,can_access_account,can_access_image_processing,can_manage_users) VALUES(?,?,'super_admin',1,1,1,1,1,1)");
+$insertSuper = $conn->prepare("INSERT INTO users(username,password,role,is_active,can_access_feed,can_access_haleeb,can_access_account,can_access_image_processing,can_manage_users,can_review_activity) VALUES(?,?,'super_admin',1,1,1,1,1,1,1)");
 $insertSuper->bind_param("ss", $fallbackSuperUser, $fallbackSuperPass);
 $insertSuper->execute();
 $insertSuper->close();

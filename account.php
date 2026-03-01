@@ -7,6 +7,7 @@ require_once 'config/activity_notifications.php';
 auth_require_login($conn);
 auth_require_module_access('account');
 $isSuperAdmin = auth_is_super_admin();
+$canReviewActivity = auth_can_review_activity();
 $canManageLedger = $isSuperAdmin;
 $currentUserId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 
@@ -522,7 +523,9 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
     <h1>Account</h1>
   </div>
   <div class="nav-links">
-    <a class="nav-btn" href="activity_review.php">Activity Review<?php echo $flaggedActivityCount > 0 ? ' (' . $flaggedActivityCount . ')' : ''; ?></a>
+    <?php if($canReviewActivity): ?>
+      <a class="nav-btn" href="activity_review.php">Activity Review<?php echo $flaggedActivityCount > 0 ? ' (' . $flaggedActivityCount . ')' : ''; ?></a>
+    <?php endif; ?>
     <?php if($isSuperAdmin): ?><a class="nav-btn" href="super_admin.php">Super Admin</a><?php endif; ?>
     <a class="nav-btn" href="dashboard.php">Dashboard</a>
     <a class="nav-btn danger" href="logout.php">Logout</a>

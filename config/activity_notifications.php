@@ -27,6 +27,21 @@ function activity_notify_local($conn, $moduleKey, $activityType, $referenceType,
     return (int)$id;
 }
 
+function activity_clear_pending_flag_requests_local($conn, $notificationId, $reviewedBy, $note = ''){
+    $notificationId = (int)$notificationId;
+    $reviewedBy = (int)$reviewedBy;
+    if($notificationId <= 0) return;
+
+    $reviewNote = trim((string)$note);
+    if($reviewNote === '') $reviewNote = 'Auto closed: activity status changed.';
+    $status = 'rejected';
+    $stmt = $conn->prepare("UPDATE change_requests SET status=?, reviewed_by=?, review_note=?, reviewed_at=NOW() WHERE entity_table='activity_notifications' AND entity_id=? AND action_type='activity_flag' AND status='pending'");
+    if(!$stmt) return;
+    $stmt->bind_param("sisi", $status, $reviewedBy, $reviewNote, $notificationId);
+    $stmt->execute();
+    $stmt->close();
+}
+
 function activity_count_flagged_for_admin_local($conn){
     $res = $conn->query("SELECT COUNT(*) AS c FROM activity_notifications WHERE status='flagged' AND flagged_for_admin=1");
     if(!$res) return 0;
@@ -72,10 +87,68 @@ function activity_review_mark_local($conn, $notificationId, $reviewedBy, $flagFo
         $error = 'Review could not be saved.';
         return false;
     }
+    if(!$flagForAdmin){
+        activity_clear_pending_flag_requests_local($conn, $notificationId, $reviewedBy, 'Auto closed: marked as OK.');
+    }
     return true;
 }
 
-function activity_fetch_items_local($conn, $status = 'all', $limit = 250){
+function activity_mark_new_local($conn, $notificationId, $reviewedBy, &$error){
+    $error = '';
+    $notificationId = (int)$notificationId;
+    $reviewedBy = (int)$reviewedBy;
+    if($notificationId <= 0){
+        $error = 'Invalid notification.';
+        return false;
+    }
+
+    $stmt = $conn->prepare("UPDATE activity_notifications SET status='new', flagged_for_admin=0, review_note=NULL, reviewed_by=NULL, reviewed_at=NULL WHERE id=?");
+    if(!$stmt){
+        $error = 'Could not reset notification.';
+        return false;
+    }
+    $stmt->bind_param("i", $notificationId);
+    $ok = $stmt->execute();
+    $stmt->close();
+    if(!$ok){
+        $error = 'Could not reset status.';
+        return false;
+    }
+    activity_clear_pending_flag_requests_local($conn, $notificationId, $reviewedBy, 'Auto closed: reset to new.');
+    return true;
+}
+
+function activity_raise_admin_flag_request_local($conn, $notificationId, $requestedBy, $issueNote){
+    $notificationId = (int)$notificationId;
+    $requestedBy = (int)$requestedBy;
+    $issueNote = trim((string)$issueNote);
+    if($notificationId <= 0 || $requestedBy <= 0) return 0;
+
+    $chk = $conn->prepare("SELECT id FROM change_requests WHERE entity_table='activity_notifications' AND entity_id=? AND action_type='activity_flag' AND status='pending' LIMIT 1");
+    if($chk){
+        $chk->bind_param("i", $notificationId);
+        $chk->execute();
+        $exists = $chk->get_result()->fetch_assoc();
+        $chk->close();
+        if($exists) return (int)$exists['id'];
+    }
+
+    $payload = activity_payload_json_local([
+        'notification_id' => $notificationId,
+        'issue_note' => $issueNote
+    ]);
+
+    $ins = $conn->prepare("INSERT INTO change_requests(module_key, entity_table, entity_id, action_type, payload, status, requested_by) VALUES('activity', 'activity_notifications', ?, 'activity_flag', ?, 'pending', ?)");
+    if(!$ins) return 0;
+    $ins->bind_param("isi", $notificationId, $payload, $requestedBy);
+    $ok = $ins->execute();
+    $id = $ins->insert_id;
+    $ins->close();
+    if(!$ok) return 0;
+    return (int)$id;
+}
+
+function activity_fetch_items_local($conn, $status = 'all', $limit = 250, $excludeFlagged = false){
     $status = strtolower(trim((string)$status));
     if(!in_array($status, ['all', 'new', 'ok', 'flagged'], true)) $status = 'all';
     $limit = (int)$limit;
@@ -88,9 +161,16 @@ function activity_fetch_items_local($conn, $status = 'all', $limit = 250){
             FROM activity_notifications a
             LEFT JOIN users cu ON cu.id = a.created_by
             LEFT JOIN users ru ON ru.id = a.reviewed_by";
+    $whereParts = [];
     if($status !== 'all'){
         $escStatus = $conn->real_escape_string($status);
-        $sql .= " WHERE a.status='" . $escStatus . "'";
+        $whereParts[] = "a.status='" . $escStatus . "'";
+    }
+    if($excludeFlagged){
+        $whereParts[] = "a.status<>'flagged'";
+    }
+    if(count($whereParts) > 0){
+        $sql .= " WHERE " . implode(" AND ", $whereParts);
     }
     $sql .= " ORDER BY a.id DESC LIMIT " . $limit;
 

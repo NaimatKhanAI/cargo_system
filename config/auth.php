@@ -4,7 +4,7 @@ session_start();
 }
 
 function auth_get_user_by_id_local($conn, $userId){
-    $stmt = $conn->prepare("SELECT id, username, role, is_active, can_access_feed, can_access_haleeb, can_access_account, can_access_image_processing, can_manage_users FROM users WHERE id=? LIMIT 1");
+    $stmt = $conn->prepare("SELECT id, username, role, is_active, can_access_feed, can_access_haleeb, can_access_account, can_access_image_processing, can_manage_users, can_review_activity FROM users WHERE id=? LIMIT 1");
     $stmt->bind_param("i", $userId);
     $stmt->execute();
     $row = $stmt->get_result()->fetch_assoc();
@@ -13,7 +13,7 @@ function auth_get_user_by_id_local($conn, $userId){
 }
 
 function auth_get_user_by_username_local($conn, $username){
-    $stmt = $conn->prepare("SELECT id, username, role, is_active, can_access_feed, can_access_haleeb, can_access_account, can_access_image_processing, can_manage_users FROM users WHERE username=? LIMIT 1");
+    $stmt = $conn->prepare("SELECT id, username, role, is_active, can_access_feed, can_access_haleeb, can_access_account, can_access_image_processing, can_manage_users, can_review_activity FROM users WHERE username=? LIMIT 1");
     $stmt->bind_param("s", $username);
     $stmt->execute();
     $row = $stmt->get_result()->fetch_assoc();
@@ -30,6 +30,7 @@ function auth_store_session_local($row){
     $_SESSION['can_access_account'] = (int)$row['can_access_account'];
     $_SESSION['can_access_image_processing'] = isset($row['can_access_image_processing']) ? (int)$row['can_access_image_processing'] : 0;
     $_SESSION['can_manage_users'] = (int)$row['can_manage_users'];
+    $_SESSION['can_review_activity'] = isset($row['can_review_activity']) ? (int)$row['can_review_activity'] : 0;
 }
 
 function auth_sync_session_user($conn){
@@ -74,6 +75,7 @@ function auth_has_module_access($module){
     if($module === 'haleeb') return isset($_SESSION['can_access_haleeb']) && (int)$_SESSION['can_access_haleeb'] === 1;
     if($module === 'account') return isset($_SESSION['can_access_account']) && (int)$_SESSION['can_access_account'] === 1;
     if($module === 'image_processing') return isset($_SESSION['can_access_image_processing']) && (int)$_SESSION['can_access_image_processing'] === 1;
+    if($module === 'activity_review') return isset($_SESSION['can_review_activity']) && (int)$_SESSION['can_review_activity'] === 1;
     return false;
 }
 
@@ -97,5 +99,16 @@ function auth_can_manage_users(){
 
 function auth_can_direct_modify(){
     return auth_is_super_admin();
+}
+
+function auth_can_review_activity(){
+    return auth_is_super_admin() || (isset($_SESSION['can_review_activity']) && (int)$_SESSION['can_review_activity'] === 1);
+}
+
+function auth_require_activity_review($fallback = 'dashboard.php'){
+    if(!auth_can_review_activity()){
+        header("location:" . $fallback . "?denied=" . urlencode('activity_review'));
+        exit();
+    }
 }
 ?>

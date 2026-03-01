@@ -3,6 +3,7 @@ session_start();
 include 'config/db.php';
 require_once 'config/auth.php';
 require_once 'config/change_requests.php';
+require_once 'config/activity_notifications.php';
 auth_require_login($conn);
 auth_require_module_access('haleeb');
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
@@ -51,9 +52,22 @@ $entriesStmt->close();
 $delStmt = $conn->prepare("DELETE FROM haleeb_bilty WHERE id=?");
 $delStmt->bind_param("i", $id);
 $delStmt->execute();
+$deleted = $delStmt->affected_rows > 0;
 $delStmt->close();
 
 $conn->commit();
+if($deleted){
+activity_notify_local(
+$conn,
+'haleeb',
+'bilty_deleted_direct',
+'haleeb_bilty',
+$id,
+'Haleeb bilty deleted directly.',
+['token_no' => $tokenNo],
+isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0
+);
+}
 } catch (Throwable $e){
 $conn->rollback();
 }

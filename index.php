@@ -2,6 +2,7 @@
 session_start();
 include 'config/db.php';
 require_once 'config/auth.php';
+require_once 'config/activity_notifications.php';
 $error = "";
 
 if(auth_sync_session_user($conn)){
@@ -19,7 +20,7 @@ if(isset($_POST['login'])){
     if($u === '' || $p === ''){
         $error = "Username and password are required.";
     } else {
-        $stmt = $conn->prepare("SELECT id, username, role, is_active, can_access_feed, can_access_haleeb, can_access_account, can_access_image_processing, can_manage_users FROM users WHERE username=? AND password=? LIMIT 1");
+        $stmt = $conn->prepare("SELECT id, username, role, is_active, can_access_feed, can_access_haleeb, can_access_account, can_access_image_processing, can_manage_users, can_review_activity FROM users WHERE username=? AND password=? LIMIT 1");
         $stmt->bind_param("ss", $u, $p);
         $stmt->execute();
         $res = $stmt->get_result();
@@ -27,8 +28,28 @@ if(isset($_POST['login'])){
             $userRow = $res->fetch_assoc();
             if((int)$userRow['is_active'] !== 1){
                 $error = "User is inactive. Contact super admin.";
+                activity_notify_local(
+                    $conn,
+                    'auth',
+                    'login_failed_inactive',
+                    'user',
+                    (int)$userRow['id'],
+                    'Login failed (inactive user).',
+                    ['username' => $u],
+                    0
+                );
             } else {
             auth_store_session_local($userRow);
+            activity_notify_local(
+                $conn,
+                'auth',
+                'login_success',
+                'user',
+                (int)$userRow['id'],
+                'User login successful.',
+                ['username' => (string)$userRow['username']],
+                (int)$userRow['id']
+            );
             unset($_SESSION['login_verified']);
             unset($_SESSION['pending_user']);
             if((string)$userRow['role'] === 'super_admin'){
@@ -40,6 +61,16 @@ if(isset($_POST['login'])){
             }
         } else {
             $error = "Wrong username or password.";
+            activity_notify_local(
+                $conn,
+                'auth',
+                'login_failed_invalid_credentials',
+                'user',
+                0,
+                'Login failed (invalid credentials).',
+                ['username' => $u],
+                0
+            );
         }
         $stmt->close();
     }
