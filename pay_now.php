@@ -1,11 +1,13 @@
 <?php
-session_start();
+require_once __DIR__ . '/config/session_bootstrap.php';
 include 'config/db.php';
 require_once 'config/auth.php';
 require_once 'config/change_requests.php';
 require_once 'config/activity_notifications.php';
 auth_require_login($conn);
 auth_require_module_access('feed');
+$isSuperAdmin = auth_is_super_admin();
+$userFeedPortion = auth_get_feed_portion();
 
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 if($id <= 0){ header("location:feed.php?pay=error"); exit(); }
@@ -15,8 +17,15 @@ $msg = ''; $err = '';
 $today = date('Y-m-d');
 $formDate = $today; $formCategory = 'feed'; $formAmountMode = 'account'; $formAmount = ''; $formNote = '';
 
-$stmt = $conn->prepare("SELECT * FROM bilty WHERE id=? LIMIT 1");
-$stmt->bind_param("i", $id); $stmt->execute();
+$stmt = null;
+if($isSuperAdmin){
+    $stmt = $conn->prepare("SELECT * FROM bilty WHERE id=? LIMIT 1");
+    $stmt->bind_param("i", $id);
+} else {
+    $stmt = $conn->prepare("SELECT * FROM bilty WHERE id=? AND feed_portion=? LIMIT 1");
+    $stmt->bind_param("is", $id, $userFeedPortion);
+}
+$stmt->execute();
 $row = $stmt->get_result()->fetch_assoc(); $stmt->close();
 if(!$row){ header("location:feed.php?pay=error"); exit(); }
 

@@ -33,14 +33,33 @@ if(!try_load_dompdf_autoloader($projectRoot)){
 
 use Dompdf\Dompdf;
 
-session_start();
+require_once __DIR__ . '/config/session_bootstrap.php';
 include 'config/db.php';
 require_once 'config/auth.php';
 auth_require_login($conn);
 auth_require_module_access('feed');
+$isSuperAdmin = auth_is_super_admin();
+$userFeedPortion = auth_get_feed_portion();
+$id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+if($id <= 0){
+    header("location:feed.php");
+    exit();
+}
 
-$id = $_GET['id'];
-$row = $conn->query("SELECT * FROM bilty WHERE id=$id")->fetch_assoc();
+if($isSuperAdmin){
+    $rowStmt = $conn->prepare("SELECT * FROM bilty WHERE id=? LIMIT 1");
+    $rowStmt->bind_param("i", $id);
+} else {
+    $rowStmt = $conn->prepare("SELECT * FROM bilty WHERE id=? AND feed_portion=? LIMIT 1");
+    $rowStmt->bind_param("is", $id, $userFeedPortion);
+}
+$rowStmt->execute();
+$row = $rowStmt->get_result()->fetch_assoc();
+$rowStmt->close();
+if(!$row){
+    header("location:feed.php");
+    exit();
+}
 
 $html = "
 <style>

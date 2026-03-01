@@ -1,7 +1,8 @@
 <?php
-session_start();
+require_once __DIR__ . '/config/session_bootstrap.php';
 include 'config/db.php';
 require_once 'config/auth.php';
+require_once 'config/feed_portions.php';
 auth_require_login($conn);
 auth_require_module_access('feed');
 auth_require_super_admin('dashboard.php');
@@ -56,7 +57,7 @@ function parse_csv_number($value){
     return (int)round((float)$value);
 }
 
-$stmt = $conn->prepare("INSERT INTO bilty(sr_no, date, vehicle, bilty_no, party, location, bags, freight, original_freight, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+$stmt = $conn->prepare("INSERT INTO bilty(sr_no, date, vehicle, bilty_no, party, feed_portion, location, bags, freight, original_freight, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
 
 while(($data = fgetcsv($handle)) !== false){
     $lineNo++;
@@ -86,6 +87,11 @@ while(($data = fgetcsv($handle)) !== false){
         $vehicle = isset($headerMap['vehicle']) ? ($data[$headerMap['vehicle']] ?? '') : '';
         $biltyNo = isset($headerMap['bilty_no']) ? ($data[$headerMap['bilty_no']] ?? '') : '';
         $party = isset($headerMap['party']) ? ($data[$headerMap['party']] ?? '') : '';
+        $portionRaw = '';
+        if(isset($headerMap['feed_portion'])) $portionRaw = $data[$headerMap['feed_portion']] ?? '';
+        elseif(isset($headerMap['portion'])) $portionRaw = $data[$headerMap['portion']] ?? '';
+        elseif(isset($headerMap['section'])) $portionRaw = $data[$headerMap['section']] ?? '';
+        $feedPortion = normalize_feed_portion_local($portionRaw);
         $location = isset($headerMap['location']) ? ($data[$headerMap['location']] ?? '') : '';
         $bags = parse_csv_number(isset($headerMap['bags']) ? ($data[$headerMap['bags']] ?? '') : '');
         $freight = parse_csv_number(isset($headerMap['freight']) ? ($data[$headerMap['freight']] ?? '') : '');
@@ -114,6 +120,7 @@ while(($data = fgetcsv($handle)) !== false){
         $biltyNo = $data[$offset + 2] ?? '';
         $party = $data[$offset + 3] ?? '';
         $location = $data[$offset + 4] ?? '';
+        $feedPortion = feed_default_portion_key_local();
         $remaining = count($data) - $offset;
         if($remaining >= 9){
             // New format with bags.
@@ -151,7 +158,7 @@ while(($data = fgetcsv($handle)) !== false){
         $profit = $tender - $freight;
     }
 
-    $stmt->bind_param("sssssssiiii", $srNo, $date, $vehicle, $biltyNo, $party, $location, $bags, $freight, $freight, $tender, $profit);
+    $stmt->bind_param("sssssssiiiii", $srNo, $date, $vehicle, $biltyNo, $party, $feedPortion, $location, $bags, $freight, $freight, $tender, $profit);
     if($stmt->execute()){
         $inserted++;
     } else {

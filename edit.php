@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once __DIR__ . '/config/session_bootstrap.php';
 include 'config/db.php';
 require_once 'config/auth.php';
 require_once 'config/change_requests.php';
@@ -8,6 +8,20 @@ auth_require_login($conn);
 auth_require_module_access('feed');
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 if($id <= 0){ header("location:feed.php"); exit(); }
+$isSuperAdmin = auth_is_super_admin();
+$userFeedPortion = auth_get_feed_portion();
+
+if($isSuperAdmin){
+    $rowStmt = $conn->prepare("SELECT * FROM bilty WHERE id=? LIMIT 1");
+    $rowStmt->bind_param("i", $id);
+} else {
+    $rowStmt = $conn->prepare("SELECT * FROM bilty WHERE id=? AND feed_portion=? LIMIT 1");
+    $rowStmt->bind_param("is", $id, $userFeedPortion);
+}
+$rowStmt->execute();
+$row = $rowStmt->get_result()->fetch_assoc();
+$rowStmt->close();
+if(!$row){ header("location:feed.php"); exit(); }
 
 if(isset($_POST['update'])){
     $sr = isset($_POST['sr_no']) ? trim($_POST['sr_no']) : '';
@@ -38,7 +52,17 @@ if(isset($_POST['update'])){
         }
     } else {
         $p = $t - $f;
-        $oldData = $conn->query("SELECT sr_no, date, vehicle, bilty_no, party, location, bags, freight, tender FROM bilty WHERE id=" . (int)$id . " LIMIT 1")->fetch_assoc();
+        $oldData = [
+            'sr_no' => isset($row['sr_no']) ? $row['sr_no'] : '',
+            'date' => isset($row['date']) ? $row['date'] : '',
+            'vehicle' => isset($row['vehicle']) ? $row['vehicle'] : '',
+            'bilty_no' => isset($row['bilty_no']) ? $row['bilty_no'] : '',
+            'party' => isset($row['party']) ? $row['party'] : '',
+            'location' => isset($row['location']) ? $row['location'] : '',
+            'bags' => isset($row['bags']) ? $row['bags'] : 0,
+            'freight' => isset($row['freight']) ? $row['freight'] : 0,
+            'tender' => isset($row['tender']) ? $row['tender'] : 0,
+        ];
         $stmt = $conn->prepare("UPDATE bilty SET sr_no=?, date=?, vehicle=?, bilty_no=?, party=?, location=?, bags=?, freight=?, original_freight=?, tender=?, profit=? WHERE id=?");
         $stmt->bind_param("sssssssiiiii", $sr, $d, $v, $b, $party, $l, $bags, $f, $f, $t, $p, $id);
         $stmt->execute(); $stmt->close();
@@ -68,9 +92,6 @@ if(isset($_POST['update'])){
         header("location:feed.php"); exit();
     }
 }
-
-$row = $conn->query("SELECT * FROM bilty WHERE id=" . (int)$id)->fetch_assoc();
-if(!$row){ header("location:feed.php"); exit(); }
 ?>
 <!DOCTYPE html>
 <html lang="en">

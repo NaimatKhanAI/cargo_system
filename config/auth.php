@@ -1,10 +1,9 @@
 <?php
-if(session_status() !== PHP_SESSION_ACTIVE){
-session_start();
-}
+require_once __DIR__ . '/session_bootstrap.php';
+require_once __DIR__ . '/feed_portions.php';
 
 function auth_get_user_by_id_local($conn, $userId){
-    $stmt = $conn->prepare("SELECT id, username, role, is_active, can_access_feed, can_access_haleeb, can_access_account, can_access_image_processing, can_manage_users, can_review_activity FROM users WHERE id=? LIMIT 1");
+    $stmt = $conn->prepare("SELECT id, username, role, is_active, can_access_feed, feed_portion, can_access_haleeb, can_access_account, can_access_image_processing, can_manage_users, can_review_activity FROM users WHERE id=? LIMIT 1");
     $stmt->bind_param("i", $userId);
     $stmt->execute();
     $row = $stmt->get_result()->fetch_assoc();
@@ -13,7 +12,7 @@ function auth_get_user_by_id_local($conn, $userId){
 }
 
 function auth_get_user_by_username_local($conn, $username){
-    $stmt = $conn->prepare("SELECT id, username, role, is_active, can_access_feed, can_access_haleeb, can_access_account, can_access_image_processing, can_manage_users, can_review_activity FROM users WHERE username=? LIMIT 1");
+    $stmt = $conn->prepare("SELECT id, username, role, is_active, can_access_feed, feed_portion, can_access_haleeb, can_access_account, can_access_image_processing, can_manage_users, can_review_activity FROM users WHERE username=? LIMIT 1");
     $stmt->bind_param("s", $username);
     $stmt->execute();
     $row = $stmt->get_result()->fetch_assoc();
@@ -26,6 +25,7 @@ function auth_store_session_local($row){
     $_SESSION['user'] = (string)$row['username'];
     $_SESSION['role'] = (string)$row['role'];
     $_SESSION['can_access_feed'] = (int)$row['can_access_feed'];
+    $_SESSION['feed_portion'] = normalize_feed_portion_local(isset($row['feed_portion']) ? (string)$row['feed_portion'] : '');
     $_SESSION['can_access_haleeb'] = (int)$row['can_access_haleeb'];
     $_SESSION['can_access_account'] = (int)$row['can_access_account'];
     $_SESSION['can_access_image_processing'] = isset($row['can_access_image_processing']) ? (int)$row['can_access_image_processing'] : 0;
@@ -103,6 +103,10 @@ function auth_can_direct_modify(){
 
 function auth_can_review_activity(){
     return auth_is_super_admin() || (isset($_SESSION['can_review_activity']) && (int)$_SESSION['can_review_activity'] === 1);
+}
+
+function auth_get_feed_portion(){
+    return normalize_feed_portion_local(isset($_SESSION['feed_portion']) ? (string)$_SESSION['feed_portion'] : '');
 }
 
 function auth_require_activity_review($fallback = 'dashboard.php'){

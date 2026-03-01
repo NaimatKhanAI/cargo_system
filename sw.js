@@ -1,9 +1,5 @@
-const CACHE_NAME = "cargo-system-v1";
-const CORE_ASSETS = [
-  "./",
-  "./index.php",
-  "./dashboard.php",
-  "./feed.php",
+const STATIC_CACHE = "cargo-static-v2";
+const STATIC_ASSETS = [
   "./assets/mobile.css",
   "./assets/pwa.js",
   "./manifest.json",
@@ -11,9 +7,15 @@ const CORE_ASSETS = [
   "./assets/icons/icon-512.png"
 ];
 
+function isStaticAsset(url) {
+  if (url.origin !== self.location.origin) return false;
+  if (url.pathname.startsWith("/cargo_system/assets/")) return true;
+  return url.pathname.endsWith(".css") || url.pathname.endsWith(".js") || url.pathname.endsWith(".json") || url.pathname.endsWith(".png");
+}
+
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS)).catch(() => Promise.resolve())
+    caches.open(STATIC_CACHE).then((cache) => cache.addAll(STATIC_ASSETS)).catch(() => Promise.resolve())
   );
   self.skipWaiting();
 });
@@ -23,7 +25,7 @@ self.addEventListener("activate", (event) => {
     caches.keys().then((keys) =>
       Promise.all(
         keys
-          .filter((key) => key !== CACHE_NAME)
+          .filter((key) => key !== STATIC_CACHE)
           .map((key) => caches.delete(key))
       )
     )
@@ -38,6 +40,14 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
+  // Keep dynamic PHP navigation requests network-first (no cache).
+  if (req.mode === "navigate" || url.pathname.endsWith(".php")) {
+    event.respondWith(fetch(req));
+    return;
+  }
+
+  if (!isStaticAsset(url)) return;
+
   event.respondWith(
     caches.match(req).then((cached) => {
       if (cached) return cached;
@@ -45,10 +55,9 @@ self.addEventListener("fetch", (event) => {
         .then((response) => {
           if (!response || response.status !== 200 || response.type !== "basic") return response;
           const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
+          caches.open(STATIC_CACHE).then((cache) => cache.put(req, copy));
           return response;
-        })
-        .catch(() => caches.match("./index.php"));
+        });
     })
   );
 });

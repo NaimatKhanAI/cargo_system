@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once __DIR__ . '/config/session_bootstrap.php';
 $uid = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 $uname = isset($_SESSION['user']) ? (string)$_SESSION['user'] : '';
 if($uid > 0){

@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/env.php';
+require_once __DIR__ . '/feed_portions.php';
 load_env_file(dirname(__DIR__) . '/.env');
 
 $host = env_get('DB_HOST', 'localhost');
@@ -57,6 +58,11 @@ if($userFeedAccessColCheck && $userFeedAccessColCheck->num_rows === 0){
 $conn->query("ALTER TABLE users ADD can_access_feed TINYINT(1) NOT NULL DEFAULT 0 AFTER is_active");
 }
 
+$userFeedPortionColCheck = $conn->query("SHOW COLUMNS FROM users LIKE 'feed_portion'");
+if($userFeedPortionColCheck && $userFeedPortionColCheck->num_rows === 0){
+$conn->query("ALTER TABLE users ADD feed_portion VARCHAR(30) NOT NULL DEFAULT 'al_amir' AFTER can_access_feed");
+}
+
 $userHaleebAccessColCheck = $conn->query("SHOW COLUMNS FROM users LIKE 'can_access_haleeb'");
 if($userHaleebAccessColCheck && $userHaleebAccessColCheck->num_rows === 0){
 $conn->query("ALTER TABLE users ADD can_access_haleeb TINYINT(1) NOT NULL DEFAULT 0 AFTER can_access_feed");
@@ -99,6 +105,7 @@ date DATE,
 vehicle VARCHAR(50),
 bilty_no VARCHAR(50),
 party VARCHAR(100),
+feed_portion VARCHAR(30) NOT NULL DEFAULT 'al_amir',
 location VARCHAR(100),
 bags INT DEFAULT 0,
 freight INT,
@@ -133,6 +140,11 @@ if($colCheck && $colCheck->num_rows === 0){
 $conn->query("ALTER TABLE bilty ADD party VARCHAR(100) AFTER bilty_no");
 }
 
+$feedPortionColCheck = $conn->query("SHOW COLUMNS FROM bilty LIKE 'feed_portion'");
+if($feedPortionColCheck && $feedPortionColCheck->num_rows === 0){
+$conn->query("ALTER TABLE bilty ADD feed_portion VARCHAR(30) NOT NULL DEFAULT 'al_amir' AFTER party");
+}
+
 $srColCheck = $conn->query("SHOW COLUMNS FROM bilty LIKE 'sr_no'");
 if($srColCheck && $srColCheck->num_rows === 0){
 $conn->query("ALTER TABLE bilty ADD sr_no VARCHAR(50) AFTER id");
@@ -146,6 +158,15 @@ $conn->query("ALTER TABLE bilty ADD original_freight INT NULL AFTER freight");
 $bagsColCheck = $conn->query("SHOW COLUMNS FROM bilty LIKE 'bags'");
 if($bagsColCheck && $bagsColCheck->num_rows === 0){
 $conn->query("ALTER TABLE bilty ADD bags INT DEFAULT 0 AFTER location");
+}
+
+$allowedFeedPortionsSql = "'" . implode("','", array_keys(feed_portion_options_local())) . "'";
+$defaultFeedPortion = feed_default_portion_key_local();
+$conn->query("UPDATE users SET feed_portion='{$defaultFeedPortion}' WHERE feed_portion IS NULL OR feed_portion='' OR feed_portion NOT IN ($allowedFeedPortionsSql)");
+$conn->query("UPDATE bilty SET feed_portion='{$defaultFeedPortion}' WHERE feed_portion IS NULL OR feed_portion='' OR feed_portion NOT IN ($allowedFeedPortionsSql)");
+$feedPortionIdxCheck = $conn->query("SHOW INDEX FROM bilty WHERE Key_name='idx_bilty_feed_portion'");
+if($feedPortionIdxCheck && $feedPortionIdxCheck->num_rows === 0){
+$conn->query("CREATE INDEX idx_bilty_feed_portion ON bilty(feed_portion)");
 }
 
 $conn->query("CREATE TABLE IF NOT EXISTS account_entries(

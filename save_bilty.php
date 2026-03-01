@@ -1,7 +1,8 @@
 <?php
-session_start();
+require_once __DIR__ . '/config/session_bootstrap.php';
 include 'config/db.php';
 require_once 'config/auth.php';
+require_once 'config/feed_portions.php';
 require_once 'config/activity_notifications.php';
 auth_require_login($conn);
 auth_require_module_access('feed');
@@ -14,6 +15,10 @@ $party = isset($_POST['party']) ? trim((string)$_POST['party']) : '';
 $l = isset($_POST['location']) ? trim((string)$_POST['location']) : '';
 $bags = isset($_POST['bags']) ? max(0, (int)$_POST['bags']) : 0;
 $f = isset($_POST['freight']) ? max(0, (int)round((float)$_POST['freight'])) : 0;
+$feedPortion = normalize_feed_portion_local(isset($_POST['feed_portion']) ? (string)$_POST['feed_portion'] : '');
+if(!auth_is_super_admin()){
+    $feedPortion = auth_get_feed_portion();
+}
 
 $submittedTender = isset($_POST['tender']) ? (float)$_POST['tender'] : 0.0;
 $baseTender = $submittedTender;
@@ -32,8 +37,8 @@ if($bags > 300){
 
 $p = $t - $f;
 
-$stmt = $conn->prepare("INSERT INTO bilty(sr_no, date, vehicle, bilty_no, party, location, bags, freight, original_freight, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-$stmt->bind_param("ssssssiiiii", $sr, $d, $v, $b, $party, $l, $bags, $f, $f, $t, $p);
+$stmt = $conn->prepare("INSERT INTO bilty(sr_no, date, vehicle, bilty_no, party, feed_portion, location, bags, freight, original_freight, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+$stmt->bind_param("sssssssiiiii", $sr, $d, $v, $b, $party, $feedPortion, $l, $bags, $f, $f, $t, $p);
 $ok = $stmt->execute();
 $newId = (int)$stmt->insert_id;
 $stmt->close();
@@ -51,6 +56,7 @@ if($ok){
             'bilty_no' => $b,
             'vehicle' => $v,
             'party' => $party,
+            'feed_portion' => $feedPortion,
             'freight' => $f,
             'tender' => $t
         ],

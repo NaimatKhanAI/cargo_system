@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once __DIR__ . '/config/session_bootstrap.php';
 include 'config/db.php';
 require_once 'config/auth.php';
 require_once 'config/activity_notifications.php';
@@ -20,7 +20,7 @@ if(isset($_POST['login'])){
     if($u === '' || $p === ''){
         $error = "Username and password are required.";
     } else {
-        $stmt = $conn->prepare("SELECT id, username, role, is_active, can_access_feed, can_access_haleeb, can_access_account, can_access_image_processing, can_manage_users, can_review_activity FROM users WHERE username=? AND password=? LIMIT 1");
+        $stmt = $conn->prepare("SELECT id, username, role, is_active, can_access_feed, feed_portion, can_access_haleeb, can_access_account, can_access_image_processing, can_manage_users, can_review_activity FROM users WHERE username=? AND password=? LIMIT 1");
         $stmt->bind_param("ss", $u, $p);
         $stmt->execute();
         $res = $stmt->get_result();

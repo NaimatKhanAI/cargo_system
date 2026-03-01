@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once __DIR__ . '/config/session_bootstrap.php';
 include 'config/db.php';
 require_once 'config/auth.php';
 require_once 'config/change_requests.php';
@@ -74,6 +74,7 @@ if(isset($_POST['create_user'])){
     $username = isset($_POST['username']) ? trim((string)$_POST['username']) : '';
     $password = isset($_POST['password']) ? trim((string)$_POST['password']) : '';
     $role = isset($_POST['role']) ? trim((string)$_POST['role']) : 'sub_admin';
+    $feedPortion = normalize_feed_portion_local(isset($_POST['feed_portion']) ? (string)$_POST['feed_portion'] : '');
     if($username === '' || $password === ''){ $err = 'Username and password required.'; }
     elseif(!in_array($role, ['super_admin','sub_admin'], true)){ $err = 'Invalid role.'; }
     else {
@@ -83,8 +84,8 @@ if(isset($_POST['create_user'])){
             $af = bool_post_local('can_access_feed'); $ah = bool_post_local('can_access_haleeb'); $aa = bool_post_local('can_access_account'); $aip = bool_post_local('can_access_image_processing'); $cra = bool_post_local('can_review_activity'); $ia = bool_post_local('is_active');
             if($role === 'super_admin'){ $af = 1; $ah = 1; $aa = 1; $aip = 1; $cmu = 1; $cra = 1; } else { $cmu = 0; }
             $cb = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null;
-            $ins = $conn->prepare("INSERT INTO users(username, password, role, is_active, can_access_feed, can_access_haleeb, can_access_account, can_access_image_processing, can_manage_users, can_review_activity, created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?)");
-            $ins->bind_param("sssiiiiiiii", $username, $password, $role, $ia, $af, $ah, $aa, $aip, $cmu, $cra, $cb); $ins->execute(); $ins->close();
+            $ins = $conn->prepare("INSERT INTO users(username, password, role, is_active, can_access_feed, feed_portion, can_access_haleeb, can_access_account, can_access_image_processing, can_manage_users, can_review_activity, created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)");
+            $ins->bind_param("sssissiiiiii", $username, $password, $role, $ia, $af, $feedPortion, $ah, $aa, $aip, $cmu, $cra, $cb); $ins->execute(); $ins->close();
             $msg = 'User created.';
         }
     }
@@ -93,6 +94,7 @@ if(isset($_POST['update_user'])){
     $userId = isset($_POST['user_id']) ? (int)$_POST['user_id'] : 0;
     $selfId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
     $role = isset($_POST['role']) ? trim((string)$_POST['role']) : 'sub_admin';
+    $feedPortion = normalize_feed_portion_local(isset($_POST['feed_portion']) ? (string)$_POST['feed_portion'] : '');
     $ia = bool_post_local('is_active'); $af = bool_post_local('can_access_feed'); $ah = bool_post_local('can_access_haleeb'); $aa = bool_post_local('can_access_account'); $aip = bool_post_local('can_access_image_processing'); $cra = bool_post_local('can_review_activity');
     $password = isset($_POST['new_password']) ? trim((string)$_POST['new_password']) : '';
     if($userId <= 0){ $err = 'Invalid user.'; }
@@ -117,8 +119,8 @@ if(isset($_POST['update_user'])){
                 if($srRow && $srRow['role'] === 'super_admin' && $sc <= 1) $err = 'Last super admin cannot be downgraded.';
             }
             if($err === ''){
-                $upd = $conn->prepare("UPDATE users SET role=?, is_active=?, can_access_feed=?, can_access_haleeb=?, can_access_account=?, can_access_image_processing=?, can_manage_users=?, can_review_activity=? WHERE id=?");
-                $upd->bind_param("siiiiiiii", $role, $ia, $af, $ah, $aa, $aip, $cmu, $cra, $userId); $upd->execute(); $upd->close();
+                $upd = $conn->prepare("UPDATE users SET role=?, is_active=?, can_access_feed=?, feed_portion=?, can_access_haleeb=?, can_access_account=?, can_access_image_processing=?, can_manage_users=?, can_review_activity=? WHERE id=?");
+                $upd->bind_param("siiisiiiii", $role, $ia, $af, $feedPortion, $ah, $aa, $aip, $cmu, $cra, $userId); $upd->execute(); $upd->close();
                 if($password !== ''){ $pwd = $conn->prepare("UPDATE users SET password=? WHERE id=?"); $pwd->bind_param("si", $password, $userId); $pwd->execute(); $pwd->close(); }
                 $msg = 'User updated.';
             }
@@ -155,11 +157,12 @@ if(isset($_POST['approve_request']) || isset($_POST['reject_request'])){
 }
 
 $users = [];
-$usersRes = $conn->query("SELECT id, username, role, is_active, can_access_feed, can_access_haleeb, can_access_account, can_access_image_processing, can_review_activity, created_at FROM users ORDER BY id ASC");
+$usersRes = $conn->query("SELECT id, username, role, is_active, can_access_feed, feed_portion, can_access_haleeb, can_access_account, can_access_image_processing, can_review_activity, created_at FROM users ORDER BY id ASC");
 while($usersRes && $u = $usersRes->fetch_assoc()) $users[] = $u;
 $pendingRequests = fetch_pending_change_requests_local($conn, ['feed_pay', 'haleeb_pay']);
 $selfId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
+$feedPortionOptions = feed_portion_options_local();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -332,6 +335,14 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
             </select>
           </div>
           <div class="cf-field">
+            <span class="cf-label">Feed Section</span>
+            <select class="cf-select" name="feed_portion">
+              <?php foreach($feedPortionOptions as $portionKey => $portionLabel): ?>
+                <option value="<?php echo htmlspecialchars($portionKey); ?>"><?php echo htmlspecialchars($portionLabel); ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+          <div class="cf-field">
             <span class="cf-label">Permissions</span>
             <div class="chk-group">
               <label class="chk-label"><input type="checkbox" name="is_active" checked> Active</label>
@@ -362,6 +373,7 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
             <th>Role</th>
             <th>Active</th>
             <th>Feed</th>
+            <th>Feed Section</th>
             <th>Haleeb</th>
             <th>Account</th>
             <th>Image Proc</th>
@@ -397,6 +409,20 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
               </td>
               <td><label class="chk-label"><input type="checkbox" name="is_active" <?php echo (int)$u['is_active'] ? 'checked' : ''; ?> <?php echo $isSelf ? 'disabled' : ''; ?>></label></td>
               <td><label class="chk-label"><input type="checkbox" name="can_access_feed" <?php echo (int)$u['can_access_feed'] ? 'checked' : ''; ?> <?php echo $isSelf ? 'disabled' : ''; ?>></label></td>
+              <td>
+                <?php if($isSelf): ?>
+                  <span class="role-sub"><?php echo htmlspecialchars(feed_portion_label_local($u['feed_portion'])); ?></span>
+                  <input type="hidden" name="feed_portion" value="<?php echo htmlspecialchars(normalize_feed_portion_local($u['feed_portion'])); ?>">
+                <?php else: ?>
+                  <select class="tbl-select" name="feed_portion">
+                    <?php foreach($feedPortionOptions as $portionKey => $portionLabel): ?>
+                      <option value="<?php echo htmlspecialchars($portionKey); ?>" <?php echo normalize_feed_portion_local($u['feed_portion']) === $portionKey ? 'selected' : ''; ?>>
+                        <?php echo htmlspecialchars($portionLabel); ?>
+                      </option>
+                    <?php endforeach; ?>
+                  </select>
+                <?php endif; ?>
+              </td>
               <td><label class="chk-label"><input type="checkbox" name="can_access_haleeb" <?php echo (int)$u['can_access_haleeb'] ? 'checked' : ''; ?> <?php echo $isSelf ? 'disabled' : ''; ?>></label></td>
               <td><label class="chk-label"><input type="checkbox" name="can_access_account" <?php echo (int)$u['can_access_account'] ? 'checked' : ''; ?> <?php echo $isSelf ? 'disabled' : ''; ?>></label></td>
               <td><label class="chk-label"><input type="checkbox" name="can_access_image_processing" <?php echo (int)$u['can_access_image_processing'] ? 'checked' : ''; ?> <?php echo $isSelf ? 'disabled' : ''; ?>></label></td>

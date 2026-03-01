@@ -1,13 +1,29 @@
 <?php
-session_start();
+require_once __DIR__ . '/config/session_bootstrap.php';
 include 'config/db.php';
 require_once 'config/auth.php';
 require_once 'config/change_requests.php';
 require_once 'config/activity_notifications.php';
 auth_require_login($conn);
 auth_require_module_access('feed');
+$isSuperAdmin = auth_is_super_admin();
+$userFeedPortion = auth_get_feed_portion();
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 if($id > 0){
+if($isSuperAdmin){
+$accessStmt = $conn->prepare("SELECT id FROM bilty WHERE id=? LIMIT 1");
+$accessStmt->bind_param("i", $id);
+} else {
+$accessStmt = $conn->prepare("SELECT id FROM bilty WHERE id=? AND feed_portion=? LIMIT 1");
+$accessStmt->bind_param("is", $id, $userFeedPortion);
+}
+$accessStmt->execute();
+$hasAccess = $accessStmt->get_result()->num_rows > 0;
+$accessStmt->close();
+if(!$hasAccess){
+header("location:feed.php?req=failed");
+exit();
+}
 if(!auth_can_direct_modify()){
 $requestId = create_change_request_local($conn, 'feed', 'bilty', $id, 'feed_delete', ['id' => $id], isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0);
 if($requestId > 0){

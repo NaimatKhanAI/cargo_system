@@ -1,11 +1,14 @@
 <?php
-session_start();
+require_once __DIR__ . '/config/session_bootstrap.php';
 include 'config/db.php';
 require_once 'config/auth.php';
+require_once 'config/feed_portions.php';
 auth_require_login($conn);
 auth_require_module_access('feed');
 $canDirectModify = auth_can_direct_modify();
 $isSuperAdmin = auth_is_super_admin();
+$userFeedPortion = auth_get_feed_portion();
+$userFeedPortionLabel = feed_portion_label_local($userFeedPortion);
 
 if(isset($_GET['delete_all']) && $_GET['delete_all'] === '1'){
     if(!auth_can_direct_modify()){
@@ -43,7 +46,16 @@ if(isset($_GET['delete_all']) && $_GET['delete_all'] === '1'){
     }
 }
 
-$total = $conn->query("SELECT SUM(tender - freight) as t FROM bilty")->fetch_assoc();
+$total = null;
+if($isSuperAdmin){
+    $total = $conn->query("SELECT SUM(tender - freight) as t FROM bilty")->fetch_assoc();
+} else {
+    $tpStmt = $conn->prepare("SELECT SUM(tender - freight) as t FROM bilty WHERE feed_portion=?");
+    $tpStmt->bind_param("s", $userFeedPortion);
+    $tpStmt->execute();
+    $total = $tpStmt->get_result()->fetch_assoc();
+    $tpStmt->close();
+}
 $total_profit = $total['t'] ? $total['t'] : 0;
 $dateFrom = isset($_GET['date_from']) ? trim((string)$_GET['date_from']) : '';
 $dateTo = isset($_GET['date_to']) ? trim((string)$_GET['date_to']) : '';
@@ -94,15 +106,27 @@ if(isset($_GET['req']) && $_GET['req'] === 'submitted'){
 }
 
 $vehicleOptions = [];
-$vehicleRes = $conn->query("SELECT DISTINCT vehicle FROM bilty WHERE vehicle IS NOT NULL AND vehicle <> '' ORDER BY vehicle ASC");
-while($vehicleRes && $vrow = $vehicleRes->fetch_assoc()){
-    $vehicleOptions[] = (string)$vrow['vehicle'];
+if($isSuperAdmin){
+    $vehicleRes = $conn->query("SELECT DISTINCT vehicle FROM bilty WHERE vehicle IS NOT NULL AND vehicle <> '' ORDER BY vehicle ASC");
+    while($vehicleRes && $vrow = $vehicleRes->fetch_assoc()){
+        $vehicleOptions[] = (string)$vrow['vehicle'];
+    }
+} else {
+    $vehicleStmt = $conn->prepare("SELECT DISTINCT vehicle FROM bilty WHERE feed_portion=? AND vehicle IS NOT NULL AND vehicle <> '' ORDER BY vehicle ASC");
+    $vehicleStmt->bind_param("s", $userFeedPortion);
+    $vehicleStmt->execute();
+    $vehicleRes = $vehicleStmt->get_result();
+    while($vehicleRes && $vrow = $vehicleRes->fetch_assoc()){
+        $vehicleOptions[] = (string)$vrow['vehicle'];
+    }
+    $vehicleStmt->close();
 }
 
 $where = []; $bindValues = []; $bindTypes = "";
 if($dateFrom !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateFrom)){ $where[] = "date >= ?"; $bindTypes .= "s"; $bindValues[] = $dateFrom; }
 if($dateTo !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateTo)){ $where[] = "date <= ?"; $bindTypes .= "s"; $bindValues[] = $dateTo; }
 if($vehicleSearch !== ''){ $where[] = "vehicle LIKE ?"; $bindTypes .= "s"; $bindValues[] = "%" . $vehicleSearch . "%"; }
+if(!$isSuperAdmin){ $where[] = "feed_portion = ?"; $bindTypes .= "s"; $bindValues[] = $userFeedPortion; }
 
 $sql = "SELECT b.*, (b.tender - b.freight) AS calc_profit,
         GREATEST(COALESCE(b.original_freight, b.freight) - COALESCE(p.paid_total, 0), 0) AS remaining_balance
@@ -116,7 +140,7 @@ $sql = "SELECT b.*, (b.tender - b.freight) AS calc_profit,
 if(count($where) > 0){
     $whereSql = [];
     foreach($where as $w){
-        $whereSql[] = str_replace(["date", "vehicle"], ["b.date", "b.vehicle"], $w);
+        $whereSql[] = str_replace(["date", "vehicle", "feed_portion"], ["b.date", "b.vehicle", "b.feed_portion"], $w);
     }
     $sql .= " WHERE " . implode(" AND ", $whereSql);
 }
@@ -124,9 +148,9 @@ $sql .= " ORDER BY id DESC";
 
 if(count($bindValues) > 0){
     $stmt = $conn->prepare($sql);
-    if(count($bindValues) === 1) $stmt->bind_param($bindTypes, $bindValues[0]);
-    elseif(count($bindValues) === 2) $stmt->bind_param($bindTypes, $bindValues[0], $bindValues[1]);
-    else $stmt->bind_param($bindTypes, $bindValues[0], $bindValues[1], $bindValues[2]);
+    $params = [$bindTypes];
+    foreach($bindValues as $k => $v){ $params[] = &$bindValues[$k]; }
+    call_user_func_array([$stmt, 'bind_param'], $params);
     $stmt->execute();
     $result = $stmt->get_result();
 } else {
@@ -319,10 +343,10 @@ if(count($bindValues) > 0){
 <div class="topbar">
   <div class="topbar-logo">
     <span class="badge">Feed</span>
-    <h1>Feed</h1>
+    <h1>Feed<?php echo $isSuperAdmin ? '' : (' - ' . htmlspecialchars($userFeedPortionLabel)); ?></h1>
   </div>
   <div class="nav-links">
-    <a class="nav-btn primary" href="add_bilty.php">Add Bilty</a>
+    <a class="nav-btn primary" href="add_bilty.php<?php echo $isSuperAdmin ? '' : ('?portion=' . rawurlencode($userFeedPortion)); ?>">Add Bilty</a>
     <?php if($isSuperAdmin): ?>
       <a class="nav-btn" href="haleeb.php">Haleeb</a>
       <a class="nav-btn" href="super_admin.php">Super Admin</a>
@@ -418,6 +442,7 @@ if(count($bindValues) > 0){
         <tr>
           <th>SR.</th>
           <th>Date</th>
+          <?php if($isSuperAdmin): ?><th>Section</th><?php endif; ?>
           <th>Vehicle</th>
           <th>Bilty No.</th>
           <th>Party</th>
@@ -437,6 +462,9 @@ if(count($bindValues) > 0){
         <tr>
           <td><?php echo htmlspecialchars($row['sr_no']); ?></td>
           <td><?php echo htmlspecialchars($row['date']); ?></td>
+          <?php if($isSuperAdmin): ?>
+            <td><?php echo htmlspecialchars(feed_portion_label_local(isset($row['feed_portion']) ? $row['feed_portion'] : '')); ?></td>
+          <?php endif; ?>
           <td><?php echo htmlspecialchars($row['vehicle']); ?></td>
           <td><?php echo htmlspecialchars($row['bilty_no']); ?></td>
           <td><?php echo htmlspecialchars($row['party']); ?></td>

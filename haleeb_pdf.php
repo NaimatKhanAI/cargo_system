@@ -33,7 +33,7 @@ if(!try_load_dompdf_autoloader($projectRoot)){
 
 use Dompdf\Dompdf;
 
-session_start();
+require_once __DIR__ . '/config/session_bootstrap.php';
 include 'config/db.php';
 require_once 'config/auth.php';
 auth_require_login($conn);
