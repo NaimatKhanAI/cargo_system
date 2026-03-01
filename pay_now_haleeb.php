@@ -6,6 +6,7 @@ require_once 'config/change_requests.php';
 require_once 'config/activity_notifications.php';
 auth_require_login($conn);
 auth_require_module_access('haleeb');
+$isSuperAdmin = auth_is_super_admin();
 
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 if($id <= 0){ header("location:haleeb.php?pay=error"); exit(); }
@@ -202,10 +203,12 @@ $paidPct = $baseFreight > 0 ? min(100, round($paidTotal / $baseFreight * 100)) :
             <div class="info-label">Token No</div>
             <div class="info-val blue"><?php echo htmlspecialchars($row['token_no']); ?></div>
           </div>
-          <div class="info-item">
-            <div class="info-label">Tender</div>
-            <div class="info-val yellow">Rs <?php echo number_format((float)$row['tender'], 0); ?></div>
-          </div>
+          <?php if($isSuperAdmin): ?>
+            <div class="info-item">
+              <div class="info-label">Tender</div>
+              <div class="info-val yellow">Rs <?php echo number_format((float)$row['tender'], 0); ?></div>
+            </div>
+          <?php endif; ?>
           <div class="info-item">
             <div class="info-label">Freight Total</div>
             <div class="info-val">Rs <?php echo number_format($baseFreight, 0); ?></div>

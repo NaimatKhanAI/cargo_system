@@ -8,6 +8,7 @@ auth_require_login($conn);
 auth_require_module_access('haleeb');
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 if($id <= 0){ header("location:haleeb.php"); exit(); }
+$isSuperAdmin = auth_is_super_admin();
 $linkedRequestId = isset($_GET['request_id']) ? (int)$_GET['request_id'] : 0;
 $linkedRequest = null;
 
@@ -383,10 +384,14 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
             </div>
           </div>
         </div>
-        <div class="field">
-          <label for="tender">Tender</label>
-          <input id="tender" type="number" name="tender" value="<?php echo htmlspecialchars($row['tender']); ?>" min="0" required>
-        </div>
+        <?php if($isSuperAdmin): ?>
+          <div class="field">
+            <label for="tender">Tender</label>
+            <input id="tender" type="number" name="tender" value="<?php echo htmlspecialchars($row['tender']); ?>" min="0" required>
+          </div>
+        <?php else: ?>
+          <input id="tender" type="hidden" name="tender" value="<?php echo htmlspecialchars($row['tender']); ?>">
+        <?php endif; ?>
         <div class="field">
           <label for="freight">Freight</label>
           <input id="freight" type="number" name="freight" value="<?php echo htmlspecialchars($row['freight']); ?>" min="0" required>

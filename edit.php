@@ -261,12 +261,17 @@ if(isset($_POST['update'])){
           <label for="freight">Freight</label>
           <input id="freight" type="number" name="freight" value="<?php echo htmlspecialchars($row['freight']); ?>" min="0" required>
         </div>
-        <div class="field">
-          <label for="tender">Tender</label>
-          <input id="tender" type="number" name="tender" value="<?php echo htmlspecialchars($row['tender']); ?>" min="0" required>
+        <?php if($isSuperAdmin): ?>
+          <div class="field">
+            <label for="tender">Tender</label>
+            <input id="tender" type="number" name="tender" value="<?php echo htmlspecialchars($row['tender']); ?>" min="0" required>
+            <input id="tender_raw" type="hidden" name="tender_raw" value="">
+            <div class="field-meta" id="tender_discount_note"></div>
+          </div>
+        <?php else: ?>
+          <input id="tender" type="hidden" name="tender" value="<?php echo htmlspecialchars($row['tender']); ?>">
           <input id="tender_raw" type="hidden" name="tender_raw" value="">
-          <div class="field-meta" id="tender_discount_note"></div>
-        </div>
+        <?php endif; ?>
       </div>
 
       <div class="form-footer">

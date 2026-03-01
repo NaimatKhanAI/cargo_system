@@ -46,17 +46,11 @@ if(isset($_GET['delete_all']) && $_GET['delete_all'] === '1'){
     }
 }
 
-$total = null;
+$total_profit = 0;
 if($isSuperAdmin){
     $total = $conn->query("SELECT SUM(tender - freight) as t FROM bilty")->fetch_assoc();
-} else {
-    $tpStmt = $conn->prepare("SELECT SUM(tender - freight) as t FROM bilty WHERE feed_portion=?");
-    $tpStmt->bind_param("s", $userFeedPortion);
-    $tpStmt->execute();
-    $total = $tpStmt->get_result()->fetch_assoc();
-    $tpStmt->close();
+    $total_profit = ($total && isset($total['t']) && $total['t'] !== null) ? (float)$total['t'] : 0;
 }
-$total_profit = $total['t'] ? $total['t'] : 0;
 $dateFrom = isset($_GET['date_from']) ? trim((string)$_GET['date_from']) : '';
 $dateTo = isset($_GET['date_to']) ? trim((string)$_GET['date_to']) : '';
 $vehicleSearch = isset($_GET['vehicle']) ? trim((string)$_GET['vehicle']) : '';
@@ -400,12 +394,14 @@ if(count($bindValues) > 0){
     <div class="alert"><?php echo htmlspecialchars($request_message); ?></div>
   <?php endif; ?>
 
-  <div class="profit-banner">
-    <div>
-      <div class="profit-label">Total Profit</div>
-      <div class="profit-value"><?php echo number_format((float)$total_profit, 2); ?></div>
+  <?php if($isSuperAdmin): ?>
+    <div class="profit-banner">
+      <div>
+        <div class="profit-label">Total Profit</div>
+        <div class="profit-value"><?php echo number_format((float)$total_profit, 2); ?></div>
+      </div>
     </div>
-  </div>
+  <?php endif; ?>
 
   <div class="search-panel">
     <form class="search-form" method="get">
@@ -449,9 +445,9 @@ if(count($bindValues) > 0){
           <th>Location</th>
           <th>Bags</th>
           <th>Freight</th>
-          <th>Tender</th>
+          <?php if($isSuperAdmin): ?><th>Tender</th><?php endif; ?>
           <th>Remaining</th>
-          <th>Profit</th>
+          <?php if($isSuperAdmin): ?><th>Profit</th><?php endif; ?>
           <th class="th-action">Actions</th>
         </tr>
       </thead>
@@ -471,16 +467,20 @@ if(count($bindValues) > 0){
           <td><?php echo htmlspecialchars($row['location']); ?></td>
           <td><?php echo (int)($row['bags'] ?? 0); ?></td>
           <td><?php echo number_format((float)$row['freight'], 2); ?></td>
-          <td><?php echo number_format((float)$row['tender'], 2); ?></td>
+          <?php if($isSuperAdmin): ?>
+            <td><?php echo number_format((float)$row['tender'], 2); ?></td>
+          <?php endif; ?>
           <?php $remaining = (float)($row['remaining_balance'] ?? 0); ?>
           <td>
             <span class="rem-badge <?php echo $remaining <= 0 ? 'rem-zero' : 'rem-pending'; ?>">
               <?php echo number_format($remaining, 2); ?>
             </span>
           </td>
-          <td class="td-profit <?php echo $profit < 0 ? 'neg' : ''; ?>">
-            <?php echo number_format($profit, 2); ?>
-          </td>
+          <?php if($isSuperAdmin): ?>
+            <td class="td-profit <?php echo $profit < 0 ? 'neg' : ''; ?>">
+              <?php echo number_format($profit, 2); ?>
+            </td>
+          <?php endif; ?>
           <td>
             <div class="action-cell">
               <a class="act-btn act-pay" href="pay_now.php?id=<?php echo $row['id']; ?>" title="Pay">&#8377;</a>

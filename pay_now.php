@@ -204,10 +204,12 @@ $paidPct = $baseFreight > 0 ? min(100, round($paidTotal / $baseFreight * 100)) :
             <div class="info-label">Location</div>
             <div class="info-val"><?php echo htmlspecialchars($row['location']); ?></div>
           </div>
-          <div class="info-item">
-            <div class="info-label">Tender</div>
-            <div class="info-val yellow">Rs <?php echo number_format((float)$row['tender'], 0); ?></div>
-          </div>
+          <?php if($isSuperAdmin): ?>
+            <div class="info-item">
+              <div class="info-label">Tender</div>
+              <div class="info-val yellow">Rs <?php echo number_format((float)$row['tender'], 0); ?></div>
+            </div>
+          <?php endif; ?>
           <div class="info-item">
             <div class="info-label">Freight Total</div>
             <div class="info-val">Rs <?php echo number_format($baseFreight, 0); ?></div>

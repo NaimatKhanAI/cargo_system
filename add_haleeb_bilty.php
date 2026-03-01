@@ -4,6 +4,7 @@ include 'config/db.php';
 require_once 'config/auth.php';
 auth_require_login($conn);
 auth_require_module_access('haleeb');
+$isSuperAdmin = auth_is_super_admin();
 $today = date('Y-m-d');
 
 function normalize_lookup_token($v){
@@ -218,10 +219,14 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
             </div>
           </div>
         </div>
-        <div class="field">
-          <label for="tender">Tender</label>
-          <input id="tender" type="number" name="tender" placeholder="0" min="0" required>
-        </div>
+        <?php if($isSuperAdmin): ?>
+          <div class="field">
+            <label for="tender">Tender</label>
+            <input id="tender" type="number" name="tender" placeholder="0" min="0" required>
+          </div>
+        <?php else: ?>
+          <input id="tender" type="hidden" name="tender" value="0">
+        <?php endif; ?>
         <div class="field">
           <label for="freight">Freight</label>
           <input id="freight" type="number" name="freight" placeholder="0" min="0" required>
