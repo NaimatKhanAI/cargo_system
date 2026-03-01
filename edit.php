@@ -2,6 +2,7 @@
 require_once __DIR__ . '/config/session_bootstrap.php';
 include 'config/db.php';
 require_once 'config/auth.php';
+require_once 'config/feed_portions.php';
 require_once 'config/change_requests.php';
 require_once 'config/activity_notifications.php';
 auth_require_login($conn);
@@ -22,6 +23,8 @@ $rowStmt->execute();
 $row = $rowStmt->get_result()->fetch_assoc();
 $rowStmt->close();
 if(!$row){ header("location:feed.php"); exit(); }
+$editFeedPortion = normalize_feed_portion_local(isset($row['feed_portion']) ? (string)$row['feed_portion'] : $userFeedPortion);
+$editFeedPortionLabel = feed_portion_label_local($editFeedPortion);
 
 if(isset($_POST['update'])){
     $sr = isset($_POST['sr_no']) ? trim($_POST['sr_no']) : '';
@@ -32,7 +35,15 @@ if(isset($_POST['update'])){
     $l = isset($_POST['location']) ? trim($_POST['location']) : '';
     $bags = isset($_POST['bags']) ? (int)$_POST['bags'] : 0;
     $f = isset($_POST['freight']) ? (int)$_POST['freight'] : 0;
-    $t = isset($_POST['tender']) ? (int)$_POST['tender'] : 0;
+    $submittedTender = isset($_POST['tender']) ? (float)$_POST['tender'] : 0.0;
+    $baseTender = $submittedTender;
+    if(isset($_POST['tender_raw']) && trim((string)$_POST['tender_raw']) !== ''){
+        $baseTender = (float)$_POST['tender_raw'];
+    }
+    if($baseTender < 0){
+        $baseTender = 0.0;
+    }
+    $t = ($bags > 300) ? (int)round($baseTender * 0.90) : (int)round($baseTender);
     if(!auth_can_direct_modify()){
         $payload = [
             'sr_no' => $sr,
@@ -134,6 +145,9 @@ if(isset($_POST['update'])){
   .field input:focus { outline: none; border-color: var(--accent); }
   .field input::-webkit-calendar-picker-indicator { filter: invert(0.5); cursor: pointer; }
   .field input::placeholder { color: var(--muted); }
+  .field-meta { margin-top: 5px; font-size: 11px; font-family: var(--mono); color: var(--muted); }
+  .field-meta.ok { color: var(--green); }
+  .field-meta.err { color: var(--red); }
 
   .form-footer { margin-top: 28px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
   .delete-btn {
@@ -172,12 +186,14 @@ if(isset($_POST['update'])){
   <div class="form-card">
     <div class="form-title">Edit Bilty</div>
     <div class="form-sub">Bilty: <?php echo htmlspecialchars($row['bilty_no']); ?> &nbsp;·&nbsp; ID: <?php echo $id; ?></div>
+    <div class="form-sub">Feed Section: <?php echo htmlspecialchars($editFeedPortionLabel); ?></div>
 
     <form method="post">
       <div class="grid">
         <div class="field">
           <label for="sr_no">SR No</label>
           <input id="sr_no" name="sr_no" value="<?php echo htmlspecialchars($row['sr_no'] ?? ''); ?>" required>
+          <div class="field-meta" id="tender_help">Tender auto-lookup enabled.</div>
         </div>
         <div class="field">
           <label for="date">Date</label>
@@ -210,6 +226,8 @@ if(isset($_POST['update'])){
         <div class="field">
           <label for="tender">Tender</label>
           <input id="tender" type="number" name="tender" value="<?php echo htmlspecialchars($row['tender']); ?>" min="0" required>
+          <input id="tender_raw" type="hidden" name="tender_raw" value="">
+          <div class="field-meta" id="tender_discount_note"></div>
         </div>
       </div>
 
@@ -217,9 +235,140 @@ if(isset($_POST['update'])){
         <a class="delete-btn" href="delete.php?id=<?php echo $id; ?>" onclick="return confirm('Delete this bilty?')">&#128465; Delete</a>
         <button class="update-btn" type="submit" name="update">Save</button>
       </div>
+      <input id="edit_feed_portion" type="hidden" value="<?php echo htmlspecialchars($editFeedPortion); ?>">
     </form>
   </div>
 </div>
+<script>
+(function(){
+  var srInput = document.getElementById('sr_no');
+  var tenderInput = document.getElementById('tender');
+  var tenderRawInput = document.getElementById('tender_raw');
+  var bagsInput = document.getElementById('bags');
+  var tenderHelp = document.getElementById('tender_help');
+  var tenderDiscountNote = document.getElementById('tender_discount_note');
+  var feedPortionInput = document.getElementById('edit_feed_portion');
+  var form = document.querySelector('form');
+  var timer = null;
+  var reqId = 0;
+  var applyingTenderRule = false;
+
+  function setHelp(text, type){
+    if(!tenderHelp) return;
+    tenderHelp.textContent = text || '';
+    tenderHelp.className = 'field-meta' + (type ? ' ' + type : '');
+  }
+
+  function roundTender(v){
+    return Math.round(v);
+  }
+
+  function parseNumeric(v){
+    if(v === null || typeof v === 'undefined') return null;
+    var n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function setDiscountNote(text, cls){
+    if(!tenderDiscountNote) return;
+    tenderDiscountNote.textContent = text || '';
+    tenderDiscountNote.className = 'field-meta' + (cls ? ' ' + cls : '');
+  }
+
+  function applyTenderBagRule(){
+    if(!tenderInput || !tenderRawInput) return;
+    var baseTender = parseNumeric(tenderRawInput.value);
+    if(baseTender === null){
+      setDiscountNote('', '');
+      return;
+    }
+
+    var bags = bagsInput ? parseInt(bagsInput.value, 10) : 0;
+    if(Number.isNaN(bags)) bags = 0;
+
+    var finalTender = baseTender;
+    if(bags > 300){
+      finalTender = baseTender * 0.90;
+      setDiscountNote('300+ bags: tender adjusted by -10%', 'ok');
+    } else {
+      setDiscountNote('', '');
+    }
+
+    applyingTenderRule = true;
+    tenderInput.value = String(roundTender(finalTender));
+    applyingTenderRule = false;
+  }
+
+  function lookupTender(){
+    var sr = (srInput && srInput.value ? srInput.value : '').trim();
+    if(sr === ''){
+      setHelp('Enter SR No to auto fetch tender.', '');
+      return;
+    }
+
+    reqId++;
+    var cur = reqId;
+    setHelp('Checking rate...', '');
+    var portion = feedPortionInput ? (feedPortionInput.value || '') : '';
+
+    fetch('add_bilty.php?lookup_tender=1&portion=' + encodeURIComponent(portion) + '&sr_no=' + encodeURIComponent(sr), { headers: { 'Accept': 'application/json' } })
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        if(cur !== reqId) return;
+        if(data && data.ok){
+          if(tenderRawInput) tenderRawInput.value = String(data.rate);
+          applyTenderBagRule();
+          setHelp('Auto fill: ' + (data.value_column_label || data.column_label || 'selected'), 'ok');
+        } else {
+          setHelp((data && data.message) ? data.message : 'Rate not found', 'err');
+        }
+      })
+      .catch(function(){
+        if(cur !== reqId) return;
+        setHelp('Cannot get rate.', 'err');
+      });
+  }
+
+  if(srInput){
+    srInput.addEventListener('input', function(){
+      if(timer) clearTimeout(timer);
+      timer = setTimeout(lookupTender, 250);
+    });
+    srInput.addEventListener('blur', lookupTender);
+  }
+
+  if(tenderInput){
+    tenderInput.addEventListener('input', function(){
+      if(applyingTenderRule) return;
+      if(tenderRawInput) tenderRawInput.value = tenderInput.value;
+      applyTenderBagRule();
+    });
+  }
+
+  if(bagsInput){
+    bagsInput.addEventListener('input', applyTenderBagRule);
+    bagsInput.addEventListener('change', applyTenderBagRule);
+  }
+
+  if(form){
+    form.addEventListener('submit', function(){
+      if(tenderRawInput && String(tenderRawInput.value || '').trim() === '' && tenderInput){
+        tenderRawInput.value = tenderInput.value;
+      }
+      applyTenderBagRule();
+    });
+  }
+
+  if(tenderRawInput && tenderInput && String(tenderInput.value || '').trim() !== ''){
+    tenderRawInput.value = tenderInput.value;
+  }
+  if(srInput && String(srInput.value || '').trim() !== ''){
+    lookupTender();
+  } else {
+    setHelp('Enter SR No to auto fetch tender.', '');
+  }
+})();
+</script>
 </body>
 </html>
 
