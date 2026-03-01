@@ -1,12 +1,188 @@
-/* Shared mobile responsiveness for the full system */
+/* Shared UI/UX theme + mobile responsiveness for the full system */
 
-html, body {
+:root {
+  --bg: #f3f6fb !important;
+  --surface: #ffffff !important;
+  --surface2: #ecf2fb !important;
+  --border: #d1ddee !important;
+  --text: #13233a !important;
+  --muted: #5c6f8e !important;
+  --accent: #0f76d8 !important;
+  --green: #15803d !important;
+  --red: #dc2626 !important;
+  --blue: #2563eb !important;
+  --purple: #7c3aed !important;
+  --font: "Segoe UI", Tahoma, Arial, sans-serif !important;
+  --mono: "Consolas", "SFMono-Regular", Menlo, monospace !important;
+}
+
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html,
+body {
   max-width: 100%;
+  background-color: #f3f6fb !important;
+}
+
+body {
+  color: var(--text) !important;
+  background:
+    radial-gradient(1300px 760px at 5% -10%, rgba(15, 118, 216, 0.18), transparent 55%),
+    radial-gradient(1000px 640px at 96% 0%, rgba(124, 58, 237, 0.10), transparent 48%),
+    linear-gradient(180deg, #f6f9ff 0%, #eef4ff 60%, #f7faff 100%) !important;
+  font-family: var(--font) !important;
+  line-height: 1.45;
 }
 
 img, video, canvas, svg {
   max-width: 100%;
   height: auto;
+}
+
+.topbar {
+  background: rgba(255, 255, 255, 0.92) !important;
+  border-bottom: 1px solid rgba(148, 165, 198, 0.42) !important;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 10px 30px rgba(36, 57, 91, 0.14);
+}
+
+.topbar h1,
+.logo-text,
+.card-title,
+.form-title,
+.panel-title {
+  color: var(--text) !important;
+}
+
+.main,
+.card,
+.form-card,
+.upload-card,
+.table-wrap,
+.section,
+.search-panel,
+.profit-banner,
+.cat-panel,
+.info-card,
+.progress-card,
+.pay-req-panel {
+  border-color: rgba(146, 167, 201, 0.46) !important;
+}
+
+.card,
+.form-card,
+.upload-card,
+.table-wrap,
+.section,
+.search-panel,
+.profit-banner,
+.cat-panel,
+.info-card,
+.progress-card,
+.pay-req-panel,
+.modal-card {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.98) 0%,
+    rgba(247, 251, 255, 0.98) 100%
+  ) !important;
+  box-shadow: 0 12px 30px rgba(45, 69, 108, 0.12);
+}
+
+th {
+  color: #465e84 !important;
+}
+
+td,
+.info-val,
+.msg {
+  color: var(--text) !important;
+}
+
+.small-note,
+.td-note,
+.user-meta,
+.field-hint,
+.req-date,
+.card-desc,
+.stat-sub {
+  color: var(--muted) !important;
+}
+
+input,
+select,
+textarea,
+.tbl-input,
+.tbl-select,
+.decision-note,
+.pay-req-note-input,
+.form-field input,
+.form-field select {
+  background: #ffffff !important;
+  border-color: #aec1df !important;
+  color: var(--text) !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #7d92b5 !important;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: #0f76d8 !important;
+  box-shadow: 0 0 0 3px rgba(15, 118, 216, 0.18);
+}
+
+.nav-btn,
+.btn-ghost,
+.btn-cancel,
+.btn-apply,
+.btn-mini {
+  background: #f0f5fd !important;
+  border-color: #aec1df !important;
+  color: #304a74 !important;
+}
+
+.nav-btn:hover,
+.btn-ghost:hover,
+.btn-cancel:hover,
+.btn-apply:hover,
+.btn-mini:hover {
+  background: #e4edf9 !important;
+  color: #203250 !important;
+}
+
+.nav-btn.primary,
+.btn-submit,
+.submit-btn,
+.btn-create,
+.btn-save {
+  background: linear-gradient(135deg, #0f76d8 0%, #1497d8 100%) !important;
+  border-color: #0f76d8 !important;
+  color: #ffffff !important;
+  font-weight: 800 !important;
+}
+
+.nav-btn.primary:hover,
+.btn-submit:hover,
+.submit-btn:hover,
+.btn-create:hover,
+.btn-save:hover {
+  filter: brightness(1.05);
+}
+
+.alert {
+  border-left-width: 4px !important;
+}
+
+.menu-pop {
+  background: #ffffff !important;
+  border-color: #aec1df !important;
 }
 
 @media (max-width: 900px) {
