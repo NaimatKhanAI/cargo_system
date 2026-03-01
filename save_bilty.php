@@ -6,17 +6,31 @@ require_once 'config/activity_notifications.php';
 auth_require_login($conn);
 auth_require_module_access('feed');
 
-$sr=isset($_POST['sr_no']) ? trim($_POST['sr_no']) : '';
-$d=$_POST['date'];
-$v=$_POST['vehicle'];
-$b=$_POST['bilty'];
-$party=$_POST['party'];
-$l=$_POST['location'];
-$bags=isset($_POST['bags']) ? (int)$_POST['bags'] : 0;
-$f=$_POST['freight'];
-$t=$_POST['tender'];
+$sr = isset($_POST['sr_no']) ? trim((string)$_POST['sr_no']) : '';
+$d = isset($_POST['date']) ? trim((string)$_POST['date']) : '';
+$v = isset($_POST['vehicle']) ? trim((string)$_POST['vehicle']) : '';
+$b = isset($_POST['bilty']) ? trim((string)$_POST['bilty']) : '';
+$party = isset($_POST['party']) ? trim((string)$_POST['party']) : '';
+$l = isset($_POST['location']) ? trim((string)$_POST['location']) : '';
+$bags = isset($_POST['bags']) ? max(0, (int)$_POST['bags']) : 0;
+$f = isset($_POST['freight']) ? max(0, (int)round((float)$_POST['freight'])) : 0;
 
-$p=$t-$f;
+$submittedTender = isset($_POST['tender']) ? (float)$_POST['tender'] : 0.0;
+$baseTender = $submittedTender;
+if(isset($_POST['tender_raw']) && trim((string)$_POST['tender_raw']) !== ''){
+    $baseTender = (float)$_POST['tender_raw'];
+}
+if($baseTender < 0){
+    $baseTender = 0.0;
+}
+
+if($bags > 300){
+    $t = (int)round($baseTender * 0.90);
+} else {
+    $t = (int)round($baseTender);
+}
+
+$p = $t - $f;
 
 $stmt = $conn->prepare("INSERT INTO bilty(sr_no, date, vehicle, bilty_no, party, location, bags, freight, original_freight, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
 $stmt->bind_param("ssssssiiiii", $sr, $d, $v, $b, $party, $l, $bags, $f, $f, $t, $p);

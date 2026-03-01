@@ -65,6 +65,7 @@ $rows = $conn->query("SELECT id, source_file, source_image_path, sr_no, station_
 <meta charset="UTF-8">
 <title>Rate List</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<?php include 'config/pwa_head.php'; ?>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/mobile.css">
 <style>

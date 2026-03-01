@@ -167,6 +167,7 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
 <meta charset="UTF-8">
 <title>Super Admin Panel</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<?php include 'config/pwa_head.php'; ?>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/mobile.css">
 <style>

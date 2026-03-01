@@ -94,6 +94,7 @@ $paidPct = $baseFreight > 0 ? min(100, round($paidTotal / $baseFreight * 100)) :
 <meta charset="UTF-8">
 <title>Pay Now — Bilty <?php echo htmlspecialchars($row['bilty_no']); ?></title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<?php include 'config/pwa_head.php'; ?>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/mobile.css">
 <style>

@@ -55,6 +55,7 @@ $today = date('Y-m-d');
 <meta charset="UTF-8">
 <title>Add Bilty</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<?php include 'config/pwa_head.php'; ?>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/mobile.css">
 <style>
@@ -192,6 +193,8 @@ $today = date('Y-m-d');
         <div class="field">
           <label for="tender">Tender</label>
           <input id="tender" type="number" name="tender" placeholder="0" min="0" required>
+          <input id="tender_raw" type="hidden" name="tender_raw" value="">
+          <div class="field-meta" id="tender_discount_note"></div>
         </div>
       </div>
       <div class="form-footer">
@@ -205,9 +208,14 @@ $today = date('Y-m-d');
 (function(){
   var srInput = document.getElementById('sr_no');
   var tenderInput = document.getElementById('tender');
+  var tenderRawInput = document.getElementById('tender_raw');
+  var bagsInput = document.getElementById('bags');
+  var tenderDiscountNote = document.getElementById('tender_discount_note');
   var valueLookupSelect = document.getElementById('rate_value_column');
   var valueLookupName = document.getElementById('value_lookup_name');
+  var form = document.querySelector('form[action="save_bilty.php"]');
   var reqId = 0, timer = null;
+  var applyingTenderRule = false;
 
   function setHelp(text, type){
     var el = document.getElementById('tender_help');
@@ -232,7 +240,8 @@ $today = date('Y-m-d');
       .then(function(data){
         if(cur !== reqId) return;
         if(data && data.ok){
-          if(tenderInput) tenderInput.value = data.rate;
+          if(tenderRawInput) tenderRawInput.value = String(data.rate);
+          applyTenderBagRule();
           setHelp('Auto fill: ' + (data.value_column_label || data.column_label || 'selected'), 'ok');
         } else {
           setHelp((data && data.message) ? data.message : 'Rate not found', 'err');
@@ -250,6 +259,68 @@ $today = date('Y-m-d');
       timer = setTimeout(lookupTender, 250);
     });
     srInput.addEventListener('blur', lookupTender);
+  }
+
+  function roundTender(v){
+    return Math.round(v);
+  }
+
+  function parseNumeric(v){
+    if(v === null || typeof v === 'undefined') return null;
+    var n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function setDiscountNote(text, cls){
+    if(!tenderDiscountNote) return;
+    tenderDiscountNote.textContent = text || '';
+    tenderDiscountNote.className = 'field-meta' + (cls ? ' ' + cls : '');
+  }
+
+  function applyTenderBagRule(){
+    if(!tenderInput || !tenderRawInput) return;
+    var baseTender = parseNumeric(tenderRawInput.value);
+    if(baseTender === null){
+      setDiscountNote('', '');
+      return;
+    }
+
+    var bags = bagsInput ? parseInt(bagsInput.value, 10) : 0;
+    if(Number.isNaN(bags)) bags = 0;
+
+    var finalTender = baseTender;
+    if(bags > 300){
+      finalTender = baseTender * 0.90;
+      setDiscountNote('300+ bags: tender adjusted by -10%', 'ok');
+    } else {
+      setDiscountNote('', '');
+    }
+
+    applyingTenderRule = true;
+    tenderInput.value = String(roundTender(finalTender));
+    applyingTenderRule = false;
+  }
+
+  if(tenderInput){
+    tenderInput.addEventListener('input', function(){
+      if(applyingTenderRule) return;
+      if(tenderRawInput) tenderRawInput.value = tenderInput.value;
+      applyTenderBagRule();
+    });
+  }
+
+  if(bagsInput){
+    bagsInput.addEventListener('input', applyTenderBagRule);
+    bagsInput.addEventListener('change', applyTenderBagRule);
+  }
+
+  if(form){
+    form.addEventListener('submit', function(){
+      if(tenderRawInput && String(tenderRawInput.value || '').trim() === '' && tenderInput){
+        tenderRawInput.value = tenderInput.value;
+      }
+      applyTenderBagRule();
+    });
   }
 
   if(valueLookupSelect){
@@ -277,6 +348,11 @@ $today = date('Y-m-d');
       });
     });
   }
+
+  if(tenderRawInput && tenderInput && String(tenderInput.value || '').trim() !== ''){
+    tenderRawInput.value = tenderInput.value;
+  }
+  applyTenderBagRule();
 })();
 </script>
 </body>
