@@ -270,6 +270,20 @@ $feedPortionOptions = feed_portion_options_local();
 
   /* DECISION FORM */
   .decision-wrap { display: flex; flex-direction: column; gap: 6px; min-width: 180px; }
+  .btn-editview {
+    display: inline-block;
+    text-align: center;
+    padding: 8px 10px;
+    background: rgba(96,165,250,0.12);
+    color: var(--blue);
+    border: 1px solid rgba(96,165,250,0.32);
+    text-decoration: none;
+    font-family: var(--font);
+    font-size: 11px;
+    font-weight: 700;
+    transition: all 0.15s;
+  }
+  .btn-editview:hover { background: rgba(96,165,250,0.22); }
   .decision-note { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 7px 9px; font-family: var(--font); font-size: 12px; width: 100%; }
   .decision-note::placeholder { color: var(--muted); }
   .decision-note:focus { outline: none; border-color: var(--accent); }
@@ -474,6 +488,14 @@ $feedPortionOptions = feed_portion_options_local();
             $modClass = str_contains($mod,'feed') ? 'mod-feed' : (str_contains($mod,'haleeb') ? 'mod-haleeb' : (str_contains($mod,'account') ? 'mod-account' : 'mod-other'));
             $changeLines = build_change_lines_local($conn, $r);
             $decodedPayload = decode_payload_local((string)$r['payload']);
+            $actionType = isset($r['action_type']) ? (string)$r['action_type'] : '';
+            $entityId = isset($r['entity_id']) ? (int)$r['entity_id'] : 0;
+            $editHref = '';
+            if($entityId > 0 && $actionType === 'feed_update'){
+              $editHref = 'edit.php?id=' . $entityId . '&request_id=' . (int)$r['id'];
+            } elseif($entityId > 0 && $actionType === 'haleeb_update'){
+              $editHref = 'edit_haleeb_bilty.php?id=' . $entityId . '&request_id=' . (int)$r['id'];
+            }
           ?>
           <tr>
             <td>
@@ -513,6 +535,9 @@ $feedPortionOptions = feed_portion_options_local();
             <td>
               <form method="post">
                 <div class="decision-wrap">
+                  <?php if($editHref !== ''): ?>
+                    <a class="btn-editview" href="<?php echo htmlspecialchars($editHref); ?>">Open Edit View</a>
+                  <?php endif; ?>
                   <input type="hidden" name="request_id" value="<?php echo (int)$r['id']; ?>">
                   <input class="decision-note" type="text" name="review_note" placeholder="Note (optional)">
                   <div class="decision-btns">

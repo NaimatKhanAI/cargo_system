@@ -8,6 +8,8 @@ auth_require_login($conn);
 auth_require_module_access('haleeb');
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 if($id <= 0){ header("location:haleeb.php"); exit(); }
+$linkedRequestId = isset($_GET['request_id']) ? (int)$_GET['request_id'] : 0;
+$linkedRequest = null;
 
 function normalize_lookup_token($v){
     $v = strtolower(trim((string)$v));
@@ -111,6 +113,19 @@ if(isset($_POST['update'])){
             ],
             isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0
         );
+        if($linkedRequestId > 0){
+            $closeError = '';
+            mark_change_request_handled_local(
+                $conn,
+                $linkedRequestId,
+                isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0,
+                'Approved after admin manual edit in full view.',
+                $closeError,
+                ['haleeb_update'],
+                $id,
+                'haleeb_bilty'
+            );
+        }
         header("location:haleeb.php"); exit();
     }
 }
@@ -119,6 +134,26 @@ $stmt = $conn->prepare("SELECT * FROM haleeb_bilty WHERE id=? LIMIT 1");
 $stmt->bind_param("i", $id); $stmt->execute();
 $row = $stmt->get_result()->fetch_assoc(); $stmt->close();
 if(!$row){ header("location:haleeb.php"); exit(); }
+if($linkedRequestId > 0 && auth_can_direct_modify()){
+    $candidate = fetch_pending_change_request_by_id_local($conn, $linkedRequestId);
+    if(
+        $candidate &&
+        isset($candidate['action_type']) && (string)$candidate['action_type'] === 'haleeb_update' &&
+        isset($candidate['entity_id']) && (int)$candidate['entity_id'] === $id &&
+        isset($candidate['entity_table']) && strcasecmp((string)$candidate['entity_table'], 'haleeb_bilty') === 0
+    ){
+        $linkedRequest = $candidate;
+        $prefill = request_payload_decode_local(isset($candidate['payload']) ? (string)$candidate['payload'] : '');
+        if(count($prefill) > 0){
+            $map = ['date', 'vehicle', 'vehicle_type', 'delivery_note', 'token_no', 'party', 'location', 'stops', 'freight', 'tender'];
+            foreach($map as $key){
+                if(array_key_exists($key, $prefill)){
+                    $row[$key] = $prefill[$key];
+                }
+            }
+        }
+    }
+}
 $parsedStops = parse_stops_counts(isset($row['stops']) ? $row['stops'] : '');
 $initialSameCityStops = $parsedStops['same_city'];
 $initialOutCityStops = $parsedStops['out_city'];
@@ -293,6 +328,9 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
   <div class="form-card">
     <div class="form-title">Edit Haleeb Bilty</div>
     <div class="form-sub">Token: <?php echo htmlspecialchars($row['token_no']); ?> &nbsp;·&nbsp; ID: <?php echo $id; ?></div>
+    <?php if($linkedRequest): ?>
+      <div class="form-sub">Pending Request: #<?php echo (int)$linkedRequest['id']; ?> (values prefilled)</div>
+    <?php endif; ?>
 
     <form method="post">
       <div class="grid">

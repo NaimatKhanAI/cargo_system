@@ -74,6 +74,85 @@ function fetch_pending_change_requests_local($conn, $excludeActionTypes = [], $i
     return $rows;
 }
 
+function fetch_pending_change_request_by_id_local($conn, $requestId){
+    $requestId = (int)$requestId;
+    if($requestId <= 0){
+        return null;
+    }
+    $stmt = $conn->prepare("SELECT * FROM change_requests WHERE id=? AND status='pending' LIMIT 1");
+    $stmt->bind_param("i", $requestId);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    return $row ?: null;
+}
+
+function mark_change_request_handled_local($conn, $requestId, $reviewedBy, $reviewNote, &$error, $allowedActionTypes = [], $expectedEntityId = 0, $expectedEntityTable = ''){
+    $error = '';
+    $requestId = (int)$requestId;
+    $reviewedBy = (int)$reviewedBy;
+    $reviewNote = trim((string)$reviewNote);
+    $expectedEntityId = (int)$expectedEntityId;
+    $expectedEntityTable = trim((string)$expectedEntityTable);
+
+    if($requestId <= 0){
+        $error = 'Invalid request.';
+        return false;
+    }
+
+    $requestRow = fetch_pending_change_request_by_id_local($conn, $requestId);
+    if(!$requestRow){
+        $error = 'Request not found or already reviewed.';
+        return false;
+    }
+
+    $actionType = isset($requestRow['action_type']) ? (string)$requestRow['action_type'] : '';
+    if(count($allowedActionTypes) > 0 && !in_array($actionType, $allowedActionTypes, true)){
+        $error = 'This request cannot be handled here.';
+        return false;
+    }
+
+    if($expectedEntityId > 0 && (int)$requestRow['entity_id'] !== $expectedEntityId){
+        $error = 'Request entity mismatch.';
+        return false;
+    }
+
+    if($expectedEntityTable !== '' && strcasecmp((string)$requestRow['entity_table'], $expectedEntityTable) !== 0){
+        $error = 'Request table mismatch.';
+        return false;
+    }
+
+    if($reviewNote === ''){
+        $reviewNote = 'Handled via admin edit view.';
+    }
+    if(strlen($reviewNote) > 250){
+        $reviewNote = substr($reviewNote, 0, 250);
+    }
+
+    $status = 'approved';
+    $stmt = $conn->prepare("UPDATE change_requests SET status=?, reviewed_by=?, review_note=?, reviewed_at=NOW() WHERE id=? AND status='pending'");
+    $stmt->bind_param("sisi", $status, $reviewedBy, $reviewNote, $requestId);
+    $ok = $stmt->execute();
+    $affected = $stmt->affected_rows;
+    $stmt->close();
+    if(!$ok || $affected <= 0){
+        $error = 'Could not update request status.';
+        return false;
+    }
+
+    activity_notify_local(
+        $conn,
+        (string)$requestRow['module_key'],
+        'change_request_handled_via_admin_edit',
+        'change_request',
+        $requestId,
+        'Request handled via admin edit: ' . $actionType,
+        ['review_note' => $reviewNote],
+        $reviewedBy
+    );
+    return true;
+}
+
 function review_change_request_local($conn, $requestId, $reviewedBy, $isApprove, $reviewNote, &$error, $allowedActionTypes = []){
     $error = '';
     $requestId = (int)$requestId;

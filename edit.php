@@ -11,6 +11,8 @@ $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 if($id <= 0){ header("location:feed.php"); exit(); }
 $isSuperAdmin = auth_is_super_admin();
 $userFeedPortion = auth_get_feed_portion();
+$linkedRequestId = isset($_GET['request_id']) ? (int)$_GET['request_id'] : 0;
+$linkedRequest = null;
 
 if($isSuperAdmin){
     $rowStmt = $conn->prepare("SELECT * FROM bilty WHERE id=? LIMIT 1");
@@ -25,6 +27,26 @@ $rowStmt->close();
 if(!$row){ header("location:feed.php"); exit(); }
 $editFeedPortion = normalize_feed_portion_local(isset($row['feed_portion']) ? (string)$row['feed_portion'] : $userFeedPortion);
 $editFeedPortionLabel = feed_portion_label_local($editFeedPortion);
+if($linkedRequestId > 0 && auth_can_direct_modify()){
+    $candidate = fetch_pending_change_request_by_id_local($conn, $linkedRequestId);
+    if(
+        $candidate &&
+        isset($candidate['action_type']) && (string)$candidate['action_type'] === 'feed_update' &&
+        isset($candidate['entity_id']) && (int)$candidate['entity_id'] === $id &&
+        isset($candidate['entity_table']) && strcasecmp((string)$candidate['entity_table'], 'bilty') === 0
+    ){
+        $linkedRequest = $candidate;
+        $prefill = request_payload_decode_local(isset($candidate['payload']) ? (string)$candidate['payload'] : '');
+        if(count($prefill) > 0){
+            $map = ['sr_no', 'date', 'vehicle', 'bilty_no', 'party', 'location', 'bags', 'freight', 'tender'];
+            foreach($map as $key){
+                if(array_key_exists($key, $prefill)){
+                    $row[$key] = $prefill[$key];
+                }
+            }
+        }
+    }
+}
 
 if(isset($_POST['update'])){
     $sr = isset($_POST['sr_no']) ? trim($_POST['sr_no']) : '';
@@ -100,6 +122,19 @@ if(isset($_POST['update'])){
             ],
             isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0
         );
+        if($linkedRequest){
+            $closeError = '';
+            mark_change_request_handled_local(
+                $conn,
+                (int)$linkedRequest['id'],
+                isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0,
+                'Approved after admin manual edit in full view.',
+                $closeError,
+                ['feed_update'],
+                $id,
+                'bilty'
+            );
+        }
         header("location:feed.php"); exit();
     }
 }
@@ -187,6 +222,9 @@ if(isset($_POST['update'])){
     <div class="form-title">Edit Bilty</div>
     <div class="form-sub">Bilty: <?php echo htmlspecialchars($row['bilty_no']); ?> &nbsp;·&nbsp; ID: <?php echo $id; ?></div>
     <div class="form-sub">Feed Section: <?php echo htmlspecialchars($editFeedPortionLabel); ?></div>
+    <?php if($linkedRequest): ?>
+      <div class="form-sub">Pending Request: #<?php echo (int)$linkedRequest['id']; ?> (values prefilled)</div>
+    <?php endif; ?>
 
     <form method="post">
       <div class="grid">
