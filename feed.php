@@ -317,11 +317,49 @@ if(count($bindValues) > 0){
   }
   .rem-zero { background: rgba(34,197,94,0.15); color: var(--green); border-color: rgba(34,197,94,0.25); }
   .rem-pending { background: rgba(239,68,68,0.15); color: var(--red); border-color: rgba(239,68,68,0.25); }
+  .analytics-wrap {
+    background: var(--surface); border: 1px solid var(--border); margin-bottom: 20px;
+    display: none;
+  }
+  .analytics-wrap.open { display: block; }
+  .analytics-head {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+  }
+  .analytics-grid {
+    padding: 14px 16px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px;
+  }
+  .analytics-grid .field input, .analytics-grid .field select {
+    width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    padding: 8px 10px; font-family: var(--font); font-size: 12px;
+  }
+  .analytics-grid .field select:focus, .analytics-grid .field input:focus { outline: none; border-color: var(--accent); }
+  .analytics-stats { padding: 0 16px 14px; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+  .a-stat { background: var(--surface2); border: 1px solid var(--border); padding: 10px; }
+  .a-stat .k { font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+  .a-stat .v { font-size: 17px; font-family: var(--mono); }
+  .analytics-charts { padding: 0 16px 16px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .chart-box { background: var(--surface2); border: 1px solid var(--border); padding: 10px; min-height: 180px; }
+  .chart-title { font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+  .bar-list { display: grid; gap: 6px; }
+  .bar-row { display: grid; grid-template-columns: 120px 1fr auto; gap: 8px; align-items: center; }
+  .bar-label { font-size: 11px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar-track { background: #121317; border: 1px solid var(--border); height: 10px; position: relative; }
+  .bar-fill { background: linear-gradient(90deg, var(--accent), var(--accent2)); height: 100%; width: 0; }
+  .bar-val { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+  .split-wrap { display: grid; gap: 8px; }
+  .split-track { background: #121317; border: 1px solid var(--border); height: 14px; display: flex; overflow: hidden; }
+  .split-paid { background: rgba(34,197,94,0.85); height: 100%; }
+  .split-rem { background: rgba(239,68,68,0.85); height: 100%; }
+  .split-meta { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); font-family: var(--mono); }
 
   @media(max-width: 900px) {
     .search-form { grid-template-columns: 1fr 1fr; }
     .search-form .field:nth-child(3) { grid-column: 1 / -1; }
     .search-actions { grid-column: 1 / -1; justify-content: flex-end; }
+    .analytics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .analytics-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .analytics-charts { grid-template-columns: 1fr; }
   }
   @media(max-width: 640px) {
     .topbar { padding: 14px 16px; }
@@ -329,6 +367,9 @@ if(count($bindValues) > 0){
     .topbar h1 { font-size: 15px; }
     .search-form { grid-template-columns: 1fr; }
     .nav-btn { padding: 7px 10px; font-size: 12px; }
+    .analytics-grid { grid-template-columns: 1fr; }
+    .analytics-stats { grid-template-columns: 1fr; }
+    .bar-row { grid-template-columns: 90px 1fr auto; }
   }
 </style>
 </head>
@@ -341,6 +382,7 @@ if(count($bindValues) > 0){
   </div>
   <div class="nav-links">
     <a class="nav-btn primary" href="add_bilty.php<?php echo $isSuperAdmin ? '' : ('?portion=' . rawurlencode($userFeedPortion)); ?>">Add Bilty</a>
+    <button class="nav-btn" type="button" id="feed_analytics_toggle">Analytics</button>
     <?php if($isSuperAdmin): ?>
       <a class="nav-btn" href="haleeb.php">Haleeb</a>
       <a class="nav-btn" href="super_admin.php">Super Admin</a>
@@ -351,6 +393,7 @@ if(count($bindValues) > 0){
       <div class="menu-pop" id="feed_menu_pop">
         <a class="nav-btn" href="dashboard.php">Dashboard</a>
         <a class="nav-btn" href="request_status.php">View Request Status</a>
+        <button class="nav-btn" type="button" id="feed_analytics_toggle_menu">Analytics</button>
         <?php if($isSuperAdmin): ?>
           <div class="menu-sep"></div>
           <a class="nav-btn" href="feed_ratelist.php">Rate List</a>
@@ -429,11 +472,96 @@ if(count($bindValues) > 0){
     </form>
   </div>
 
+  <div class="analytics-wrap" id="feed_analytics_wrap">
+    <div class="analytics-head">
+      <span class="tbl-header-title">Analytics</span>
+      <button class="nav-btn" type="button" id="feed_analytics_reset">Reset Analytics</button>
+    </div>
+    <div class="analytics-grid">
+      <div class="field">
+        <label for="a_feed_text">Bilty / SR / Vehicle</label>
+        <input id="a_feed_text" placeholder="Search">
+      </div>
+      <div class="field">
+        <label for="a_feed_party">Party</label>
+        <input id="a_feed_party" placeholder="Party">
+      </div>
+      <div class="field">
+        <label for="a_feed_location">Location</label>
+        <input id="a_feed_location" placeholder="Location">
+      </div>
+      <div class="field">
+        <label for="a_feed_status">Payment Status</label>
+        <select id="a_feed_status">
+          <option value="">All</option>
+          <option value="paid">Paid</option>
+          <option value="pending">Pending</option>
+        </select>
+      </div>
+      <?php if($isSuperAdmin): ?>
+      <div class="field">
+        <label for="a_feed_section">Section</label>
+        <input id="a_feed_section" placeholder="Section">
+      </div>
+      <?php endif; ?>
+      <div class="field">
+        <label for="a_feed_bags_min">Min Bags</label>
+        <input id="a_feed_bags_min" type="number" min="0" placeholder="0">
+      </div>
+      <div class="field">
+        <label for="a_feed_bags_max">Max Bags</label>
+        <input id="a_feed_bags_max" type="number" min="0" placeholder="Any">
+      </div>
+      <div class="field">
+        <label for="a_feed_freight_min">Min Freight</label>
+        <input id="a_feed_freight_min" type="number" min="0" placeholder="0">
+      </div>
+      <div class="field">
+        <label for="a_feed_freight_max">Max Freight</label>
+        <input id="a_feed_freight_max" type="number" min="0" placeholder="Any">
+      </div>
+      <?php if($isSuperAdmin): ?>
+      <div class="field">
+        <label for="a_feed_profit_min">Min Profit</label>
+        <input id="a_feed_profit_min" type="number" placeholder="Any">
+      </div>
+      <?php endif; ?>
+    </div>
+    <div class="analytics-stats" id="feed_analytics_stats"></div>
+    <div class="analytics-charts">
+      <div class="chart-box">
+        <div class="chart-title">Top Vehicles (Count)</div>
+        <div class="bar-list" id="feed_chart_vehicles"></div>
+      </div>
+      <div class="chart-box">
+        <div class="chart-title">Top Locations (Freight)</div>
+        <div class="bar-list" id="feed_chart_locations"></div>
+      </div>
+      <div class="chart-box">
+        <div class="chart-title">Daily Freight Trend</div>
+        <div class="bar-list" id="feed_chart_trend"></div>
+      </div>
+      <div class="chart-box">
+        <div class="chart-title">Collection Split</div>
+        <div class="split-wrap">
+          <div class="split-track">
+            <div class="split-paid" id="feed_split_paid"></div>
+            <div class="split-rem" id="feed_split_rem"></div>
+          </div>
+          <div class="split-meta">
+            <span id="feed_split_paid_label">Paid: 0</span>
+            <span id="feed_split_rem_label">Remaining: 0</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="table-wrap">
     <div class="tbl-header">
       <span class="tbl-header-title">Records</span>
     </div>
-    <table>
+    <table id="feed_records_table">
       <thead>
         <tr>
           <th>SR.</th>
@@ -451,15 +579,29 @@ if(count($bindValues) > 0){
           <th class="th-action">Actions</th>
         </tr>
       </thead>
-      <tbody>
+      <tbody id="feed_records_tbody">
         <?php while($row = $result->fetch_assoc()):
           $profit = (float)$row['calc_profit'];
+          $remaining = (float)($row['remaining_balance'] ?? 0);
+          $sectionLabel = $isSuperAdmin ? feed_portion_label_local(isset($row['feed_portion']) ? $row['feed_portion'] : '') : '';
         ?>
-        <tr>
+        <tr data-analytics-row="1"
+            data-date="<?php echo htmlspecialchars((string)($row['date'] ?? '')); ?>"
+            data-sr="<?php echo htmlspecialchars((string)($row['sr_no'] ?? '')); ?>"
+            data-bilty="<?php echo htmlspecialchars((string)($row['bilty_no'] ?? '')); ?>"
+            data-vehicle="<?php echo htmlspecialchars((string)($row['vehicle'] ?? '')); ?>"
+            data-party="<?php echo htmlspecialchars((string)($row['party'] ?? '')); ?>"
+            data-location="<?php echo htmlspecialchars((string)($row['location'] ?? '')); ?>"
+            data-section="<?php echo htmlspecialchars(strtolower((string)$sectionLabel)); ?>"
+            data-bags="<?php echo (int)($row['bags'] ?? 0); ?>"
+            data-freight="<?php echo (float)($row['freight'] ?? 0); ?>"
+            data-tender="<?php echo (float)($row['tender'] ?? 0); ?>"
+            data-remaining="<?php echo $remaining; ?>"
+            data-profit="<?php echo $profit; ?>">
           <td><?php echo htmlspecialchars($row['sr_no']); ?></td>
           <td><?php echo htmlspecialchars($row['date']); ?></td>
           <?php if($isSuperAdmin): ?>
-            <td><?php echo htmlspecialchars(feed_portion_label_local(isset($row['feed_portion']) ? $row['feed_portion'] : '')); ?></td>
+            <td><?php echo htmlspecialchars($sectionLabel); ?></td>
           <?php endif; ?>
           <td><?php echo htmlspecialchars($row['vehicle']); ?></td>
           <td><?php echo htmlspecialchars($row['bilty_no']); ?></td>
@@ -470,7 +612,6 @@ if(count($bindValues) > 0){
           <?php if($isSuperAdmin): ?>
             <td><?php echo number_format((float)$row['tender'], 2); ?></td>
           <?php endif; ?>
-          <?php $remaining = (float)($row['remaining_balance'] ?? 0); ?>
           <td>
             <span class="rem-badge <?php echo $remaining <= 0 ? 'rem-zero' : 'rem-pending'; ?>">
               <?php echo number_format($remaining, 2); ?>
@@ -499,9 +640,183 @@ if(count($bindValues) > 0){
 (function(){
   var btn = document.getElementById('feed_menu_btn');
   var pop = document.getElementById('feed_menu_pop');
-  if(!btn||!pop) return;
-  btn.addEventListener('click', function(e){ e.stopPropagation(); pop.classList.toggle('open'); });
-  document.addEventListener('click', function(e){ if(!pop.contains(e.target) && e.target !== btn) pop.classList.remove('open'); });
+  if(btn && pop){
+    btn.addEventListener('click', function(e){ e.stopPropagation(); pop.classList.toggle('open'); });
+    document.addEventListener('click', function(e){ if(!pop.contains(e.target) && e.target !== btn) pop.classList.remove('open'); });
+  }
+})();
+
+(function(){
+  var isSuperAdmin = <?php echo $isSuperAdmin ? 'true' : 'false'; ?>;
+  var wrap = document.getElementById('feed_analytics_wrap');
+  var toggleA = document.getElementById('feed_analytics_toggle');
+  var toggleB = document.getElementById('feed_analytics_toggle_menu');
+  if(!wrap) return;
+
+  var statsBox = document.getElementById('feed_analytics_stats');
+  var rows = Array.prototype.slice.call(document.querySelectorAll('#feed_records_tbody tr[data-analytics-row=\"1\"]'));
+  var records = rows.map(function(row){
+    var d = row.dataset || {};
+    var freight = Number(d.freight || 0);
+    var remaining = Number(d.remaining || 0);
+    return {
+      el: row,
+      date: String(d.date || ''),
+      sr: String(d.sr || '').toLowerCase(),
+      bilty: String(d.bilty || '').toLowerCase(),
+      vehicle: String(d.vehicle || ''),
+      vehicleL: String(d.vehicle || '').toLowerCase(),
+      party: String(d.party || ''),
+      partyL: String(d.party || '').toLowerCase(),
+      location: String(d.location || ''),
+      locationL: String(d.location || '').toLowerCase(),
+      sectionL: String(d.section || '').toLowerCase(),
+      bags: Number(d.bags || 0),
+      freight: freight,
+      tender: Number(d.tender || 0),
+      remaining: remaining,
+      paid: Math.max(freight - remaining, 0),
+      profit: Number(d.profit || 0)
+    };
+  });
+
+  var f = {
+    text: document.getElementById('a_feed_text'),
+    party: document.getElementById('a_feed_party'),
+    location: document.getElementById('a_feed_location'),
+    status: document.getElementById('a_feed_status'),
+    section: document.getElementById('a_feed_section'),
+    bagsMin: document.getElementById('a_feed_bags_min'),
+    bagsMax: document.getElementById('a_feed_bags_max'),
+    freightMin: document.getElementById('a_feed_freight_min'),
+    freightMax: document.getElementById('a_feed_freight_max'),
+    profitMin: document.getElementById('a_feed_profit_min')
+  };
+  var resetBtn = document.getElementById('feed_analytics_reset');
+
+  function money(v){ return Number(v || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}); }
+  function intVal(v){ return Number(v || 0).toLocaleString(undefined, {maximumFractionDigits:0}); }
+  function val(el){ return el ? String(el.value || '').trim().toLowerCase() : ''; }
+  function num(el){ if(!el) return null; var t = String(el.value || '').trim(); if(t === '') return null; var n = Number(t); return Number.isFinite(n) ? n : null; }
+  function inRange(v, min, max){ if(min !== null && v < min) return false; if(max !== null && v > max) return false; return true; }
+  function escHtml(s){ return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+  function makeBars(id, items, max, fmt){
+    var box = document.getElementById(id);
+    if(!box) return;
+    if(items.length === 0){ box.innerHTML = '<div class=\"bar-val\">No data</div>'; return; }
+    box.innerHTML = items.map(function(it){
+      var label = escHtml(it.label);
+      var p = max > 0 ? Math.max(Math.min((it.value / max) * 100, 100), 0) : 0;
+      return '<div class=\"bar-row\">'
+        + '<div class=\"bar-label\" title=\"' + label + '\">' + label + '</div>'
+        + '<div class=\"bar-track\"><div class=\"bar-fill\" style=\"width:' + p.toFixed(2) + '%\"></div></div>'
+        + '<div class=\"bar-val\">' + fmt(it.value) + '</div>'
+        + '</div>';
+    }).join('');
+  }
+
+  function topMap(list, keyName, valueName, take){
+    var map = {};
+    list.forEach(function(r){
+      var key = String(r[keyName] || '').trim() || 'Unknown';
+      if(!map[key]) map[key] = 0;
+      map[key] += valueName === 'count' ? 1 : Number(r[valueName] || 0);
+    });
+    return Object.keys(map).map(function(k){ return {label:k, value:map[k]}; })
+      .sort(function(a,b){ return b.value - a.value; }).slice(0, take);
+  }
+
+  function readFilters(){
+    return {
+      text: val(f.text),
+      party: val(f.party),
+      location: val(f.location),
+      status: val(f.status),
+      section: val(f.section),
+      bagsMin: num(f.bagsMin),
+      bagsMax: num(f.bagsMax),
+      freightMin: num(f.freightMin),
+      freightMax: num(f.freightMax),
+      profitMin: num(f.profitMin)
+    };
+  }
+
+  function applyAnalytics(){
+    var x = readFilters();
+    var shown = [];
+    records.forEach(function(r){
+      var ok = true;
+      if(x.text && (r.sr + ' ' + r.bilty + ' ' + r.vehicleL).indexOf(x.text) === -1) ok = false;
+      if(ok && x.party && r.partyL.indexOf(x.party) === -1) ok = false;
+      if(ok && x.location && r.locationL.indexOf(x.location) === -1) ok = false;
+      if(ok && x.section && r.sectionL.indexOf(x.section) === -1) ok = false;
+      if(ok && x.status === 'paid' && r.remaining > 0.0001) ok = false;
+      if(ok && x.status === 'pending' && r.remaining <= 0.0001) ok = false;
+      if(ok && !inRange(r.bags, x.bagsMin, x.bagsMax)) ok = false;
+      if(ok && !inRange(r.freight, x.freightMin, x.freightMax)) ok = false;
+      if(ok && x.profitMin !== null && r.profit < x.profitMin) ok = false;
+      r.el.style.display = ok ? '' : 'none';
+      if(ok) shown.push(r);
+    });
+
+    var totals = shown.reduce(function(a, r){
+      a.count += 1; a.bags += r.bags; a.freight += r.freight; a.tender += r.tender;
+      a.remaining += r.remaining; a.paid += r.paid; a.profit += r.profit; return a;
+    }, {count:0,bags:0,freight:0,tender:0,remaining:0,paid:0,profit:0});
+    var cards = [
+      ['Bilties', intVal(totals.count)],
+      ['Total Bags', intVal(totals.bags)],
+      ['Freight', money(totals.freight)],
+      ['Paid', money(totals.paid)],
+      ['Remaining', money(totals.remaining)],
+      ['Collection %', totals.freight > 0 ? ((totals.paid / totals.freight) * 100).toFixed(2) + '%' : '0.00%']
+    ];
+    if(isSuperAdmin){ cards.push(['Tender', money(totals.tender)]); cards.push(['Profit', money(totals.profit)]); }
+    statsBox.innerHTML = cards.map(function(c){ return '<div class=\"a-stat\"><div class=\"k\">' + escHtml(c[0]) + '</div><div class=\"v\">' + escHtml(c[1]) + '</div></div>'; }).join('');
+
+    var topVehicles = topMap(shown, 'vehicle', 'count', 6);
+    var topLocations = topMap(shown, 'location', 'freight', 6);
+    var byDate = {};
+    shown.forEach(function(r){ var k = r.date || 'Unknown'; if(!byDate[k]) byDate[k] = 0; byDate[k] += r.freight; });
+    var trend = Object.keys(byDate).sort().slice(-8).map(function(k){ return {label:k, value:byDate[k]}; });
+    makeBars('feed_chart_vehicles', topVehicles, topVehicles.length ? topVehicles[0].value : 0, intVal);
+    makeBars('feed_chart_locations', topLocations, topLocations.length ? topLocations[0].value : 0, money);
+    makeBars('feed_chart_trend', trend, trend.length ? Math.max.apply(null, trend.map(function(r){ return r.value; })) : 0, money);
+
+    var paidPct = totals.freight > 0 ? (totals.paid / totals.freight) * 100 : 0;
+    var remPct = Math.max(100 - paidPct, 0);
+    var paidBar = document.getElementById('feed_split_paid');
+    var remBar = document.getElementById('feed_split_rem');
+    if(paidBar) paidBar.style.width = paidPct.toFixed(2) + '%';
+    if(remBar) remBar.style.width = remPct.toFixed(2) + '%';
+    var paidLabel = document.getElementById('feed_split_paid_label');
+    var remLabel = document.getElementById('feed_split_rem_label');
+    if(paidLabel) paidLabel.textContent = 'Paid: ' + money(totals.paid);
+    if(remLabel) remLabel.textContent = 'Remaining: ' + money(totals.remaining);
+  }
+
+  function togglePanel(){
+    wrap.classList.toggle('open');
+    if(wrap.classList.contains('open')) applyAnalytics();
+  }
+
+  if(toggleA) toggleA.addEventListener('click', togglePanel);
+  if(toggleB) toggleB.addEventListener('click', togglePanel);
+  if(resetBtn) resetBtn.addEventListener('click', function(){
+    Object.keys(f).forEach(function(k){
+      if(!f[k]) return;
+      if(f[k].tagName === 'SELECT') f[k].selectedIndex = 0;
+      else f[k].value = '';
+    });
+    applyAnalytics();
+  });
+
+  Object.keys(f).forEach(function(k){
+    if(!f[k]) return;
+    f[k].addEventListener('input', applyAnalytics);
+    f[k].addEventListener('change', applyAnalytics);
+  });
 })();
 </script>
 </body>
