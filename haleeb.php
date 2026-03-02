@@ -345,7 +345,9 @@ if(count($bindValues) > 0){
   </div>
   <div class="nav-links">
     <a class="nav-btn primary" href="add_haleeb_bilty.php">Add Bilty</a>
-    <button class="nav-btn" type="button" id="haleeb_analytics_toggle">Analytics</button>
+    <?php if($isSuperAdmin): ?>
+      <button class="nav-btn" type="button" id="haleeb_analytics_toggle">Analytics</button>
+    <?php endif; ?>
     <?php if($isSuperAdmin): ?>
       <a class="nav-btn" href="feed.php">Feed</a>
       <a class="nav-btn" href="super_admin.php">Super Admin</a>
@@ -356,7 +358,9 @@ if(count($bindValues) > 0){
       <div class="menu-pop" id="haleeb_menu_pop">
         <a class="nav-btn" href="dashboard.php">Dashboard</a>
         <a class="nav-btn" href="request_status.php">View Request Status</a>
-        <button class="nav-btn" type="button" id="haleeb_analytics_toggle_menu">Analytics</button>
+        <?php if($isSuperAdmin): ?>
+          <button class="nav-btn" type="button" id="haleeb_analytics_toggle_menu">Analytics</button>
+        <?php endif; ?>
         <?php if($isSuperAdmin): ?>
           <div class="menu-sep"></div>
           <a class="nav-btn" href="haleeb_ratelist.php">Rate List</a>
@@ -435,6 +439,7 @@ if(count($bindValues) > 0){
     </form>
   </div>
 
+  <?php if($isSuperAdmin): ?>
   <div class="analytics-wrap" id="haleeb_analytics_wrap">
     <div class="analytics-head">
       <span class="tbl-header-title">Analytics</span>
@@ -443,19 +448,19 @@ if(count($bindValues) > 0){
     <div class="analytics-grid">
       <div class="field">
         <label for="a_h_text">Token / Vehicle / Note</label>
-        <input id="a_h_text" placeholder="Search">
+        <input id="a_h_text" list="a_h_text_list" placeholder="Search">
       </div>
       <div class="field">
         <label for="a_h_type">Vehicle Type</label>
-        <input id="a_h_type" placeholder="Type">
+        <input id="a_h_type" list="a_h_type_list" placeholder="Type">
       </div>
       <div class="field">
         <label for="a_h_party">Party</label>
-        <input id="a_h_party" placeholder="Party">
+        <input id="a_h_party" list="a_h_party_list" placeholder="Party">
       </div>
       <div class="field">
         <label for="a_h_location">Location</label>
-        <input id="a_h_location" placeholder="Location">
+        <input id="a_h_location" list="a_h_location_list" placeholder="Location">
       </div>
       <div class="field">
         <label for="a_h_status">Payment Status</label>
@@ -487,6 +492,11 @@ if(count($bindValues) > 0){
         <input id="a_h_profit_min" type="number" placeholder="Any">
       </div>
       <?php endif; ?>
+
+      <datalist id="a_h_text_list"></datalist>
+      <datalist id="a_h_type_list"></datalist>
+      <datalist id="a_h_party_list"></datalist>
+      <datalist id="a_h_location_list"></datalist>
     </div>
     <div class="analytics-stats" id="haleeb_analytics_stats"></div>
     <div class="analytics-charts">
@@ -521,6 +531,7 @@ if(count($bindValues) > 0){
       </div>
     </div>
   </div>
+  <?php endif; ?>
 
   <div class="table-wrap">
     <div class="tbl-header">
@@ -635,8 +646,11 @@ if(count($bindValues) > 0){
       vehicleL: String(d.vehicle || '').toLowerCase(),
       type: String(d.type || ''),
       typeL: String(d.type || '').toLowerCase(),
+      note: String(d.note || ''),
       noteL: String(d.note || '').toLowerCase(),
+      token: String(d.token || ''),
       tokenL: String(d.token || '').toLowerCase(),
+      party: String(d.party || ''),
       partyL: String(d.party || '').toLowerCase(),
       location: String(d.location || ''),
       locationL: String(d.location || '').toLowerCase(),
@@ -649,6 +663,34 @@ if(count($bindValues) > 0){
       profit: Number(d.profit || 0)
     };
   });
+
+  function fillDatalist(id, values, maxItems){
+    var list = document.getElementById(id);
+    if(!list) return;
+    var seen = {};
+    var out = [];
+    for(var i = 0; i < values.length; i += 1){
+      var raw = String(values[i] || '').trim();
+      if(!raw) continue;
+      var key = raw.toLowerCase();
+      if(seen[key]) continue;
+      seen[key] = true;
+      out.push(raw);
+      if(maxItems && out.length >= maxItems) break;
+    }
+    list.innerHTML = out.map(function(v){
+      var safe = escHtml(v);
+      return '<option value="' + safe + '"></option>';
+    }).join('');
+  }
+
+  fillDatalist('a_h_text_list', records.reduce(function(arr, r){
+    arr.push(r.token, r.vehicle, r.note);
+    return arr;
+  }, []), 300);
+  fillDatalist('a_h_type_list', records.map(function(r){ return r.type; }), 100);
+  fillDatalist('a_h_party_list', records.map(function(r){ return r.party; }), 300);
+  fillDatalist('a_h_location_list', records.map(function(r){ return r.location; }), 300);
 
   var f = {
     text: document.getElementById('a_h_text'),

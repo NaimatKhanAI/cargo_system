@@ -2,9 +2,9 @@
 if(!function_exists('feed_portion_options_local')){
     function feed_portion_options_local(){
         return [
-            'al_amir' => 'Al Amir',
-            'mian_hameed' => 'Mian Hameed',
-            'm_ilyas' => 'M Ilyas',
+            'al_amir' => 'Amir',
+            'mian_hameed' => 'Hameed',
+            'm_ilyas' => 'Ilyas',
         ];
     }
 }
