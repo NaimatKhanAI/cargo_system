@@ -29,11 +29,10 @@ if($baseTender < 0){
     $baseTender = 0.0;
 }
 
-if($bags > 300){
-    $t = (int)round($baseTender * 0.90);
-} else {
-    $t = (int)round($baseTender);
-}
+$baseBags = 200;
+$bags = max(0, $bags);
+$scaledTender = ($bags > 0) ? (($baseTender / $baseBags) * $bags) : 0.0;
+$t = ($bags > 300) ? (int)round($scaledTender * 0.90) : (int)round($scaledTender);
 
 $p = $t - $f;
 

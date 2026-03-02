@@ -493,10 +493,11 @@ $today = date('Y-m-d');
     var bags = bagsInput ? parseInt(bagsInput.value, 10) : 0;
     if(Number.isNaN(bags)) bags = 0;
 
-    var finalTender = baseTender;
+    var baseBags = 200;
+    var finalTender = (bags > 0) ? ((baseTender / baseBags) * bags) : 0;
     if(bags > 300){
-      finalTender = baseTender * 0.90;
-      setDiscountNote('300+ bags: tender adjusted by -10%', 'ok');
+      finalTender = finalTender * 0.90;
+      setDiscountNote('Bags > 300: tender adjusted by -10%', 'ok');
     } else {
       setDiscountNote('', '');
     }

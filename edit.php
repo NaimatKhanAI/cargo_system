@@ -55,7 +55,7 @@ if(isset($_POST['update'])){
     $b = isset($_POST['bilty']) ? trim($_POST['bilty']) : '';
     $party = isset($_POST['party']) ? trim($_POST['party']) : '';
     $l = isset($_POST['location']) ? trim($_POST['location']) : '';
-    $bags = isset($_POST['bags']) ? (int)$_POST['bags'] : 0;
+    $bags = isset($_POST['bags']) ? max(0, (int)$_POST['bags']) : 0;
     $f = isset($_POST['freight']) ? (int)$_POST['freight'] : 0;
     $submittedTender = isset($_POST['tender']) ? (float)$_POST['tender'] : 0.0;
     $baseTender = $submittedTender;
@@ -65,7 +65,9 @@ if(isset($_POST['update'])){
     if($baseTender < 0){
         $baseTender = 0.0;
     }
-    $t = ($bags > 300) ? (int)round($baseTender * 0.90) : (int)round($baseTender);
+    $baseBags = 200;
+    $scaledTender = ($bags > 0) ? (($baseTender / $baseBags) * $bags) : 0.0;
+    $t = ($bags > 300) ? (int)round($scaledTender * 0.90) : (int)round($scaledTender);
     if(!auth_can_direct_modify()){
         $payload = [
             'sr_no' => $sr,
@@ -329,10 +331,11 @@ if(isset($_POST['update'])){
     var bags = bagsInput ? parseInt(bagsInput.value, 10) : 0;
     if(Number.isNaN(bags)) bags = 0;
 
-    var finalTender = baseTender;
+    var baseBags = 200;
+    var finalTender = (bags > 0) ? ((baseTender / baseBags) * bags) : 0;
     if(bags > 300){
-      finalTender = baseTender * 0.90;
-      setDiscountNote('300+ bags: tender adjusted by -10%', 'ok');
+      finalTender = finalTender * 0.90;
+      setDiscountNote('Bags > 300: tender adjusted by -10%', 'ok');
     } else {
       setDiscountNote('', '');
     }
