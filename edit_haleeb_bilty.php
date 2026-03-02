@@ -66,6 +66,8 @@ if(isset($_POST['update'])){
     $stops = encode_stops_counts($sameCityCount, $outCityCount);
     $t  = isset($_POST['tender']) ? (int)$_POST['tender'] : 0;
     $f  = isset($_POST['freight']) ? (int)$_POST['freight'] : 0;
+    $commission = isset($_POST['commission']) ? max(0, (int)$_POST['commission']) : 0;
+    $totalFreight = max(0, $f - $commission);
     if(!auth_can_direct_modify()){
         $payload = [
             'date' => $d,
@@ -77,6 +79,7 @@ if(isset($_POST['update'])){
             'location' => $l,
             'stops' => $stops,
             'freight' => $f,
+            'commission' => $commission,
             'tender' => $t
         ];
         $requestId = create_change_request_local($conn, 'haleeb', 'haleeb_bilty', $id, 'haleeb_update', $payload, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0);
@@ -85,10 +88,10 @@ if(isset($_POST['update'])){
             exit();
         }
     } else {
-        $p  = $t - $f;
-        $oldData = $conn->query("SELECT date, vehicle, vehicle_type, delivery_note, token_no, party, location, stops, freight, tender FROM haleeb_bilty WHERE id=" . (int)$id . " LIMIT 1")->fetch_assoc();
-        $stmt = $conn->prepare("UPDATE haleeb_bilty SET date=?, vehicle=?, vehicle_type=?, delivery_note=?, token_no=?, party=?, location=?, stops=?, freight=?, tender=?, profit=? WHERE id=?");
-        $stmt->bind_param("ssssssssiiii", $d, $v, $vt, $dn, $tn, $party, $l, $stops, $f, $t, $p, $id);
+        $p  = $t - $totalFreight;
+        $oldData = $conn->query("SELECT date, vehicle, vehicle_type, delivery_note, token_no, party, location, stops, freight, commission, tender FROM haleeb_bilty WHERE id=" . (int)$id . " LIMIT 1")->fetch_assoc();
+        $stmt = $conn->prepare("UPDATE haleeb_bilty SET date=?, vehicle=?, vehicle_type=?, delivery_note=?, token_no=?, party=?, location=?, stops=?, freight=?, commission=?, tender=?, profit=? WHERE id=?");
+        $stmt->bind_param("ssssssssiiiii", $d, $v, $vt, $dn, $tn, $party, $l, $stops, $f, $commission, $t, $p, $id);
         $stmt->execute(); $stmt->close();
         activity_notify_local(
             $conn,
@@ -109,6 +112,7 @@ if(isset($_POST['update'])){
                     'location' => $l,
                     'stops' => $stops,
                     'freight' => $f,
+                    'commission' => $commission,
                     'tender' => $t
                 ]
             ],
@@ -146,7 +150,7 @@ if($linkedRequestId > 0 && auth_can_direct_modify()){
         $linkedRequest = $candidate;
         $prefill = request_payload_decode_local(isset($candidate['payload']) ? (string)$candidate['payload'] : '');
         if(count($prefill) > 0){
-            $map = ['date', 'vehicle', 'vehicle_type', 'delivery_note', 'token_no', 'party', 'location', 'stops', 'freight', 'tender'];
+            $map = ['date', 'vehicle', 'vehicle_type', 'delivery_note', 'token_no', 'party', 'location', 'stops', 'freight', 'commission', 'tender'];
             foreach($map as $key){
                 if(array_key_exists($key, $prefill)){
                     $row[$key] = $prefill[$key];
@@ -395,6 +399,10 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
         <div class="field">
           <label for="freight">Freight</label>
           <input id="freight" type="number" name="freight" value="<?php echo htmlspecialchars($row['freight']); ?>" min="0" required>
+        </div>
+        <div class="field">
+          <label for="commission">Commission</label>
+          <input id="commission" type="number" name="commission" value="<?php echo htmlspecialchars(isset($row['commission']) ? $row['commission'] : 0); ?>" min="0" required>
         </div>
       </div>
 

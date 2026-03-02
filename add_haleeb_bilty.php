@@ -231,6 +231,10 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
           <label for="freight">Freight</label>
           <input id="freight" type="number" name="freight" placeholder="0" min="0" required>
         </div>
+        <div class="field">
+          <label for="commission">Commission</label>
+          <input id="commission" type="number" name="commission" placeholder="0" min="0" value="0" required>
+        </div>
       </div>
       <div class="form-footer">
         <button class="submit-btn" type="submit">Save</button>

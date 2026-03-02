@@ -312,7 +312,7 @@ function apply_feed_pay_local($conn, $entityId, $payload, &$error){
     $error = '';
     if($entityId <= 0){ $error = 'Invalid feed entity id.'; return false; }
 
-    $biltyStmt = $conn->prepare("SELECT bilty_no, COALESCE(original_freight, freight) AS freight_total FROM bilty WHERE id=? LIMIT 1");
+    $biltyStmt = $conn->prepare("SELECT bilty_no, COALESCE(original_freight, GREATEST((COALESCE(freight,0) - COALESCE(commission,0)),0)) AS freight_total FROM bilty WHERE id=? LIMIT 1");
     $biltyStmt->bind_param("i", $entityId);
     $biltyStmt->execute();
     $biltyRow = $biltyStmt->get_result()->fetch_assoc();
@@ -349,7 +349,7 @@ function apply_haleeb_pay_local($conn, $entityId, $payload, &$error){
     $error = '';
     if($entityId <= 0){ $error = 'Invalid haleeb entity id.'; return false; }
 
-    $biltyStmt = $conn->prepare("SELECT token_no, freight FROM haleeb_bilty WHERE id=? LIMIT 1");
+    $biltyStmt = $conn->prepare("SELECT token_no, GREATEST((COALESCE(freight,0) - COALESCE(commission,0)),0) AS freight_total FROM haleeb_bilty WHERE id=? LIMIT 1");
     $biltyStmt->bind_param("i", $entityId);
     $biltyStmt->execute();
     $biltyRow = $biltyStmt->get_result()->fetch_assoc();
@@ -369,7 +369,7 @@ function apply_haleeb_pay_local($conn, $entityId, $payload, &$error){
     $paidStmt->execute();
     $paidRow = $paidStmt->get_result()->fetch_assoc();
     $paidStmt->close();
-    $remaining = max(0, (float)$biltyRow['freight'] - (float)($paidRow['paid_total'] ?? 0));
+    $remaining = max(0, (float)$biltyRow['freight_total'] - (float)($paidRow['paid_total'] ?? 0));
     if($amount > $remaining){
         $error = 'Requested payment exceeds current remaining freight.';
         return false;
@@ -403,10 +403,12 @@ function apply_change_request_local($conn, $requestRow, &$error){
         $l = isset($payload['location']) ? trim((string)$payload['location']) : '';
         $bags = isset($payload['bags']) ? (int)$payload['bags'] : 0;
         $f = isset($payload['freight']) ? (int)$payload['freight'] : 0;
+        $commission = isset($payload['commission']) ? (int)$payload['commission'] : 0;
         $t = isset($payload['tender']) ? (int)$payload['tender'] : 0;
-        $p = $t - $f;
-        $stmt = $conn->prepare("UPDATE bilty SET sr_no=?, date=?, vehicle=?, bilty_no=?, party=?, location=?, bags=?, freight=?, original_freight=?, tender=?, profit=? WHERE id=?");
-        $stmt->bind_param("sssssssiiiii", $sr, $d, $v, $b, $party, $l, $bags, $f, $f, $t, $p, $entityId);
+        $totalFreight = max(0, $f - $commission);
+        $p = $t - $totalFreight;
+        $stmt = $conn->prepare("UPDATE bilty SET sr_no=?, date=?, vehicle=?, bilty_no=?, party=?, location=?, bags=?, freight=?, commission=?, original_freight=?, tender=?, profit=? WHERE id=?");
+        $stmt->bind_param("ssssssiiiiiii", $sr, $d, $v, $b, $party, $l, $bags, $f, $commission, $totalFreight, $t, $p, $entityId);
         $ok = $stmt->execute();
         $stmt->close();
         return (bool)$ok;
@@ -428,10 +430,12 @@ function apply_change_request_local($conn, $requestRow, &$error){
         $l = isset($payload['location']) ? trim((string)$payload['location']) : '';
         $stops = isset($payload['stops']) ? trim((string)$payload['stops']) : '';
         $f = isset($payload['freight']) ? (int)$payload['freight'] : 0;
+        $commission = isset($payload['commission']) ? (int)$payload['commission'] : 0;
         $t = isset($payload['tender']) ? (int)$payload['tender'] : 0;
-        $p = $t - $f;
-        $stmt = $conn->prepare("UPDATE haleeb_bilty SET date=?, vehicle=?, vehicle_type=?, delivery_note=?, token_no=?, party=?, location=?, stops=?, freight=?, tender=?, profit=? WHERE id=?");
-        $stmt->bind_param("ssssssssiiii", $d, $v, $vt, $dn, $tn, $party, $l, $stops, $f, $t, $p, $entityId);
+        $totalFreight = max(0, $f - $commission);
+        $p = $t - $totalFreight;
+        $stmt = $conn->prepare("UPDATE haleeb_bilty SET date=?, vehicle=?, vehicle_type=?, delivery_note=?, token_no=?, party=?, location=?, stops=?, freight=?, commission=?, tender=?, profit=? WHERE id=?");
+        $stmt->bind_param("ssssssssiiiii", $d, $v, $vt, $dn, $tn, $party, $l, $stops, $f, $commission, $t, $p, $entityId);
         $ok = $stmt->execute();
         $stmt->close();
         return (bool)$ok;

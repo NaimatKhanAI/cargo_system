@@ -109,6 +109,7 @@ feed_portion VARCHAR(30) NOT NULL DEFAULT 'al_amir',
 location VARCHAR(100),
 bags INT DEFAULT 0,
 freight INT,
+commission INT DEFAULT 0,
 original_freight INT NULL,
 tender INT,
 profit INT
@@ -125,6 +126,7 @@ party VARCHAR(100),
 location VARCHAR(100),
 stops VARCHAR(50) DEFAULT '',
 freight INT,
+commission INT DEFAULT 0,
 tender INT,
 profit INT,
 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -154,6 +156,22 @@ $origFreightColCheck = $conn->query("SHOW COLUMNS FROM bilty LIKE 'original_frei
 if($origFreightColCheck && $origFreightColCheck->num_rows === 0){
 $conn->query("ALTER TABLE bilty ADD original_freight INT NULL AFTER freight");
 }
+
+$biltyCommissionColCheck = $conn->query("SHOW COLUMNS FROM bilty LIKE 'commission'");
+if($biltyCommissionColCheck && $biltyCommissionColCheck->num_rows === 0){
+$conn->query("ALTER TABLE bilty ADD commission INT NOT NULL DEFAULT 0 AFTER freight");
+}
+
+$haleebCommissionColCheck = $conn->query("SHOW COLUMNS FROM haleeb_bilty LIKE 'commission'");
+if($haleebCommissionColCheck && $haleebCommissionColCheck->num_rows === 0){
+$conn->query("ALTER TABLE haleeb_bilty ADD commission INT NOT NULL DEFAULT 0 AFTER freight");
+}
+
+$conn->query("UPDATE bilty SET commission=0 WHERE commission IS NULL");
+$conn->query("UPDATE haleeb_bilty SET commission=0 WHERE commission IS NULL");
+$conn->query("UPDATE bilty SET profit = COALESCE(tender,0) - GREATEST(COALESCE(freight,0) - COALESCE(commission,0), 0)");
+$conn->query("UPDATE haleeb_bilty SET profit = COALESCE(tender,0) - GREATEST(COALESCE(freight,0) - COALESCE(commission,0), 0)");
+$conn->query("UPDATE bilty SET original_freight = GREATEST(COALESCE(freight,0) - COALESCE(commission,0), 0) WHERE original_freight IS NULL OR original_freight=0");
 
 $bagsColCheck = $conn->query("SHOW COLUMNS FROM bilty LIKE 'bags'");
 if($bagsColCheck && $bagsColCheck->num_rows === 0){
@@ -432,7 +450,7 @@ FROM account_entries
 WHERE bilty_id IS NOT NULL AND entry_type='debit'
 GROUP BY bilty_id
 ) p ON p.bilty_id = b.id
-SET b.original_freight = b.freight + COALESCE(p.paid_total, 0)
+SET b.original_freight = GREATEST((COALESCE(b.freight,0) - COALESCE(b.commission,0)) + COALESCE(p.paid_total, 0), 0)
 WHERE b.original_freight IS NULL");
 
 $seedAdminUser = trim((string)env_get('SEED_ADMIN_USER', ''));

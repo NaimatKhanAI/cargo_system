@@ -18,11 +18,13 @@ $outCityCount = isset($_POST['out_city_count']) ? (int)$_POST['out_city_count'] 
 $stops = 'SC:' . max(0, $sameCityCount) . '|OC:' . max(0, $outCityCount);
 $t = isset($_POST['tender']) ? (int)$_POST['tender'] : 0;
 $f = isset($_POST['freight']) ? (int)$_POST['freight'] : 0;
+$commission = isset($_POST['commission']) ? max(0, (int)$_POST['commission']) : 0;
+$totalFreight = max(0, $f - $commission);
 
-$p = $t - $f;
+$p = $t - $totalFreight;
 
-$stmt = $conn->prepare("INSERT INTO haleeb_bilty(date, vehicle, vehicle_type, delivery_note, token_no, party, location, stops, freight, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-$stmt->bind_param("ssssssssiii", $d, $v, $vt, $dn, $tn, $party, $l, $stops, $f, $t, $p);
+$stmt = $conn->prepare("INSERT INTO haleeb_bilty(date, vehicle, vehicle_type, delivery_note, token_no, party, location, stops, freight, commission, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+$stmt->bind_param("ssssssssiiii", $d, $v, $vt, $dn, $tn, $party, $l, $stops, $f, $commission, $t, $p);
 $ok = $stmt->execute();
 $newId = (int)$stmt->insert_id;
 $stmt->close();
@@ -40,6 +42,7 @@ if($ok){
             'vehicle' => $v,
             'party' => $party,
             'freight' => $f,
+            'commission' => $commission,
             'tender' => $t
         ],
         isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0

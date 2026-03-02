@@ -48,7 +48,7 @@ if(isset($_GET['delete_all']) && $_GET['delete_all'] === '1'){
 
 $total_profit = 0;
 if($isSuperAdmin){
-    $total = $conn->query("SELECT SUM(tender - freight) as t FROM bilty")->fetch_assoc();
+    $total = $conn->query("SELECT SUM(COALESCE(tender,0) - GREATEST((COALESCE(freight,0) - COALESCE(commission,0)),0)) as t FROM bilty")->fetch_assoc();
     $total_profit = ($total && isset($total['t']) && $total['t'] !== null) ? (float)$total['t'] : 0;
 }
 $dateFrom = isset($_GET['date_from']) ? trim((string)$_GET['date_from']) : '';
@@ -122,8 +122,10 @@ if($dateTo !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateTo)){ $where[] = "
 if($vehicleSearch !== ''){ $where[] = "vehicle LIKE ?"; $bindTypes .= "s"; $bindValues[] = "%" . $vehicleSearch . "%"; }
 if(!$isSuperAdmin){ $where[] = "feed_portion = ?"; $bindTypes .= "s"; $bindValues[] = $userFeedPortion; }
 
-$sql = "SELECT b.*, (b.tender - b.freight) AS calc_profit,
-        GREATEST(COALESCE(b.original_freight, b.freight) - COALESCE(p.paid_total, 0), 0) AS remaining_balance
+$sql = "SELECT b.*,
+        GREATEST((COALESCE(b.freight,0) - COALESCE(b.commission,0)), 0) AS total_cost,
+        (COALESCE(b.tender,0) - GREATEST((COALESCE(b.freight,0) - COALESCE(b.commission,0)), 0)) AS calc_profit,
+        GREATEST(COALESCE(b.original_freight, GREATEST((COALESCE(b.freight,0) - COALESCE(b.commission,0)), 0)) - COALESCE(p.paid_total, 0), 0) AS remaining_balance
         FROM bilty b
         LEFT JOIN (
           SELECT bilty_id, SUM(amount) AS paid_total
@@ -523,11 +525,11 @@ if(count($bindValues) > 0){
         <input id="a_feed_bags_max" type="number" min="0" placeholder="Any">
       </div>
       <div class="field">
-        <label for="a_feed_freight_min">Min Freight</label>
+        <label for="a_feed_freight_min">Min Total Cost</label>
         <input id="a_feed_freight_min" type="number" min="0" placeholder="0">
       </div>
       <div class="field">
-        <label for="a_feed_freight_max">Max Freight</label>
+        <label for="a_feed_freight_max">Max Total Cost</label>
         <input id="a_feed_freight_max" type="number" min="0" placeholder="Any">
       </div>
       <?php if($isSuperAdmin): ?>
@@ -606,6 +608,7 @@ if(count($bindValues) > 0){
           <th>Location</th>
           <th>Bags</th>
           <th>Freight</th>
+          <th>Commission</th>
           <?php if($isSuperAdmin): ?><th>Tender</th><?php endif; ?>
           <th>Remaining</th>
           <?php if($isSuperAdmin): ?><th>Profit</th><?php endif; ?>
@@ -616,6 +619,8 @@ if(count($bindValues) > 0){
         <?php while($row = $result->fetch_assoc()):
           $profit = (float)$row['calc_profit'];
           $remaining = (float)($row['remaining_balance'] ?? 0);
+          $commission = (float)($row['commission'] ?? 0);
+          $totalCost = (float)($row['total_cost'] ?? max(((float)($row['freight'] ?? 0)) - $commission, 0));
           $sectionLabel = $isSuperAdmin ? feed_portion_label_local(isset($row['feed_portion']) ? $row['feed_portion'] : '') : '';
         ?>
         <tr data-analytics-row="1"
@@ -628,6 +633,8 @@ if(count($bindValues) > 0){
             data-section="<?php echo htmlspecialchars((string)$sectionLabel); ?>"
             data-bags="<?php echo (int)($row['bags'] ?? 0); ?>"
             data-freight="<?php echo (float)($row['freight'] ?? 0); ?>"
+            data-total="<?php echo $totalCost; ?>"
+            data-commission="<?php echo $commission; ?>"
             data-tender="<?php echo (float)($row['tender'] ?? 0); ?>"
             data-remaining="<?php echo $remaining; ?>"
             data-profit="<?php echo $profit; ?>">
@@ -642,6 +649,7 @@ if(count($bindValues) > 0){
           <td><?php echo htmlspecialchars($row['location']); ?></td>
           <td><?php echo (int)($row['bags'] ?? 0); ?></td>
           <td><?php echo number_format((float)$row['freight'], 2); ?></td>
+          <td><?php echo number_format($commission, 2); ?></td>
           <?php if($isSuperAdmin): ?>
             <td><?php echo number_format((float)$row['tender'], 2); ?></td>
           <?php endif; ?>
@@ -691,6 +699,8 @@ if(count($bindValues) > 0){
   var records = rows.map(function(row){
     var d = row.dataset || {};
     var freight = Number(d.freight || 0);
+    var commission = Number(d.commission || 0);
+    var total = Number(d.total || Math.max(freight - commission, 0));
     var remaining = Number(d.remaining || 0);
     return {
       el: row,
@@ -709,9 +719,11 @@ if(count($bindValues) > 0){
       sectionL: String(d.section || '').toLowerCase(),
       bags: Number(d.bags || 0),
       freight: freight,
+      commission: commission,
+      totalCost: total,
       tender: Number(d.tender || 0),
       remaining: remaining,
-      paid: Math.max(freight - remaining, 0),
+      paid: Math.max(total - remaining, 0),
       profit: Number(d.profit || 0)
     };
   });
@@ -817,37 +829,39 @@ if(count($bindValues) > 0){
       if(ok && x.status === 'paid' && r.remaining > 0.0001) ok = false;
       if(ok && x.status === 'pending' && r.remaining <= 0.0001) ok = false;
       if(ok && !inRange(r.bags, x.bagsMin, x.bagsMax)) ok = false;
-      if(ok && !inRange(r.freight, x.freightMin, x.freightMax)) ok = false;
+      if(ok && !inRange(r.totalCost, x.freightMin, x.freightMax)) ok = false;
       if(ok && x.profitMin !== null && r.profit < x.profitMin) ok = false;
       r.el.style.display = ok ? '' : 'none';
       if(ok) shown.push(r);
     });
 
     var totals = shown.reduce(function(a, r){
-      a.count += 1; a.bags += r.bags; a.freight += r.freight; a.tender += r.tender;
+      a.count += 1; a.bags += r.bags; a.freight += r.freight; a.commission += r.commission; a.total += r.totalCost; a.tender += r.tender;
       a.remaining += r.remaining; a.paid += r.paid; a.profit += r.profit; return a;
-    }, {count:0,bags:0,freight:0,tender:0,remaining:0,paid:0,profit:0});
+    }, {count:0,bags:0,freight:0,commission:0,total:0,tender:0,remaining:0,paid:0,profit:0});
     var cards = [
       ['Bilties', intVal(totals.count)],
       ['Total Bags', intVal(totals.bags)],
       ['Freight', money(totals.freight)],
+      ['Commission', money(totals.commission)],
+      ['Total Cost', money(totals.total)],
       ['Paid', money(totals.paid)],
       ['Remaining', money(totals.remaining)],
-      ['Collection %', totals.freight > 0 ? ((totals.paid / totals.freight) * 100).toFixed(2) + '%' : '0.00%']
+      ['Collection %', totals.total > 0 ? ((totals.paid / totals.total) * 100).toFixed(2) + '%' : '0.00%']
     ];
     if(isSuperAdmin){ cards.push(['Tender', money(totals.tender)]); cards.push(['Profit', money(totals.profit)]); }
     statsBox.innerHTML = cards.map(function(c){ return '<div class=\"a-stat\"><div class=\"k\">' + escHtml(c[0]) + '</div><div class=\"v\">' + escHtml(c[1]) + '</div></div>'; }).join('');
 
     var topVehicles = topMap(shown, 'vehicle', 'count', 6);
-    var topLocations = topMap(shown, 'location', 'freight', 6);
+    var topLocations = topMap(shown, 'location', 'totalCost', 6);
     var byDate = {};
-    shown.forEach(function(r){ var k = r.date || 'Unknown'; if(!byDate[k]) byDate[k] = 0; byDate[k] += r.freight; });
+    shown.forEach(function(r){ var k = r.date || 'Unknown'; if(!byDate[k]) byDate[k] = 0; byDate[k] += r.totalCost; });
     var trend = Object.keys(byDate).sort().slice(-8).map(function(k){ return {label:k, value:byDate[k]}; });
     makeBars('feed_chart_vehicles', topVehicles, topVehicles.length ? topVehicles[0].value : 0, intVal);
     makeBars('feed_chart_locations', topLocations, topLocations.length ? topLocations[0].value : 0, money);
     makeBars('feed_chart_trend', trend, trend.length ? Math.max.apply(null, trend.map(function(r){ return r.value; })) : 0, money);
 
-    var paidPct = totals.freight > 0 ? (totals.paid / totals.freight) * 100 : 0;
+    var paidPct = totals.total > 0 ? (totals.paid / totals.total) * 100 : 0;
     var remPct = Math.max(100 - paidPct, 0);
     var paidBar = document.getElementById('feed_split_paid');
     var remBar = document.getElementById('feed_split_rem');

@@ -22,13 +22,13 @@ function build_change_lines_local($conn, $requestRow){
 
     if($actionType === 'feed_update'){
         $row = null;
-        if($entityId > 0){ $stmt = $conn->prepare("SELECT sr_no, date, vehicle, bilty_no, party, location, bags, freight, tender FROM bilty WHERE id=? LIMIT 1"); $stmt->bind_param("i", $entityId); $stmt->execute(); $row = $stmt->get_result()->fetch_assoc(); $stmt->close(); }
-        $map = ['sr_no'=>'SR No','date'=>'Date','vehicle'=>'Vehicle','bilty_no'=>'Bilty No','party'=>'Party','location'=>'Location','bags'=>'Bags','freight'=>'Freight','tender'=>'Tender'];
+        if($entityId > 0){ $stmt = $conn->prepare("SELECT sr_no, date, vehicle, bilty_no, party, location, bags, freight, commission, tender FROM bilty WHERE id=? LIMIT 1"); $stmt->bind_param("i", $entityId); $stmt->execute(); $row = $stmt->get_result()->fetch_assoc(); $stmt->close(); }
+        $map = ['sr_no'=>'SR No','date'=>'Date','vehicle'=>'Vehicle','bilty_no'=>'Bilty No','party'=>'Party','location'=>'Location','bags'=>'Bags','freight'=>'Freight','commission'=>'Commission','tender'=>'Tender'];
         foreach($map as $k => $label){ if(!array_key_exists($k, $payload)) continue; $old = $row && isset($row[$k]) ? $row[$k] : ''; $new = $payload[$k]; if((string)$old !== (string)$new) $lines[] = ['label'=>$label,'old'=>$old,'new'=>$new]; }
     } elseif($actionType === 'haleeb_update'){
         $row = null;
-        if($entityId > 0){ $stmt = $conn->prepare("SELECT date, vehicle, vehicle_type, delivery_note, token_no, party, location, stops, freight, tender FROM haleeb_bilty WHERE id=? LIMIT 1"); $stmt->bind_param("i", $entityId); $stmt->execute(); $row = $stmt->get_result()->fetch_assoc(); $stmt->close(); }
-        $map = ['date'=>'Date','vehicle'=>'Vehicle','vehicle_type'=>'Vehicle Type','delivery_note'=>'Delivery Note','token_no'=>'Token No','party'=>'Party','location'=>'Location','stops'=>'Stops','freight'=>'Freight','tender'=>'Tender'];
+        if($entityId > 0){ $stmt = $conn->prepare("SELECT date, vehicle, vehicle_type, delivery_note, token_no, party, location, stops, freight, commission, tender FROM haleeb_bilty WHERE id=? LIMIT 1"); $stmt->bind_param("i", $entityId); $stmt->execute(); $row = $stmt->get_result()->fetch_assoc(); $stmt->close(); }
+        $map = ['date'=>'Date','vehicle'=>'Vehicle','vehicle_type'=>'Vehicle Type','delivery_note'=>'Delivery Note','token_no'=>'Token No','party'=>'Party','location'=>'Location','stops'=>'Stops','freight'=>'Freight','commission'=>'Commission','tender'=>'Tender'];
         foreach($map as $k => $label){ if(!array_key_exists($k, $payload)) continue; $old = $row && isset($row[$k]) ? $row[$k] : ''; $new = $payload[$k]; if((string)$old !== (string)$new) $lines[] = ['label'=>$label,'old'=>$old,'new'=>$new]; }
     } elseif($actionType === 'account_update'){
         $row = null;

@@ -33,7 +33,8 @@ $paidStmt = $conn->prepare("SELECT SUM(amount) AS paid_total FROM account_entrie
 $paidStmt->bind_param("i", $id); $paidStmt->execute();
 $paidRes = $paidStmt->get_result()->fetch_assoc(); $paidStmt->close();
 $paidTotal = $paidRes && $paidRes['paid_total'] ? (float)$paidRes['paid_total'] : 0;
-$baseFreight = isset($row['original_freight']) && $row['original_freight'] !== null ? (float)$row['original_freight'] : (float)$row['freight'];
+$commission = isset($row['commission']) ? (float)$row['commission'] : 0;
+$baseFreight = isset($row['original_freight']) && $row['original_freight'] !== null ? (float)$row['original_freight'] : max(((float)$row['freight'] - $commission), 0);
 $remainingFreight = max(0, $baseFreight - $paidTotal);
 
 if(isset($_POST['pay_now'])){
@@ -212,6 +213,14 @@ $paidPct = $baseFreight > 0 ? min(100, round($paidTotal / $baseFreight * 100)) :
           <?php endif; ?>
           <div class="info-item">
             <div class="info-label">Freight Total</div>
+            <div class="info-val">Rs <?php echo number_format((float)$row['freight'], 0); ?></div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Commission</div>
+            <div class="info-val">Rs <?php echo number_format($commission, 0); ?></div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Total Cost</div>
             <div class="info-val">Rs <?php echo number_format($baseFreight, 0); ?></div>
           </div>
           <div class="info-item">

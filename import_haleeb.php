@@ -187,7 +187,7 @@ if(count($allRows) === 0){
     exit();
 }
 
-$stmt = $conn->prepare("INSERT INTO haleeb_bilty(date, vehicle, vehicle_type, delivery_note, token_no, party, location, stops, freight, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+$stmt = $conn->prepare("INSERT INTO haleeb_bilty(date, vehicle, vehicle_type, delivery_note, token_no, party, location, stops, freight, commission, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
 
 foreach($allRows as $data){
     $lineNo++;
@@ -248,6 +248,9 @@ foreach($allRows as $data){
         elseif(isset($headerMap['stop_type'])) $stops = $data[$headerMap['stop_type']] ?? '';
 
         $freight = parse_csv_number(isset($headerMap['freight']) ? ($data[$headerMap['freight']] ?? '') : '');
+        $commission = null;
+        if(isset($headerMap['commission'])) $commission = parse_csv_number($data[$headerMap['commission']] ?? '');
+        elseif(isset($headerMap['commession'])) $commission = parse_csv_number($data[$headerMap['commession']] ?? '');
         $tender = null;
         if(isset($headerMap['tender'])) $tender = parse_csv_number($data[$headerMap['tender']] ?? '');
         elseif(isset($headerMap['npl_rate'])) $tender = parse_csv_number($data[$headerMap['npl_rate']] ?? '');
@@ -275,9 +278,17 @@ foreach($allRows as $data){
         $party = $data[$offset + 5] ?? '';
         $location = $data[$offset + 6] ?? '';
         $stops = '';
+        $remaining = count($data) - $offset;
         $freight = parse_csv_number($data[$offset + 7] ?? '');
-        $tender = parse_csv_number($data[$offset + 8] ?? '');
-        $profit = parse_csv_number($data[$offset + 9] ?? '');
+        if($remaining >= 11){
+            $commission = parse_csv_number($data[$offset + 8] ?? '');
+            $tender = parse_csv_number($data[$offset + 9] ?? '');
+            $profit = parse_csv_number($data[$offset + 10] ?? '');
+        } else {
+            $commission = 0;
+            $tender = parse_csv_number($data[$offset + 8] ?? '');
+            $profit = parse_csv_number($data[$offset + 9] ?? '');
+        }
     }
 
     if($date === ''){
@@ -292,11 +303,14 @@ foreach($allRows as $data){
         $tender = 0;
         $importReport[] = ['adjusted', $lineNo, 'Invalid tender -> 0 used', implode(' | ', $data)];
     }
+    if($commission === null){
+        $commission = 0;
+    }
     if($profit === null){
-        $profit = $tender - $freight;
+        $profit = $tender - max(0, ($freight - $commission));
     }
 
-    $stmt->bind_param("ssssssssiii", $date, $vehicle, $vehicleType, $deliveryNote, $tokenNo, $party, $location, $stops, $freight, $tender, $profit);
+    $stmt->bind_param("ssssssssiiii", $date, $vehicle, $vehicleType, $deliveryNote, $tokenNo, $party, $location, $stops, $freight, $commission, $tender, $profit);
     if($stmt->execute()){
         $inserted++;
     } else {

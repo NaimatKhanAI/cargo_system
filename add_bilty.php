@@ -331,6 +331,10 @@ $today = date('Y-m-d');
           <label for="freight">Freight</label>
           <input id="freight" type="number" name="freight" placeholder="0" min="0" required>
         </div>
+        <div class="field">
+          <label for="commission">Commission</label>
+          <input id="commission" type="number" name="commission" placeholder="0" min="0" value="0" required>
+        </div>
         <?php if($isSuperAdmin): ?>
           <div class="field">
             <label for="tender">Tender</label>

@@ -38,7 +38,7 @@ if($linkedRequestId > 0 && auth_can_direct_modify()){
         $linkedRequest = $candidate;
         $prefill = request_payload_decode_local(isset($candidate['payload']) ? (string)$candidate['payload'] : '');
         if(count($prefill) > 0){
-            $map = ['sr_no', 'date', 'vehicle', 'bilty_no', 'party', 'location', 'bags', 'freight', 'tender'];
+            $map = ['sr_no', 'date', 'vehicle', 'bilty_no', 'party', 'location', 'bags', 'freight', 'commission', 'tender'];
             foreach($map as $key){
                 if(array_key_exists($key, $prefill)){
                     $row[$key] = $prefill[$key];
@@ -57,6 +57,7 @@ if(isset($_POST['update'])){
     $l = isset($_POST['location']) ? trim($_POST['location']) : '';
     $bags = isset($_POST['bags']) ? max(0, (int)$_POST['bags']) : 0;
     $f = isset($_POST['freight']) ? (int)$_POST['freight'] : 0;
+    $commission = isset($_POST['commission']) ? max(0, (int)$_POST['commission']) : 0;
     $submittedTender = isset($_POST['tender']) ? (float)$_POST['tender'] : 0.0;
     $baseTender = $submittedTender;
     if(isset($_POST['tender_raw']) && trim((string)$_POST['tender_raw']) !== ''){
@@ -68,6 +69,7 @@ if(isset($_POST['update'])){
     $baseBags = 200;
     $scaledTender = ($bags > 0) ? (($baseTender / $baseBags) * $bags) : 0.0;
     $t = ($bags > 300) ? (int)round($scaledTender * 0.90) : (int)round($scaledTender);
+    $totalFreight = max(0, $f - $commission);
     if(!auth_can_direct_modify()){
         $payload = [
             'sr_no' => $sr,
@@ -78,6 +80,7 @@ if(isset($_POST['update'])){
             'location' => $l,
             'bags' => $bags,
             'freight' => $f,
+            'commission' => $commission,
             'tender' => $t
         ];
         $requestId = create_change_request_local($conn, 'feed', 'bilty', $id, 'feed_update', $payload, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0);
@@ -86,7 +89,7 @@ if(isset($_POST['update'])){
             exit();
         }
     } else {
-        $p = $t - $f;
+        $p = $t - $totalFreight;
         $oldData = [
             'sr_no' => isset($row['sr_no']) ? $row['sr_no'] : '',
             'date' => isset($row['date']) ? $row['date'] : '',
@@ -96,10 +99,11 @@ if(isset($_POST['update'])){
             'location' => isset($row['location']) ? $row['location'] : '',
             'bags' => isset($row['bags']) ? $row['bags'] : 0,
             'freight' => isset($row['freight']) ? $row['freight'] : 0,
+            'commission' => isset($row['commission']) ? $row['commission'] : 0,
             'tender' => isset($row['tender']) ? $row['tender'] : 0,
         ];
-        $stmt = $conn->prepare("UPDATE bilty SET sr_no=?, date=?, vehicle=?, bilty_no=?, party=?, location=?, bags=?, freight=?, original_freight=?, tender=?, profit=? WHERE id=?");
-        $stmt->bind_param("sssssssiiiii", $sr, $d, $v, $b, $party, $l, $bags, $f, $f, $t, $p, $id);
+        $stmt = $conn->prepare("UPDATE bilty SET sr_no=?, date=?, vehicle=?, bilty_no=?, party=?, location=?, bags=?, freight=?, commission=?, original_freight=?, tender=?, profit=? WHERE id=?");
+        $stmt->bind_param("ssssssiiiiiii", $sr, $d, $v, $b, $party, $l, $bags, $f, $commission, $totalFreight, $t, $p, $id);
         $stmt->execute(); $stmt->close();
         activity_notify_local(
             $conn,
@@ -119,6 +123,7 @@ if(isset($_POST['update'])){
                     'location' => $l,
                     'bags' => $bags,
                     'freight' => $f,
+                    'commission' => $commission,
                     'tender' => $t
                 ]
             ],
@@ -262,6 +267,10 @@ if(isset($_POST['update'])){
         <div class="field">
           <label for="freight">Freight</label>
           <input id="freight" type="number" name="freight" value="<?php echo htmlspecialchars($row['freight']); ?>" min="0" required>
+        </div>
+        <div class="field">
+          <label for="commission">Commission</label>
+          <input id="commission" type="number" name="commission" value="<?php echo htmlspecialchars(isset($row['commission']) ? $row['commission'] : 0); ?>" min="0" required>
         </div>
         <?php if($isSuperAdmin): ?>
           <div class="field">

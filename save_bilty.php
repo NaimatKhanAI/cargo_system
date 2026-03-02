@@ -15,6 +15,7 @@ $party = isset($_POST['party']) ? trim((string)$_POST['party']) : '';
 $l = isset($_POST['location']) ? trim((string)$_POST['location']) : '';
 $bags = isset($_POST['bags']) ? max(0, (int)$_POST['bags']) : 0;
 $f = isset($_POST['freight']) ? max(0, (int)round((float)$_POST['freight'])) : 0;
+$commission = isset($_POST['commission']) ? max(0, (int)round((float)$_POST['commission'])) : 0;
 $feedPortion = normalize_feed_portion_local(isset($_POST['feed_portion']) ? (string)$_POST['feed_portion'] : '');
 if(!auth_is_super_admin()){
     $feedPortion = auth_get_feed_portion();
@@ -33,11 +34,12 @@ $baseBags = 200;
 $bags = max(0, $bags);
 $scaledTender = ($bags > 0) ? (($baseTender / $baseBags) * $bags) : 0.0;
 $t = ($bags > 300) ? (int)round($scaledTender * 0.90) : (int)round($scaledTender);
+$totalFreight = max(0, $f - $commission);
 
-$p = $t - $f;
+$p = $t - $totalFreight;
 
-$stmt = $conn->prepare("INSERT INTO bilty(sr_no, date, vehicle, bilty_no, party, feed_portion, location, bags, freight, original_freight, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-$stmt->bind_param("sssssssiiiii", $sr, $d, $v, $b, $party, $feedPortion, $l, $bags, $f, $f, $t, $p);
+$stmt = $conn->prepare("INSERT INTO bilty(sr_no, date, vehicle, bilty_no, party, feed_portion, location, bags, freight, commission, original_freight, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+$stmt->bind_param("sssssssiiiiii", $sr, $d, $v, $b, $party, $feedPortion, $l, $bags, $f, $commission, $totalFreight, $t, $p);
 $ok = $stmt->execute();
 $newId = (int)$stmt->insert_id;
 $stmt->close();
@@ -57,6 +59,7 @@ if($ok){
             'party' => $party,
             'feed_portion' => $feedPortion,
             'freight' => $f,
+            'commission' => $commission,
             'tender' => $t
         ],
         isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0
