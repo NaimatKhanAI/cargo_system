@@ -70,10 +70,13 @@ if($ok){
         'Feed bilty added.',
         [
             'sr_no' => $sr,
+            'date' => $d,
             'bilty_no' => $b,
             'vehicle' => $v,
             'party' => $party,
             'feed_portion' => $feedPortion,
+            'location' => $l,
+            'bags' => $bags,
             'freight' => $f,
             'commission' => $commission,
             'freight_payment_type' => $freightPaymentType,
