@@ -4,6 +4,7 @@ include 'config/db.php';
 require_once 'config/auth.php';
 require_once 'config/feed_portions.php';
 require_once 'config/activity_notifications.php';
+require_once 'config/change_requests.php';
 auth_require_login($conn);
 auth_require_module_access('feed');
 $currentUserId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
@@ -67,6 +68,18 @@ if($ok && $freightPaymentType === 'to_pay' && auth_can_direct_modify() && $total
         $markPaid->close();
         $freightPaymentType = 'paid';
     }
+}
+if($ok && $freightPaymentType === 'to_pay' && !auth_can_direct_modify() && $totalFreight > 0){
+    $entryDate = $d !== '' ? $d : date('Y-m-d');
+    $entryNote = 'Auto Driver Payment Request - Feed Bilty ' . ($b !== '' ? $b : ('#' . $newId));
+    $payload = [
+        'entry_date' => $entryDate,
+        'category' => 'feed',
+        'amount_mode' => 'account',
+        'amount' => round($totalFreight, 3),
+        'note' => $entryNote
+    ];
+    create_change_request_local($conn, 'feed', 'bilty', $newId, 'feed_pay', $payload, $currentUserId);
 }
 
 if($ok){

@@ -3,6 +3,7 @@ require_once __DIR__ . '/config/session_bootstrap.php';
 include 'config/db.php';
 require_once 'config/auth.php';
 require_once 'config/activity_notifications.php';
+require_once 'config/change_requests.php';
 auth_require_login($conn);
 auth_require_module_access('haleeb');
 $currentUserId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
@@ -45,8 +46,28 @@ if($ok && $freightPaymentType === 'to_pay' && auth_can_direct_modify() && $total
     $entryNote = 'Auto Driver Payment - Haleeb Token ' . ($tn !== '' ? $tn : ('#' . $newId));
     $autoPay = $conn->prepare("INSERT INTO account_entries(entry_date, category, entry_type, amount_mode, bilty_id, haleeb_bilty_id, amount, note) VALUES(?, ?, 'debit', ?, NULL, ?, ?, ?)");
     $autoPay->bind_param("sssids", $entryDate, $entryCategory, $entryMode, $newId, $totalFreight, $entryNote);
-    $autoPay->execute();
+    $autoPayOk = $autoPay->execute();
     $autoPay->close();
+    if($autoPayOk){
+        $paidType = 'paid';
+        $markPaid = $conn->prepare("UPDATE haleeb_bilty SET freight_payment_type=? WHERE id=?");
+        $markPaid->bind_param("si", $paidType, $newId);
+        $markPaid->execute();
+        $markPaid->close();
+        $freightPaymentType = 'paid';
+    }
+}
+if($ok && $freightPaymentType === 'to_pay' && !auth_can_direct_modify() && $totalFreight > 0){
+    $entryDate = $d !== '' ? $d : date('Y-m-d');
+    $entryNote = 'Auto Driver Payment Request - Haleeb Token ' . ($tn !== '' ? $tn : ('#' . $newId));
+    $payload = [
+        'entry_date' => $entryDate,
+        'category' => 'haleeb',
+        'amount_mode' => 'account',
+        'amount' => round($totalFreight, 3),
+        'note' => $entryNote
+    ];
+    create_change_request_local($conn, 'haleeb', 'haleeb_bilty', $newId, 'haleeb_pay', $payload, $currentUserId);
 }
 
 if($ok){
