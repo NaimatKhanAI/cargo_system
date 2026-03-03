@@ -36,7 +36,7 @@ $ok = $stmt->execute();
 $newId = (int)$stmt->insert_id;
 $stmt->close();
 
-if($ok && $freightPaymentType === 'paid' && auth_can_direct_modify() && $totalFreight > 0){
+if($ok && $freightPaymentType === 'to_pay' && auth_can_direct_modify() && $totalFreight > 0){
     $entryDate = $d !== '' ? $d : date('Y-m-d');
     $entryCategory = 'haleeb';
     $entryMode = 'account';

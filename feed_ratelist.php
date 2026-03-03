@@ -23,7 +23,21 @@ function load_columns($conn){
 }
 function parse_rate_numeric_local($value){ $value = trim((string)$value); if($value === '') return null; $clean = str_replace([',', ' '], '', $value); $clean = preg_replace('/[^0-9.\-]/', '', $clean); if($clean === '' || $clean === '-' || $clean === '.' || $clean === '-.') return null; if(!is_numeric($clean)) return null; return (float)$clean; }
 function decimal_places_local($value){ $clean = preg_replace('/[^0-9.\-]/', '', trim((string)$value)); if($clean === '' || strpos($clean, '.') === false) return 0; $parts = explode('.', $clean, 2); if(count($parts) < 2) return 0; return min(4, max(0, strlen(rtrim($parts[1], '0')))); }
-function format_rate_numeric_local($number, $sourceRaw){ $dec = decimal_places_local($sourceRaw); if($dec <= 0) return number_format((float)round($number), 0, '.', ','); return number_format((float)$number, $dec, '.', ','); }
+function format_rate_numeric_local($number, $sourceRaw){
+  $dec = decimal_places_local($sourceRaw);
+  $n = round((float)$number, 4);
+  if($dec > 0){
+    return number_format($n, $dec, '.', ',');
+  }
+  if(abs($n - round($n)) < 0.0000001){
+    return number_format((float)round($n), 0, '.', ',');
+  }
+  $out = number_format($n, 4, '.', ',');
+  $out = rtrim($out, '0');
+  $out = rtrim($out, '.');
+  if($out === '-0') $out = '0';
+  return $out;
+}
 function normalize_header_local($v){ $v = strtolower(trim((string)$v)); $v = preg_replace('/\s+/', ' ', $v); $v = str_replace(['.','(',')'], '', $v); return $v; }
 function normalize_digits_local($v){ $v = (string)$v; $map = ['٠'=>'0','١'=>'1','٢'=>'2','٣'=>'3','٤'=>'4','٥'=>'5','٦'=>'6','٧'=>'7','٨'=>'8','٩'=>'9','۰'=>'0','۱'=>'1','۲'=>'2','۳'=>'3','۴'=>'4','۵'=>'5','۶'=>'6','۷'=>'7','۸'=>'8','۹'=>'9']; return strtr($v, $map); }
 function canonical_sr_local($v){ $v = normalize_digits_local((string)$v); $v = strtolower(trim($v)); return preg_replace('/[^a-z0-9]/u', '', $v); }
