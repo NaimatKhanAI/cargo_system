@@ -147,7 +147,7 @@ if(isset($_POST['approve_request']) || isset($_POST['reject_request'])){
         $reviewedBy = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
         $reviewError = '';
         $isApprove = isset($_POST['approve_request']);
-        $ok = review_change_request_local($conn, $requestId, $reviewedBy, $isApprove, $reviewNote, $reviewError, ['feed_update', 'feed_delete', 'haleeb_update', 'haleeb_delete', 'account_update', 'account_delete', 'activity_flag']);
+        $ok = review_change_request_local($conn, $requestId, $reviewedBy, $isApprove, $reviewNote, $reviewError, ['feed_update', 'feed_delete', 'haleeb_update', 'haleeb_delete', 'account_update', 'account_delete', 'activity_flag', 'feed_pay', 'haleeb_pay']);
         if($ok){
             $msg = $isApprove ? 'Request approved and applied.' : 'Request rejected.';
         } else {
@@ -159,7 +159,7 @@ if(isset($_POST['approve_request']) || isset($_POST['reject_request'])){
 $users = [];
 $usersRes = $conn->query("SELECT id, username, role, is_active, can_access_feed, feed_portion, can_access_haleeb, can_access_account, can_access_image_processing, can_review_activity, created_at FROM users ORDER BY id ASC");
 while($usersRes && $u = $usersRes->fetch_assoc()) $users[] = $u;
-$pendingRequests = fetch_pending_change_requests_local($conn, ['feed_pay', 'haleeb_pay']);
+$pendingRequests = fetch_pending_change_requests_local($conn);
 $selfId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
 $feedPortionOptions = feed_portion_options_local();

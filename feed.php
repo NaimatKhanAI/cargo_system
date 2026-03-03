@@ -3,6 +3,7 @@ require_once __DIR__ . '/config/session_bootstrap.php';
 include 'config/db.php';
 require_once 'config/auth.php';
 require_once 'config/feed_portions.php';
+require_once 'config/change_requests.php';
 auth_require_login($conn);
 auth_require_module_access('feed');
 $canDirectModify = auth_can_direct_modify();
@@ -45,18 +46,30 @@ if(isset($_GET['confirm_driver_pay'])){
         exit();
     }
 
-    $entryDate = isset($driverRow['date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$driverRow['date']) ? (string)$driverRow['date'] : date('Y-m-d');
-    $entryCategory = 'feed';
-    $entryMode = 'account';
-    $entryRef = isset($driverRow['bilty_no']) ? trim((string)$driverRow['bilty_no']) : '';
-    $entryNote = 'Driver Payment Confirmed - Feed Bilty ' . ($entryRef !== '' ? $entryRef : ('#' . $confirmId));
-    $ins = $conn->prepare("INSERT INTO account_entries(entry_date, category, entry_type, amount_mode, bilty_id, haleeb_bilty_id, amount, note) VALUES(?, ?, 'debit', ?, ?, NULL, ?, ?)");
-    $ins->bind_param("sssids", $entryDate, $entryCategory, $entryMode, $confirmId, $remaining, $entryNote);
-    $ok = $ins->execute();
-    $ins->close();
+    $pendingStmt = $conn->prepare("SELECT id FROM change_requests WHERE status='pending' AND action_type='feed_pay' AND entity_table='bilty' AND entity_id=? ORDER BY id DESC LIMIT 1");
+    $pendingStmt->bind_param("i", $confirmId);
+    $pendingStmt->execute();
+    $pendingRow = $pendingStmt->get_result()->fetch_assoc();
+    $pendingStmt->close();
+    if($pendingRow){
+        header("location:feed.php?driver_pay=requested");
+        exit();
+    }
 
-    if($ok){
-        header("location:feed.php?driver_pay=success");
+    $entryDate = isset($driverRow['date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$driverRow['date']) ? (string)$driverRow['date'] : date('Y-m-d');
+    $entryRef = isset($driverRow['bilty_no']) ? trim((string)$driverRow['bilty_no']) : '';
+    $entryNote = 'Full Driver Payment Request - Feed Bilty ' . ($entryRef !== '' ? $entryRef : ('#' . $confirmId));
+    $payload = [
+        'entry_date' => $entryDate,
+        'category' => 'feed',
+        'amount_mode' => 'account',
+        'amount' => round($remaining, 3),
+        'note' => $entryNote
+    ];
+    $requestId = create_change_request_local($conn, 'feed', 'bilty', $confirmId, 'feed_pay', $payload, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0);
+
+    if($requestId > 0){
+        header("location:feed.php?driver_pay=requested");
     } else {
         header("location:feed.php?driver_pay=error");
     }
@@ -135,9 +148,10 @@ if (isset($_GET['pay'])) {
 $driver_pay_message = "";
 if(isset($_GET['driver_pay'])){
     if($_GET['driver_pay'] === 'success') $driver_pay_message = "Driver payment confirmed and debit posted.";
+    elseif($_GET['driver_pay'] === 'requested') $driver_pay_message = "Full driver payment request sent for approval.";
     elseif($_GET['driver_pay'] === 'already') $driver_pay_message = "Driver payment already confirmed.";
     elseif($_GET['driver_pay'] === 'denied') $driver_pay_message = "Only super admin can confirm driver payment.";
-    elseif($_GET['driver_pay'] === 'error') $driver_pay_message = "Driver payment confirmation failed. Please try again.";
+    elseif($_GET['driver_pay'] === 'error') $driver_pay_message = "Driver payment request failed. Please try again.";
 }
 
 $clear_message = "";
@@ -767,7 +781,7 @@ if(count($bindValues) > 0){
             <div class="action-cell">
               <a class="act-btn act-pay" href="pay_now.php?id=<?php echo $row['id']; ?>" title="Pay">&#8377;</a>
               <?php if($canDirectModify && $paymentTypeRaw === 'to_pay' && $remaining > 0.0001): ?>
-                <a class="act-btn act-confirm" href="feed.php?confirm_driver_pay=<?php echo (int)$row['id']; ?>" title="Confirm Driver Payment" onclick="return confirm('Confirm full driver payment and post debit from feed account?')">&#10003;</a>
+                <a class="act-btn act-confirm" href="feed.php?confirm_driver_pay=<?php echo (int)$row['id']; ?>" title="Request Full Driver Payment" onclick="return confirm('Send full driver payment request for approval?')">&#10003;</a>
               <?php endif; ?>
               <a class="act-btn act-edit" href="edit.php?id=<?php echo $row['id']; ?>" title="Edit">&#9998;</a>
               <a class="act-btn act-pdf" href="pdf.php?id=<?php echo $row['id']; ?>" target="_blank" title="PDF">&#128196;</a>

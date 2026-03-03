@@ -24,7 +24,6 @@ if(!in_array($freightPaymentType, ['to_pay', 'paid'], true)){
 $feedPortion = normalize_feed_portion_local(isset($_POST['feed_portion']) ? (string)$_POST['feed_portion'] : '');
 if(!auth_is_super_admin()){
     $feedPortion = auth_get_feed_portion();
-    $freightPaymentType = 'to_pay';
 }
 
 $submittedTender = isset($_POST['tender']) ? (float)$_POST['tender'] : 0.0;
@@ -58,8 +57,16 @@ if($ok && $freightPaymentType === 'to_pay' && auth_can_direct_modify() && $total
     $entryNote = 'Auto Driver Payment - Feed Bilty ' . ($b !== '' ? $b : ('#' . $newId));
     $autoPay = $conn->prepare("INSERT INTO account_entries(entry_date, category, entry_type, amount_mode, bilty_id, haleeb_bilty_id, amount, note) VALUES(?, ?, 'debit', ?, ?, NULL, ?, ?)");
     $autoPay->bind_param("sssids", $entryDate, $entryCategory, $entryMode, $newId, $totalFreight, $entryNote);
-    $autoPay->execute();
+    $autoPayOk = $autoPay->execute();
     $autoPay->close();
+    if($autoPayOk){
+        $paidType = 'paid';
+        $markPaid = $conn->prepare("UPDATE bilty SET freight_payment_type=? WHERE id=?");
+        $markPaid->bind_param("si", $paidType, $newId);
+        $markPaid->execute();
+        $markPaid->close();
+        $freightPaymentType = 'paid';
+    }
 }
 
 if($ok){

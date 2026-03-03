@@ -335,17 +335,13 @@ $today = date('Y-m-d');
           <label for="commission">Commission</label>
           <input id="commission" type="number" name="commission" placeholder="0" min="0" step="any" value="0" required>
         </div>
-        <?php if($isSuperAdmin): ?>
-          <div class="field">
-            <label for="freight_payment_type">Driver Payment</label>
-            <select id="freight_payment_type" name="freight_payment_type" required>
-              <option value="to_pay">To Pay</option>
-              <option value="paid">Paid</option>
-            </select>
-          </div>
-        <?php else: ?>
-          <input type="hidden" name="freight_payment_type" value="to_pay">
-        <?php endif; ?>
+        <div class="field">
+          <label for="freight_payment_type">Driver Payment</label>
+          <select id="freight_payment_type" name="freight_payment_type" required>
+            <option value="to_pay">To Pay</option>
+            <option value="paid">Paid</option>
+          </select>
+        </div>
         <?php if($isSuperAdmin): ?>
           <div class="field">
             <label for="tender">Tender</label>

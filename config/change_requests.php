@@ -342,6 +342,16 @@ function apply_feed_pay_local($conn, $entityId, $payload, &$error){
     $ins->bind_param("sssids", $entryDate, $category, $amountMode, $entityId, $amount, $note);
     $ok = $ins->execute();
     $ins->close();
+    if($ok){
+        $remainingAfter = max(0, $remaining - $amount);
+        if($remainingAfter <= 0.0001){
+            $paidType = 'paid';
+            $markPaid = $conn->prepare("UPDATE bilty SET freight_payment_type=? WHERE id=?");
+            $markPaid->bind_param("si", $paidType, $entityId);
+            $markPaid->execute();
+            $markPaid->close();
+        }
+    }
     return (bool)$ok;
 }
 
@@ -379,6 +389,16 @@ function apply_haleeb_pay_local($conn, $entityId, $payload, &$error){
     $ins->bind_param("sssids", $entryDate, $category, $amountMode, $entityId, $amount, $note);
     $ok = $ins->execute();
     $ins->close();
+    if($ok){
+        $remainingAfter = max(0, $remaining - $amount);
+        if($remainingAfter <= 0.0001){
+            $paidType = 'paid';
+            $markPaid = $conn->prepare("UPDATE haleeb_bilty SET freight_payment_type=? WHERE id=?");
+            $markPaid->bind_param("si", $paidType, $entityId);
+            $markPaid->execute();
+            $markPaid->close();
+        }
+    }
     return (bool)$ok;
 }
 

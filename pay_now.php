@@ -74,6 +74,14 @@ if(isset($_POST['pay_now'])){
                 $ins->execute();
                 $entryId = (int)$ins->insert_id;
                 $ins->close();
+                $remainingAfter = max(0, $remainingFreight - $payAmount);
+                if($remainingAfter <= 0.0001){
+                    $paidType = 'paid';
+                    $paidStmt = $conn->prepare("UPDATE bilty SET freight_payment_type=? WHERE id=?");
+                    $paidStmt->bind_param("si", $paidType, $id);
+                    $paidStmt->execute();
+                    $paidStmt->close();
+                }
                 activity_notify_local(
                     $conn,
                     'feed',
