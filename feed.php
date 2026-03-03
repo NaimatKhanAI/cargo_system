@@ -87,17 +87,17 @@ if(isset($_GET['delete_all']) && $_GET['delete_all'] === '1'){
         $deletedCount = $countRow ? (int)$countRow['c'] : 0;
 
         if($deletedCount > 0){
-            $conn->query("INSERT INTO account_entries(entry_date, category, entry_type, amount_mode, bilty_id, haleeb_bilty_id, amount, note)
-                          SELECT CURDATE(),
-                                 COALESCE(NULLIF(e.category,''), 'feed'),
-                                 'credit',
-                                 COALESCE(NULLIF(e.amount_mode,''), 'cash'),
-                                 NULL,
-                                 NULL,
-                                 e.amount,
-                                 CONCAT('Auto Return - Bulk Delete Feed Bilty ', COALESCE(NULLIF(b.bilty_no,''), CONCAT('#', b.id)))
-                          FROM bilty b
-                          JOIN account_entries e ON e.bilty_id = b.id
+            $conn->query("UPDATE account_entries e
+                          JOIN bilty b ON e.bilty_id = b.id
+                          SET e.amount = 0,
+                              e.note = CONCAT(
+                                  CASE
+                                      WHEN COALESCE(NULLIF(e.note,''), '') = '' THEN CONCAT('Auto Driver Payment Request - Feed Bilty ', COALESCE(NULLIF(b.bilty_no,''), CONCAT('#', b.id)))
+                                      ELSE e.note
+                                  END,
+                                  ' | Reversed on Bulk Delete - Feed Bilty ',
+                                  COALESCE(NULLIF(b.bilty_no,''), CONCAT('#', b.id))
+                              )
                           WHERE e.entry_type='debit' AND e.amount > 0");
             $conn->query("DELETE FROM bilty");
         }

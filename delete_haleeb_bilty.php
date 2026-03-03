@@ -25,28 +25,30 @@ $biltyStmt->execute();
 $biltyRow = $biltyStmt->get_result()->fetch_assoc();
 $biltyStmt->close();
 
-$entriesStmt = $conn->prepare("SELECT entry_date, category, amount_mode, amount FROM account_entries WHERE haleeb_bilty_id=? AND entry_type='debit'");
+$entriesStmt = $conn->prepare("SELECT id, note, amount FROM account_entries WHERE haleeb_bilty_id=? AND entry_type='debit'");
 $entriesStmt->bind_param("i", $id);
 $entriesStmt->execute();
 $entriesRes = $entriesStmt->get_result();
 
-$insReturn = $conn->prepare("INSERT INTO account_entries(entry_date, category, entry_type, amount_mode, bilty_id, haleeb_bilty_id, amount, note) VALUES(?, ?, 'credit', ?, NULL, NULL, ?, ?)");
-$today = date('Y-m-d');
 $tokenNo = $biltyRow && isset($biltyRow['token_no']) ? (string)$biltyRow['token_no'] : (string)$id;
+$updEntry = $conn->prepare("UPDATE account_entries SET amount=0, note=? WHERE id=? AND entry_type='debit'");
 
 while($entriesRes && $r = $entriesRes->fetch_assoc()){
-$entryDate = $today;
-$category = isset($r['category']) ? (string)$r['category'] : 'haleeb';
-$amountMode = isset($r['amount_mode']) && $r['amount_mode'] !== '' ? (string)$r['amount_mode'] : 'cash';
 $amount = isset($r['amount']) ? (float)$r['amount'] : 0;
 if($amount <= 0){
 continue;
 }
-$note = "Auto Return - Deleted Haleeb Token " . $tokenNo;
-$insReturn->bind_param("sssds", $entryDate, $category, $amountMode, $amount, $note);
-$insReturn->execute();
+$entryId = isset($r['id']) ? (int)$r['id'] : 0;
+if($entryId <= 0){
+continue;
 }
-$insReturn->close();
+$oldNote = isset($r['note']) ? trim((string)$r['note']) : '';
+$baseNote = $oldNote !== '' ? $oldNote : ("Auto Driver Payment Request - Haleeb Token " . $tokenNo);
+$note = $baseNote . " | Reversed on Delete - Haleeb Token " . $tokenNo;
+$updEntry->bind_param("si", $note, $entryId);
+$updEntry->execute();
+}
+$updEntry->close();
 $entriesStmt->close();
 
 $delStmt = $conn->prepare("DELETE FROM haleeb_bilty WHERE id=?");

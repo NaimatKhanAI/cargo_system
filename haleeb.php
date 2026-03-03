@@ -84,17 +84,17 @@ if(isset($_GET['delete_all']) && $_GET['delete_all'] === '1'){
         $deletedCount = $countRow ? (int)$countRow['c'] : 0;
 
         if($deletedCount > 0){
-            $conn->query("INSERT INTO account_entries(entry_date, category, entry_type, amount_mode, bilty_id, haleeb_bilty_id, amount, note)
-                          SELECT CURDATE(),
-                                 COALESCE(NULLIF(e.category,''), 'haleeb'),
-                                 'credit',
-                                 COALESCE(NULLIF(e.amount_mode,''), 'cash'),
-                                 NULL,
-                                 NULL,
-                                 e.amount,
-                                 CONCAT('Auto Return - Bulk Delete Haleeb Token ', COALESCE(NULLIF(h.token_no,''), CONCAT('#', h.id)))
-                          FROM haleeb_bilty h
-                          JOIN account_entries e ON e.haleeb_bilty_id = h.id
+            $conn->query("UPDATE account_entries e
+                          JOIN haleeb_bilty h ON e.haleeb_bilty_id = h.id
+                          SET e.amount = 0,
+                              e.note = CONCAT(
+                                  CASE
+                                      WHEN COALESCE(NULLIF(e.note,''), '') = '' THEN CONCAT('Auto Driver Payment Request - Haleeb Token ', COALESCE(NULLIF(h.token_no,''), CONCAT('#', h.id)))
+                                      ELSE e.note
+                                  END,
+                                  ' | Reversed on Bulk Delete - Haleeb Token ',
+                                  COALESCE(NULLIF(h.token_no,''), CONCAT('#', h.id))
+                              )
                           WHERE e.entry_type='debit' AND e.amount > 0");
             $conn->query("DELETE FROM haleeb_bilty");
         }

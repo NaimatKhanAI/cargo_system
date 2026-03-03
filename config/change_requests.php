@@ -244,24 +244,25 @@ function apply_feed_delete_local($conn, $id){
     $biltyStmt->close();
     if(!$biltyRow) return false;
 
-    $entriesStmt = $conn->prepare("SELECT category, amount_mode, amount FROM account_entries WHERE bilty_id=? AND entry_type='debit'");
+    $entriesStmt = $conn->prepare("SELECT id, note, amount FROM account_entries WHERE bilty_id=? AND entry_type='debit'");
     $entriesStmt->bind_param("i", $id);
     $entriesStmt->execute();
     $entriesRes = $entriesStmt->get_result();
 
-    $insReturn = $conn->prepare("INSERT INTO account_entries(entry_date, category, entry_type, amount_mode, bilty_id, haleeb_bilty_id, amount, note) VALUES(?, ?, 'credit', ?, NULL, NULL, ?, ?)");
-    $today = date('Y-m-d');
     $biltyNo = isset($biltyRow['bilty_no']) ? (string)$biltyRow['bilty_no'] : (string)$id;
+    $updEntry = $conn->prepare("UPDATE account_entries SET amount=0, note=? WHERE id=? AND entry_type='debit'");
     while($entriesRes && $r = $entriesRes->fetch_assoc()){
-        $category = isset($r['category']) ? (string)$r['category'] : 'feed';
-        $amountMode = isset($r['amount_mode']) && $r['amount_mode'] !== '' ? (string)$r['amount_mode'] : 'cash';
         $amount = isset($r['amount']) ? (float)$r['amount'] : 0;
         if($amount <= 0) continue;
-        $note = "Auto Return - Deleted Feed Bilty " . $biltyNo;
-        $insReturn->bind_param("sssds", $today, $category, $amountMode, $amount, $note);
-        $insReturn->execute();
+        $entryId = isset($r['id']) ? (int)$r['id'] : 0;
+        if($entryId <= 0) continue;
+        $oldNote = isset($r['note']) ? trim((string)$r['note']) : '';
+        $baseNote = $oldNote !== '' ? $oldNote : ("Auto Driver Payment Request - Feed Bilty " . $biltyNo);
+        $note = $baseNote . " | Reversed on Delete - Feed Bilty " . $biltyNo;
+        $updEntry->bind_param("si", $note, $entryId);
+        $updEntry->execute();
     }
-    $insReturn->close();
+    $updEntry->close();
     $entriesStmt->close();
 
     $delStmt = $conn->prepare("DELETE FROM bilty WHERE id=?");
@@ -280,24 +281,25 @@ function apply_haleeb_delete_local($conn, $id){
     $biltyStmt->close();
     if(!$biltyRow) return false;
 
-    $entriesStmt = $conn->prepare("SELECT category, amount_mode, amount FROM account_entries WHERE haleeb_bilty_id=? AND entry_type='debit'");
+    $entriesStmt = $conn->prepare("SELECT id, note, amount FROM account_entries WHERE haleeb_bilty_id=? AND entry_type='debit'");
     $entriesStmt->bind_param("i", $id);
     $entriesStmt->execute();
     $entriesRes = $entriesStmt->get_result();
 
-    $insReturn = $conn->prepare("INSERT INTO account_entries(entry_date, category, entry_type, amount_mode, bilty_id, haleeb_bilty_id, amount, note) VALUES(?, ?, 'credit', ?, NULL, NULL, ?, ?)");
-    $today = date('Y-m-d');
     $tokenNo = isset($biltyRow['token_no']) ? (string)$biltyRow['token_no'] : (string)$id;
+    $updEntry = $conn->prepare("UPDATE account_entries SET amount=0, note=? WHERE id=? AND entry_type='debit'");
     while($entriesRes && $r = $entriesRes->fetch_assoc()){
-        $category = isset($r['category']) ? (string)$r['category'] : 'haleeb';
-        $amountMode = isset($r['amount_mode']) && $r['amount_mode'] !== '' ? (string)$r['amount_mode'] : 'cash';
         $amount = isset($r['amount']) ? (float)$r['amount'] : 0;
         if($amount <= 0) continue;
-        $note = "Auto Return - Deleted Haleeb Token " . $tokenNo;
-        $insReturn->bind_param("sssds", $today, $category, $amountMode, $amount, $note);
-        $insReturn->execute();
+        $entryId = isset($r['id']) ? (int)$r['id'] : 0;
+        if($entryId <= 0) continue;
+        $oldNote = isset($r['note']) ? trim((string)$r['note']) : '';
+        $baseNote = $oldNote !== '' ? $oldNote : ("Auto Driver Payment Request - Haleeb Token " . $tokenNo);
+        $note = $baseNote . " | Reversed on Delete - Haleeb Token " . $tokenNo;
+        $updEntry->bind_param("si", $note, $entryId);
+        $updEntry->execute();
     }
-    $insReturn->close();
+    $updEntry->close();
     $entriesStmt->close();
 
     $delStmt = $conn->prepare("DELETE FROM haleeb_bilty WHERE id=?");
