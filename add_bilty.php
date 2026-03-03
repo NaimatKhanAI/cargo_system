@@ -337,6 +337,17 @@ $today = date('Y-m-d');
         </div>
         <?php if($isSuperAdmin): ?>
           <div class="field">
+            <label for="freight_payment_type">Driver Payment</label>
+            <select id="freight_payment_type" name="freight_payment_type" required>
+              <option value="to_pay">To Pay</option>
+              <option value="paid">Paid</option>
+            </select>
+          </div>
+        <?php else: ?>
+          <input type="hidden" name="freight_payment_type" value="to_pay">
+        <?php endif; ?>
+        <?php if($isSuperAdmin): ?>
+          <div class="field">
             <label for="tender">Tender</label>
             <input id="tender" type="number" name="tender" placeholder="0" min="0" required>
             <input id="tender_raw" type="hidden" name="tender_raw" value="">

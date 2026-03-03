@@ -38,7 +38,7 @@ if($linkedRequestId > 0 && auth_can_direct_modify()){
         $linkedRequest = $candidate;
         $prefill = request_payload_decode_local(isset($candidate['payload']) ? (string)$candidate['payload'] : '');
         if(count($prefill) > 0){
-            $map = ['sr_no', 'date', 'vehicle', 'bilty_no', 'party', 'location', 'bags', 'freight', 'commission', 'tender'];
+            $map = ['sr_no', 'date', 'vehicle', 'bilty_no', 'party', 'location', 'bags', 'freight', 'commission', 'freight_payment_type', 'tender'];
             foreach($map as $key){
                 if(array_key_exists($key, $prefill)){
                     $row[$key] = $prefill[$key];
@@ -58,6 +58,16 @@ if(isset($_POST['update'])){
     $bags = isset($_POST['bags']) ? max(0, (int)$_POST['bags']) : 0;
     $f = isset($_POST['freight']) ? (int)$_POST['freight'] : 0;
     $commission = isset($_POST['commission']) ? max(0, (int)$_POST['commission']) : 0;
+    $freightPaymentType = isset($_POST['freight_payment_type']) ? strtolower(trim((string)$_POST['freight_payment_type'])) : (isset($row['freight_payment_type']) ? (string)$row['freight_payment_type'] : 'to_pay');
+    if(!in_array($freightPaymentType, ['to_pay', 'paid'], true)){
+        $freightPaymentType = 'to_pay';
+    }
+    if(!auth_can_direct_modify()){
+        $freightPaymentType = isset($row['freight_payment_type']) ? (string)$row['freight_payment_type'] : 'to_pay';
+        if(!in_array($freightPaymentType, ['to_pay', 'paid'], true)){
+            $freightPaymentType = 'to_pay';
+        }
+    }
     $submittedTender = isset($_POST['tender']) ? (float)$_POST['tender'] : 0.0;
     $baseTender = $submittedTender;
     if(isset($_POST['tender_raw']) && trim((string)$_POST['tender_raw']) !== ''){
@@ -81,6 +91,7 @@ if(isset($_POST['update'])){
             'bags' => $bags,
             'freight' => $f,
             'commission' => $commission,
+            'freight_payment_type' => $freightPaymentType,
             'tender' => $t
         ];
         $requestId = create_change_request_local($conn, 'feed', 'bilty', $id, 'feed_update', $payload, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0);
@@ -100,10 +111,11 @@ if(isset($_POST['update'])){
             'bags' => isset($row['bags']) ? $row['bags'] : 0,
             'freight' => isset($row['freight']) ? $row['freight'] : 0,
             'commission' => isset($row['commission']) ? $row['commission'] : 0,
+            'freight_payment_type' => isset($row['freight_payment_type']) ? $row['freight_payment_type'] : 'to_pay',
             'tender' => isset($row['tender']) ? $row['tender'] : 0,
         ];
-        $stmt = $conn->prepare("UPDATE bilty SET sr_no=?, date=?, vehicle=?, bilty_no=?, party=?, location=?, bags=?, freight=?, commission=?, original_freight=?, tender=?, profit=? WHERE id=?");
-        $stmt->bind_param("ssssssiiiiiii", $sr, $d, $v, $b, $party, $l, $bags, $f, $commission, $totalFreight, $t, $p, $id);
+        $stmt = $conn->prepare("UPDATE bilty SET sr_no=?, date=?, vehicle=?, bilty_no=?, party=?, location=?, bags=?, freight=?, commission=?, freight_payment_type=?, original_freight=?, tender=?, profit=? WHERE id=?");
+        $stmt->bind_param("ssssssiiisiiii", $sr, $d, $v, $b, $party, $l, $bags, $f, $commission, $freightPaymentType, $totalFreight, $t, $p, $id);
         $stmt->execute(); $stmt->close();
         activity_notify_local(
             $conn,
@@ -124,6 +136,7 @@ if(isset($_POST['update'])){
                     'bags' => $bags,
                     'freight' => $f,
                     'commission' => $commission,
+                    'freight_payment_type' => $freightPaymentType,
                     'tender' => $t
                 ]
             ],
@@ -272,6 +285,18 @@ if(isset($_POST['update'])){
           <label for="commission">Commission</label>
           <input id="commission" type="number" name="commission" value="<?php echo htmlspecialchars(isset($row['commission']) ? $row['commission'] : 0); ?>" min="0" required>
         </div>
+        <?php if($isSuperAdmin): ?>
+          <div class="field">
+            <label for="freight_payment_type">Driver Payment</label>
+            <?php $currentPaymentType = isset($row['freight_payment_type']) ? strtolower((string)$row['freight_payment_type']) : 'to_pay'; if(!in_array($currentPaymentType, ['to_pay','paid'], true)) $currentPaymentType = 'to_pay'; ?>
+            <select id="freight_payment_type" name="freight_payment_type" required>
+              <option value="to_pay" <?php echo $currentPaymentType === 'to_pay' ? 'selected' : ''; ?>>To Pay</option>
+              <option value="paid" <?php echo $currentPaymentType === 'paid' ? 'selected' : ''; ?>>Paid</option>
+            </select>
+          </div>
+        <?php else: ?>
+          <input type="hidden" name="freight_payment_type" value="<?php echo htmlspecialchars(isset($row['freight_payment_type']) ? $row['freight_payment_type'] : 'to_pay'); ?>">
+        <?php endif; ?>
         <?php if($isSuperAdmin): ?>
           <div class="field">
             <label for="tender">Tender</label>

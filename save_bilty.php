@@ -16,9 +16,14 @@ $l = isset($_POST['location']) ? trim((string)$_POST['location']) : '';
 $bags = isset($_POST['bags']) ? max(0, (int)$_POST['bags']) : 0;
 $f = isset($_POST['freight']) ? max(0, (int)round((float)$_POST['freight'])) : 0;
 $commission = isset($_POST['commission']) ? max(0, (int)round((float)$_POST['commission'])) : 0;
+$freightPaymentType = isset($_POST['freight_payment_type']) ? strtolower(trim((string)$_POST['freight_payment_type'])) : 'to_pay';
+if(!in_array($freightPaymentType, ['to_pay', 'paid'], true)){
+    $freightPaymentType = 'to_pay';
+}
 $feedPortion = normalize_feed_portion_local(isset($_POST['feed_portion']) ? (string)$_POST['feed_portion'] : '');
 if(!auth_is_super_admin()){
     $feedPortion = auth_get_feed_portion();
+    $freightPaymentType = 'to_pay';
 }
 
 $submittedTender = isset($_POST['tender']) ? (float)$_POST['tender'] : 0.0;
@@ -38,11 +43,22 @@ $totalFreight = max(0, $f - $commission);
 
 $p = $t - $totalFreight;
 
-$stmt = $conn->prepare("INSERT INTO bilty(sr_no, date, vehicle, bilty_no, party, feed_portion, location, bags, freight, commission, original_freight, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-$stmt->bind_param("sssssssiiiiii", $sr, $d, $v, $b, $party, $feedPortion, $l, $bags, $f, $commission, $totalFreight, $t, $p);
+$stmt = $conn->prepare("INSERT INTO bilty(sr_no, date, vehicle, bilty_no, party, feed_portion, location, bags, freight, commission, freight_payment_type, original_freight, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+$stmt->bind_param("sssssssiiisiii", $sr, $d, $v, $b, $party, $feedPortion, $l, $bags, $f, $commission, $freightPaymentType, $totalFreight, $t, $p);
 $ok = $stmt->execute();
 $newId = (int)$stmt->insert_id;
 $stmt->close();
+
+if($ok && $freightPaymentType === 'paid' && auth_can_direct_modify() && $totalFreight > 0){
+    $entryDate = $d !== '' ? $d : date('Y-m-d');
+    $entryCategory = 'feed';
+    $entryMode = 'account';
+    $entryNote = 'Auto Driver Payment - Feed Bilty ' . ($b !== '' ? $b : ('#' . $newId));
+    $autoPay = $conn->prepare("INSERT INTO account_entries(entry_date, category, entry_type, amount_mode, bilty_id, haleeb_bilty_id, amount, note) VALUES(?, ?, 'debit', ?, ?, NULL, ?, ?)");
+    $autoPay->bind_param("sssids", $entryDate, $entryCategory, $entryMode, $newId, $totalFreight, $entryNote);
+    $autoPay->execute();
+    $autoPay->close();
+}
 
 if($ok){
     activity_notify_local(
@@ -60,6 +76,7 @@ if($ok){
             'feed_portion' => $feedPortion,
             'freight' => $f,
             'commission' => $commission,
+            'freight_payment_type' => $freightPaymentType,
             'tender' => $t
         ],
         isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0

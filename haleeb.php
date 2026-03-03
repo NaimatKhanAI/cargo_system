@@ -7,6 +7,59 @@ auth_require_module_access('haleeb');
 $canDirectModify = auth_can_direct_modify();
 $isSuperAdmin = auth_is_super_admin();
 
+if(isset($_GET['confirm_driver_pay'])){
+    if(!$canDirectModify){
+        header("location:haleeb.php?driver_pay=denied");
+        exit();
+    }
+    $confirmId = isset($_GET['confirm_driver_pay']) ? (int)$_GET['confirm_driver_pay'] : 0;
+    if($confirmId <= 0){
+        header("location:haleeb.php?driver_pay=error");
+        exit();
+    }
+
+    $rowStmt = $conn->prepare("SELECT id, date, token_no, freight_payment_type, GREATEST((COALESCE(freight,0) - COALESCE(commission,0)), 0) AS base_freight FROM haleeb_bilty WHERE id=? LIMIT 1");
+    $rowStmt->bind_param("i", $confirmId);
+    $rowStmt->execute();
+    $driverRow = $rowStmt->get_result()->fetch_assoc();
+    $rowStmt->close();
+    if(!$driverRow){
+        header("location:haleeb.php?driver_pay=error");
+        exit();
+    }
+
+    $paidStmt = $conn->prepare("SELECT COALESCE(SUM(amount),0) AS paid_total FROM account_entries WHERE haleeb_bilty_id=? AND entry_type='debit'");
+    $paidStmt->bind_param("i", $confirmId);
+    $paidStmt->execute();
+    $paidRow = $paidStmt->get_result()->fetch_assoc();
+    $paidStmt->close();
+
+    $baseFreight = isset($driverRow['base_freight']) ? (float)$driverRow['base_freight'] : 0.0;
+    $paidTotal = $paidRow && isset($paidRow['paid_total']) ? (float)$paidRow['paid_total'] : 0.0;
+    $remaining = max(0, $baseFreight - $paidTotal);
+    if($remaining <= 0.0001){
+        header("location:haleeb.php?driver_pay=already");
+        exit();
+    }
+
+    $entryDate = isset($driverRow['date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$driverRow['date']) ? (string)$driverRow['date'] : date('Y-m-d');
+    $entryCategory = 'haleeb';
+    $entryMode = 'account';
+    $entryRef = isset($driverRow['token_no']) ? trim((string)$driverRow['token_no']) : '';
+    $entryNote = 'Driver Payment Confirmed - Haleeb Token ' . ($entryRef !== '' ? $entryRef : ('#' . $confirmId));
+    $ins = $conn->prepare("INSERT INTO account_entries(entry_date, category, entry_type, amount_mode, bilty_id, haleeb_bilty_id, amount, note) VALUES(?, ?, 'debit', ?, NULL, ?, ?, ?)");
+    $ins->bind_param("sssids", $entryDate, $entryCategory, $entryMode, $confirmId, $remaining, $entryNote);
+    $ok = $ins->execute();
+    $ins->close();
+
+    if($ok){
+        header("location:haleeb.php?driver_pay=success");
+    } else {
+        header("location:haleeb.php?driver_pay=error");
+    }
+    exit();
+}
+
 if(isset($_GET['delete_all']) && $_GET['delete_all'] === '1'){
     if(!auth_can_direct_modify()){
         header("location:haleeb.php?clear=denied");
@@ -80,6 +133,13 @@ if (isset($_GET['pay'])) {
     if ($_GET['pay'] === 'success') $pay_message = "Payment posted successfully.";
     elseif ($_GET['pay'] === 'error') $pay_message = "Payment failed. Please try again.";
     elseif ($_GET['pay'] === 'requested') $pay_message = "Payment request sent to account ledger admin for approval.";
+}
+$driver_pay_message = "";
+if(isset($_GET['driver_pay'])){
+    if($_GET['driver_pay'] === 'success') $driver_pay_message = "Driver payment confirmed and debit posted.";
+    elseif($_GET['driver_pay'] === 'already') $driver_pay_message = "Driver payment already confirmed.";
+    elseif($_GET['driver_pay'] === 'denied') $driver_pay_message = "Only super admin can confirm driver payment.";
+    elseif($_GET['driver_pay'] === 'error') $driver_pay_message = "Driver payment confirmation failed. Please try again.";
 }
 
 $clear_message = "";
@@ -267,11 +327,19 @@ if(count($bindValues) > 0){
   .act-btn { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; text-decoration: none; font-size: 13px; border: 1px solid transparent; transition: all 0.15s; cursor: pointer; }
   .act-pay { background: rgba(34,197,94,0.15); color: var(--green); border-color: rgba(34,197,94,0.25); }
   .act-pay:hover { background: rgba(34,197,94,0.25); }
+  .act-confirm { background: rgba(16,185,129,0.15); color: #10b981; border-color: rgba(16,185,129,0.25); }
+  .act-confirm:hover { background: rgba(16,185,129,0.25); }
   .act-edit { background: rgba(96,165,250,0.15); color: var(--accent); border-color: rgba(96,165,250,0.25); }
   .act-edit:hover { background: rgba(96,165,250,0.25); }
   .act-pdf { background: rgba(168,85,247,0.15); color: #c084fc; border-color: rgba(168,85,247,0.25); }
   .act-pdf:hover { background: rgba(168,85,247,0.25); }
-  .th-action { text-align: center; width: 90px; }
+  .th-action { text-align: center; width: 140px; }
+  .paytype-badge {
+    display: inline-block; padding: 3px 9px; font-size: 10px; font-weight: 700;
+    letter-spacing: 1px; text-transform: uppercase; border: 1px solid transparent;
+  }
+  .type-to-pay { background: rgba(245,158,11,0.14); color: #f59e0b; border-color: rgba(245,158,11,0.24); }
+  .type-paid { background: rgba(59,130,246,0.14); color: #60a5fa; border-color: rgba(59,130,246,0.24); }
   .rem-badge {
     display: inline-block; padding: 3px 9px; font-size: 10px; font-weight: 700;
     letter-spacing: 1px; text-transform: uppercase; border: 1px solid transparent;
@@ -397,6 +465,11 @@ if(count($bindValues) > 0){
       <?php echo htmlspecialchars($pay_message); ?>
     </div>
   <?php endif; ?>
+  <?php if($driver_pay_message !== ""): ?>
+    <div class="alert <?php echo (strpos($driver_pay_message, 'failed') !== false || strpos($driver_pay_message, 'Only super admin') !== false) ? 'error' : ''; ?>">
+      <?php echo htmlspecialchars($driver_pay_message); ?>
+    </div>
+  <?php endif; ?>
   <?php if($clear_message !== ""): ?>
     <div class="alert <?php echo strpos($clear_message,'failed') !== false ? 'error' : ''; ?>">
       <?php echo htmlspecialchars($clear_message); ?>
@@ -468,7 +541,7 @@ if(count($bindValues) > 0){
         <label for="a_h_status">Payment Status</label>
         <select id="a_h_status">
           <option value="">All</option>
-          <option value="paid">Paid</option>
+          <option value="confirmed">Confirmed</option>
           <option value="pending">Pending</option>
         </select>
       </div>
@@ -553,6 +626,8 @@ if(count($bindValues) > 0){
           <?php if($isSuperAdmin): ?><th>Tender</th><?php endif; ?>
           <th>Freight</th>
           <th>Commission</th>
+          <th>Driver Payment</th>
+          <th>Status</th>
           <th>Remaining</th>
           <?php if($isSuperAdmin): ?><th>Profit</th><?php endif; ?>
           <th class="th-action">Actions</th>
@@ -564,6 +639,10 @@ if(count($bindValues) > 0){
           $remaining = (float)($row['remaining_balance'] ?? 0);
           $commission = (float)($row['commission'] ?? 0);
           $totalCost = (float)($row['total_cost'] ?? max(((float)($row['freight'] ?? 0)) - $commission, 0));
+          $paymentTypeRaw = isset($row['freight_payment_type']) ? strtolower(trim((string)$row['freight_payment_type'])) : 'to_pay';
+          if(!in_array($paymentTypeRaw, ['to_pay', 'paid'], true)){ $paymentTypeRaw = 'to_pay'; }
+          $paymentTypeLabel = $paymentTypeRaw === 'paid' ? 'Paid' : 'To Pay';
+          $driverStatus = $remaining <= 0.0001 ? 'Confirmed' : 'Pending';
           $stopsRaw = isset($row['stops']) ? (string)$row['stops'] : '';
           $sameStops = 0;
           $outStops = 0;
@@ -601,6 +680,16 @@ if(count($bindValues) > 0){
           <td>Rs <?php echo number_format((float)$row['freight'], 2); ?></td>
           <td>Rs <?php echo number_format($commission, 2); ?></td>
           <td>
+            <span class="paytype-badge <?php echo $paymentTypeRaw === 'paid' ? 'type-paid' : 'type-to-pay'; ?>">
+              <?php echo htmlspecialchars($paymentTypeLabel); ?>
+            </span>
+          </td>
+          <td>
+            <span class="rem-badge <?php echo $remaining <= 0.0001 ? 'rem-zero' : 'rem-pending'; ?>">
+              <?php echo htmlspecialchars($driverStatus); ?>
+            </span>
+          </td>
+          <td>
             <span class="rem-badge <?php echo $remaining <= 0 ? 'rem-zero' : 'rem-pending'; ?>">
               Rs <?php echo number_format($remaining, 2); ?>
             </span>
@@ -613,6 +702,9 @@ if(count($bindValues) > 0){
           <td>
             <div class="action-cell">
               <a class="act-btn act-pay" href="pay_now_haleeb.php?id=<?php echo $row['id']; ?>" title="Pay">&#8377;</a>
+              <?php if($canDirectModify && $paymentTypeRaw === 'to_pay' && $remaining > 0.0001): ?>
+                <a class="act-btn act-confirm" href="haleeb.php?confirm_driver_pay=<?php echo (int)$row['id']; ?>" title="Confirm Driver Payment" onclick="return confirm('Confirm full driver payment and post debit from haleeb account?')">&#10003;</a>
+              <?php endif; ?>
               <a class="act-btn act-edit" href="edit_haleeb_bilty.php?id=<?php echo $row['id']; ?>" title="Edit">&#9998;</a>
               <a class="act-btn act-pdf" href="haleeb_pdf.php?id=<?php echo $row['id']; ?>" target="_blank" title="PDF">&#128196;</a>
             </div>
@@ -775,7 +867,7 @@ if(count($bindValues) > 0){
       if(ok && x.type && r.typeL.indexOf(x.type) === -1) ok = false;
       if(ok && x.party && r.partyL.indexOf(x.party) === -1) ok = false;
       if(ok && x.location && r.locationL.indexOf(x.location) === -1) ok = false;
-      if(ok && x.status === 'paid' && r.remaining > 0.0001) ok = false;
+      if(ok && (x.status === 'confirmed' || x.status === 'paid') && r.remaining > 0.0001) ok = false;
       if(ok && x.status === 'pending' && r.remaining <= 0.0001) ok = false;
       if(ok && x.sameMin !== null && r.sameStops < x.sameMin) ok = false;
       if(ok && x.outMin !== null && r.outStops < x.outMin) ok = false;

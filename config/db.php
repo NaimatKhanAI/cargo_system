@@ -110,6 +110,7 @@ location VARCHAR(100),
 bags INT DEFAULT 0,
 freight INT,
 commission INT DEFAULT 0,
+freight_payment_type VARCHAR(20) NOT NULL DEFAULT 'to_pay',
 original_freight INT NULL,
 tender INT,
 profit INT
@@ -127,6 +128,7 @@ location VARCHAR(100),
 stops VARCHAR(50) DEFAULT '',
 freight INT,
 commission INT DEFAULT 0,
+freight_payment_type VARCHAR(20) NOT NULL DEFAULT 'to_pay',
 tender INT,
 profit INT,
 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -167,8 +169,22 @@ if($haleebCommissionColCheck && $haleebCommissionColCheck->num_rows === 0){
 $conn->query("ALTER TABLE haleeb_bilty ADD commission INT NOT NULL DEFAULT 0 AFTER freight");
 }
 
+$biltyPaymentTypeColCheck = $conn->query("SHOW COLUMNS FROM bilty LIKE 'freight_payment_type'");
+if($biltyPaymentTypeColCheck && $biltyPaymentTypeColCheck->num_rows === 0){
+$conn->query("ALTER TABLE bilty ADD freight_payment_type VARCHAR(20) NOT NULL DEFAULT 'to_pay' AFTER commission");
+}
+
+$haleebPaymentTypeColCheck = $conn->query("SHOW COLUMNS FROM haleeb_bilty LIKE 'freight_payment_type'");
+if($haleebPaymentTypeColCheck && $haleebPaymentTypeColCheck->num_rows === 0){
+$conn->query("ALTER TABLE haleeb_bilty ADD freight_payment_type VARCHAR(20) NOT NULL DEFAULT 'to_pay' AFTER commission");
+}
+
 $conn->query("UPDATE bilty SET commission=0 WHERE commission IS NULL");
 $conn->query("UPDATE haleeb_bilty SET commission=0 WHERE commission IS NULL");
+$conn->query("UPDATE bilty SET freight_payment_type='to_pay' WHERE freight_payment_type IS NULL OR freight_payment_type=''");
+$conn->query("UPDATE haleeb_bilty SET freight_payment_type='to_pay' WHERE freight_payment_type IS NULL OR freight_payment_type=''");
+$conn->query("UPDATE bilty SET freight_payment_type='to_pay' WHERE freight_payment_type NOT IN ('to_pay','paid')");
+$conn->query("UPDATE haleeb_bilty SET freight_payment_type='to_pay' WHERE freight_payment_type NOT IN ('to_pay','paid')");
 $conn->query("UPDATE bilty SET profit = COALESCE(tender,0) - GREATEST(COALESCE(freight,0) - COALESCE(commission,0), 0)");
 $conn->query("UPDATE haleeb_bilty SET profit = COALESCE(tender,0) - GREATEST(COALESCE(freight,0) - COALESCE(commission,0), 0)");
 $conn->query("UPDATE bilty SET original_freight = GREATEST(COALESCE(freight,0) - COALESCE(commission,0), 0) WHERE original_freight IS NULL OR original_freight=0");

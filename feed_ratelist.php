@@ -354,13 +354,13 @@ $rows = $conn->query("SELECT id, source_file, source_image_path, sr_no, station_
               </option>
             <?php endforeach; ?>
           </select>
-          <input type="number" step="0.01" min="0" id="rc_petrol_old" name="rc_petrol_old" placeholder="Old petrol rate" value="<?php echo htmlspecialchars($rateChangePetrolOld); ?>">
-          <input type="number" step="0.01" min="0" id="rc_petrol_new" name="rc_petrol_new" placeholder="New petrol rate" value="<?php echo htmlspecialchars($rateChangePetrolNew); ?>">
+          <input type="number" step="any" min="0" id="rc_petrol_old" name="rc_petrol_old" placeholder="Old petrol rate" value="<?php echo htmlspecialchars($rateChangePetrolOld); ?>">
+          <input type="number" step="any" min="0" id="rc_petrol_new" name="rc_petrol_new" placeholder="New petrol rate" value="<?php echo htmlspecialchars($rateChangePetrolNew); ?>">
           <select id="rc_mode" name="rc_mode" required>
             <option value="increment" <?php echo $rateChangeMode === 'increment' ? 'selected' : ''; ?>>Increment</option>
             <option value="decrement" <?php echo $rateChangeMode === 'decrement' ? 'selected' : ''; ?>>Decrement</option>
           </select>
-          <input type="number" step="0.01" min="0" id="rc_percent" name="rc_percent" placeholder="Percent e.g. 2" value="<?php echo htmlspecialchars($rateChangePercent); ?>" required>
+          <input type="number" step="any" min="0" id="rc_percent" name="rc_percent" placeholder="Percent e.g. 2" value="<?php echo htmlspecialchars($rateChangePercent); ?>" required>
           <input type="text" name="rc_new_column_label" placeholder="New column name e.g. AA" value="<?php echo htmlspecialchars($rateChangeLabel); ?>" required>
           <button class="nav-btn primary" type="submit" name="apply_rate_change">Apply</button>
         </div>

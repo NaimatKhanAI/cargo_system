@@ -19,15 +19,33 @@ $stops = 'SC:' . max(0, $sameCityCount) . '|OC:' . max(0, $outCityCount);
 $t = isset($_POST['tender']) ? (int)$_POST['tender'] : 0;
 $f = isset($_POST['freight']) ? (int)$_POST['freight'] : 0;
 $commission = isset($_POST['commission']) ? max(0, (int)$_POST['commission']) : 0;
+$freightPaymentType = isset($_POST['freight_payment_type']) ? strtolower(trim((string)$_POST['freight_payment_type'])) : 'to_pay';
+if(!in_array($freightPaymentType, ['to_pay', 'paid'], true)){
+    $freightPaymentType = 'to_pay';
+}
+if(!auth_can_direct_modify()){
+    $freightPaymentType = 'to_pay';
+}
 $totalFreight = max(0, $f - $commission);
 
 $p = $t - $totalFreight;
 
-$stmt = $conn->prepare("INSERT INTO haleeb_bilty(date, vehicle, vehicle_type, delivery_note, token_no, party, location, stops, freight, commission, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-$stmt->bind_param("ssssssssiiii", $d, $v, $vt, $dn, $tn, $party, $l, $stops, $f, $commission, $t, $p);
+$stmt = $conn->prepare("INSERT INTO haleeb_bilty(date, vehicle, vehicle_type, delivery_note, token_no, party, location, stops, freight, commission, freight_payment_type, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+$stmt->bind_param("ssssssssiisii", $d, $v, $vt, $dn, $tn, $party, $l, $stops, $f, $commission, $freightPaymentType, $t, $p);
 $ok = $stmt->execute();
 $newId = (int)$stmt->insert_id;
 $stmt->close();
+
+if($ok && $freightPaymentType === 'paid' && auth_can_direct_modify() && $totalFreight > 0){
+    $entryDate = $d !== '' ? $d : date('Y-m-d');
+    $entryCategory = 'haleeb';
+    $entryMode = 'account';
+    $entryNote = 'Auto Driver Payment - Haleeb Token ' . ($tn !== '' ? $tn : ('#' . $newId));
+    $autoPay = $conn->prepare("INSERT INTO account_entries(entry_date, category, entry_type, amount_mode, bilty_id, haleeb_bilty_id, amount, note) VALUES(?, ?, 'debit', ?, NULL, ?, ?, ?)");
+    $autoPay->bind_param("sssids", $entryDate, $entryCategory, $entryMode, $newId, $totalFreight, $entryNote);
+    $autoPay->execute();
+    $autoPay->close();
+}
 
 if($ok){
     activity_notify_local(
@@ -43,6 +61,7 @@ if($ok){
             'party' => $party,
             'freight' => $f,
             'commission' => $commission,
+            'freight_payment_type' => $freightPaymentType,
             'tender' => $t
         ],
         isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0
