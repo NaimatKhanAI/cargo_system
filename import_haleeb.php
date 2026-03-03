@@ -36,7 +36,7 @@ function parse_csv_number($value){
     $value = preg_replace('/[^0-9.\-]/', '', $value);
     if($value === '' || $value === '-' || $value === '--') return null;
     if(!is_numeric($value)) return null;
-    return (int)round((float)$value);
+    return round((float)$value, 3);
 }
 
 function parse_haleeb_date_to_mysql($value){
@@ -310,7 +310,7 @@ foreach($allRows as $data){
         $profit = $tender - max(0, ($freight - $commission));
     }
 
-    $stmt->bind_param("ssssssssiiii", $date, $vehicle, $vehicleType, $deliveryNote, $tokenNo, $party, $location, $stops, $freight, $commission, $tender, $profit);
+    $stmt->bind_param("ssssssssdddd", $date, $vehicle, $vehicleType, $deliveryNote, $tokenNo, $party, $location, $stops, $freight, $commission, $tender, $profit);
     if($stmt->execute()){
         $inserted++;
     } else {

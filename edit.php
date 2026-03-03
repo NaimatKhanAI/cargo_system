@@ -56,8 +56,8 @@ if(isset($_POST['update'])){
     $party = isset($_POST['party']) ? trim($_POST['party']) : '';
     $l = isset($_POST['location']) ? trim($_POST['location']) : '';
     $bags = isset($_POST['bags']) ? max(0, (int)$_POST['bags']) : 0;
-    $f = isset($_POST['freight']) ? (int)$_POST['freight'] : 0;
-    $commission = isset($_POST['commission']) ? max(0, (int)$_POST['commission']) : 0;
+    $f = isset($_POST['freight']) ? max(0, round((float)$_POST['freight'], 3)) : 0.0;
+    $commission = isset($_POST['commission']) ? max(0, round((float)$_POST['commission'], 3)) : 0.0;
     $freightPaymentType = isset($_POST['freight_payment_type']) ? strtolower(trim((string)$_POST['freight_payment_type'])) : (isset($row['freight_payment_type']) ? (string)$row['freight_payment_type'] : 'to_pay');
     if(!in_array($freightPaymentType, ['to_pay', 'paid'], true)){
         $freightPaymentType = 'to_pay';
@@ -78,7 +78,7 @@ if(isset($_POST['update'])){
     }
     $baseBags = 200;
     $scaledTender = ($bags > 0) ? (($baseTender / $baseBags) * $bags) : 0.0;
-    $t = ($bags > 300) ? (int)round($scaledTender * 0.90) : (int)round($scaledTender);
+    $t = ($bags > 300) ? round($scaledTender * 0.90, 3) : round($scaledTender, 3);
     $totalFreight = max(0, $f - $commission);
     if(!auth_can_direct_modify()){
         $payload = [
@@ -115,7 +115,7 @@ if(isset($_POST['update'])){
             'tender' => isset($row['tender']) ? $row['tender'] : 0,
         ];
         $stmt = $conn->prepare("UPDATE bilty SET sr_no=?, date=?, vehicle=?, bilty_no=?, party=?, location=?, bags=?, freight=?, commission=?, freight_payment_type=?, original_freight=?, tender=?, profit=? WHERE id=?");
-        $stmt->bind_param("ssssssiiisiiii", $sr, $d, $v, $b, $party, $l, $bags, $f, $commission, $freightPaymentType, $totalFreight, $t, $p, $id);
+        $stmt->bind_param("ssssssiddsdddi", $sr, $d, $v, $b, $party, $l, $bags, $f, $commission, $freightPaymentType, $totalFreight, $t, $p, $id);
         $stmt->execute(); $stmt->close();
         activity_notify_local(
             $conn,
@@ -279,11 +279,11 @@ if(isset($_POST['update'])){
         </div>
         <div class="field">
           <label for="freight">Freight</label>
-          <input id="freight" type="number" name="freight" value="<?php echo htmlspecialchars($row['freight']); ?>" min="0" required>
+          <input id="freight" type="number" name="freight" value="<?php echo htmlspecialchars($row['freight']); ?>" min="0" step="any" required>
         </div>
         <div class="field">
           <label for="commission">Commission</label>
-          <input id="commission" type="number" name="commission" value="<?php echo htmlspecialchars(isset($row['commission']) ? $row['commission'] : 0); ?>" min="0" required>
+          <input id="commission" type="number" name="commission" value="<?php echo htmlspecialchars(isset($row['commission']) ? $row['commission'] : 0); ?>" min="0" step="any" required>
         </div>
         <?php if($isSuperAdmin): ?>
           <div class="field">
@@ -300,7 +300,7 @@ if(isset($_POST['update'])){
         <?php if($isSuperAdmin): ?>
           <div class="field">
             <label for="tender">Tender</label>
-            <input id="tender" type="number" name="tender" value="<?php echo htmlspecialchars($row['tender']); ?>" min="0" required>
+            <input id="tender" type="number" name="tender" value="<?php echo htmlspecialchars($row['tender']); ?>" min="0" step="any" required>
             <input id="tender_raw" type="hidden" name="tender_raw" value="">
             <div class="field-meta" id="tender_discount_note"></div>
           </div>
@@ -339,7 +339,7 @@ if(isset($_POST['update'])){
   }
 
   function roundTender(v){
-    return Math.round(v);
+    return Math.round(v * 1000) / 1000;
   }
 
   function parseNumeric(v){

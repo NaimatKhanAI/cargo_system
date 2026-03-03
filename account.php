@@ -741,7 +741,7 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
                         class="pay-req-amount-input"
                         type="number"
                         name="request_amount"
-                        step="0.01"
+                        step="any"
                         value="<?php echo htmlspecialchars(number_format($amt, 2, '.', '')); ?>"
                         placeholder="0.00"
                       >
@@ -795,7 +795,7 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
           </div>
           <div class="form-field">
             <label>Amount (Rs)</label>
-            <input type="number" step="0.01" min="0.01" name="amount" placeholder="0.00" value="<?php echo htmlspecialchars($formAmount); ?>" required>
+            <input type="number" step="any" min="0.001" name="amount" placeholder="0.00" value="<?php echo htmlspecialchars($formAmount); ?>" required>
           </div>
           <div class="form-field">
             <label>Note (optional)</label>

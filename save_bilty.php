@@ -14,8 +14,8 @@ $b = isset($_POST['bilty']) ? trim((string)$_POST['bilty']) : '';
 $party = isset($_POST['party']) ? trim((string)$_POST['party']) : '';
 $l = isset($_POST['location']) ? trim((string)$_POST['location']) : '';
 $bags = isset($_POST['bags']) ? max(0, (int)$_POST['bags']) : 0;
-$f = isset($_POST['freight']) ? max(0, (int)round((float)$_POST['freight'])) : 0;
-$commission = isset($_POST['commission']) ? max(0, (int)round((float)$_POST['commission'])) : 0;
+$f = isset($_POST['freight']) ? max(0, round((float)$_POST['freight'], 3)) : 0.0;
+$commission = isset($_POST['commission']) ? max(0, round((float)$_POST['commission'], 3)) : 0.0;
 $freightPaymentType = isset($_POST['freight_payment_type']) ? strtolower(trim((string)$_POST['freight_payment_type'])) : 'to_pay';
 if(!in_array($freightPaymentType, ['to_pay', 'paid'], true)){
     $freightPaymentType = 'to_pay';
@@ -38,13 +38,13 @@ if($baseTender < 0){
 $baseBags = 200;
 $bags = max(0, $bags);
 $scaledTender = ($bags > 0) ? (($baseTender / $baseBags) * $bags) : 0.0;
-$t = ($bags > 300) ? (int)round($scaledTender * 0.90) : (int)round($scaledTender);
+$t = ($bags > 300) ? round($scaledTender * 0.90, 3) : round($scaledTender, 3);
 $totalFreight = max(0, $f - $commission);
 
 $p = $t - $totalFreight;
 
 $stmt = $conn->prepare("INSERT INTO bilty(sr_no, date, vehicle, bilty_no, party, feed_portion, location, bags, freight, commission, freight_payment_type, original_freight, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-$stmt->bind_param("sssssssiiisiii", $sr, $d, $v, $b, $party, $feedPortion, $l, $bags, $f, $commission, $freightPaymentType, $totalFreight, $t, $p);
+$stmt->bind_param("sssssssiddsddd", $sr, $d, $v, $b, $party, $feedPortion, $l, $bags, $f, $commission, $freightPaymentType, $totalFreight, $t, $p);
 $ok = $stmt->execute();
 $newId = (int)$stmt->insert_id;
 $stmt->close();

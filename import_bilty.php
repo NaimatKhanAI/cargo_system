@@ -54,7 +54,7 @@ function parse_csv_number($value){
     $value = preg_replace('/[^0-9.\-]/', '', $value);
     if($value === '' || $value === '-' || $value === '--') return null;
     if(!is_numeric($value)) return null;
-    return (int)round((float)$value);
+    return round((float)$value, 3);
 }
 
 $stmt = $conn->prepare("INSERT INTO bilty(sr_no, date, vehicle, bilty_no, party, feed_portion, location, bags, freight, commission, original_freight, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
@@ -93,7 +93,8 @@ while(($data = fgetcsv($handle)) !== false){
         elseif(isset($headerMap['section'])) $portionRaw = $data[$headerMap['section']] ?? '';
         $feedPortion = normalize_feed_portion_local($portionRaw);
         $location = isset($headerMap['location']) ? ($data[$headerMap['location']] ?? '') : '';
-        $bags = parse_csv_number(isset($headerMap['bags']) ? ($data[$headerMap['bags']] ?? '') : '');
+        $bagsRaw = parse_csv_number(isset($headerMap['bags']) ? ($data[$headerMap['bags']] ?? '') : '');
+        $bags = $bagsRaw === null ? null : max(0, (int)round($bagsRaw));
         $freight = parse_csv_number(isset($headerMap['freight']) ? ($data[$headerMap['freight']] ?? '') : '');
         $commission = null;
         if(isset($headerMap['commission'])) $commission = parse_csv_number($data[$headerMap['commission']] ?? '');
@@ -127,14 +128,16 @@ while(($data = fgetcsv($handle)) !== false){
         $remaining = count($data) - $offset;
         if($remaining >= 10){
             // New format with bags + commission.
-            $bags = parse_csv_number($data[$offset + 5] ?? '');
+            $bagsRaw = parse_csv_number($data[$offset + 5] ?? '');
+            $bags = $bagsRaw === null ? null : max(0, (int)round($bagsRaw));
             $freight = parse_csv_number($data[$offset + 6] ?? '');
             $commission = parse_csv_number($data[$offset + 7] ?? '');
             $tender = parse_csv_number($data[$offset + 8] ?? '');
             $profit = parse_csv_number($data[$offset + 9] ?? '');
         } elseif($remaining >= 9){
             // New format with bags, no commission.
-            $bags = parse_csv_number($data[$offset + 5] ?? '');
+            $bagsRaw = parse_csv_number($data[$offset + 5] ?? '');
+            $bags = $bagsRaw === null ? null : max(0, (int)round($bagsRaw));
             $freight = parse_csv_number($data[$offset + 6] ?? '');
             $commission = 0;
             $tender = parse_csv_number($data[$offset + 7] ?? '');
@@ -174,7 +177,7 @@ while(($data = fgetcsv($handle)) !== false){
     }
 
     $totalFreight = max(0, ($freight - $commission));
-    $stmt->bind_param("sssssssiiiiii", $srNo, $date, $vehicle, $biltyNo, $party, $feedPortion, $location, $bags, $freight, $commission, $totalFreight, $tender, $profit);
+    $stmt->bind_param("sssssssiddddd", $srNo, $date, $vehicle, $biltyNo, $party, $feedPortion, $location, $bags, $freight, $commission, $totalFreight, $tender, $profit);
     if($stmt->execute()){
         $inserted++;
     } else {

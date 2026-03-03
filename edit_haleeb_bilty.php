@@ -64,9 +64,9 @@ if(isset($_POST['update'])){
     $sameCityCount = isset($_POST['same_city_count']) ? (int)$_POST['same_city_count'] : 0;
     $outCityCount = isset($_POST['out_city_count']) ? (int)$_POST['out_city_count'] : 0;
     $stops = encode_stops_counts($sameCityCount, $outCityCount);
-    $t  = isset($_POST['tender']) ? (int)$_POST['tender'] : 0;
-    $f  = isset($_POST['freight']) ? (int)$_POST['freight'] : 0;
-    $commission = isset($_POST['commission']) ? max(0, (int)$_POST['commission']) : 0;
+    $t  = isset($_POST['tender']) ? max(0, round((float)$_POST['tender'], 3)) : 0.0;
+    $f  = isset($_POST['freight']) ? max(0, round((float)$_POST['freight'], 3)) : 0.0;
+    $commission = isset($_POST['commission']) ? max(0, round((float)$_POST['commission'], 3)) : 0.0;
     $freightPaymentType = isset($_POST['freight_payment_type']) ? strtolower(trim((string)$_POST['freight_payment_type'])) : 'to_pay';
     if(!in_array($freightPaymentType, ['to_pay', 'paid'], true)){
         $freightPaymentType = 'to_pay';
@@ -108,7 +108,7 @@ if(isset($_POST['update'])){
         $p  = $t - $totalFreight;
         $oldData = $conn->query("SELECT date, vehicle, vehicle_type, delivery_note, token_no, party, location, stops, freight, commission, freight_payment_type, tender FROM haleeb_bilty WHERE id=" . (int)$id . " LIMIT 1")->fetch_assoc();
         $stmt = $conn->prepare("UPDATE haleeb_bilty SET date=?, vehicle=?, vehicle_type=?, delivery_note=?, token_no=?, party=?, location=?, stops=?, freight=?, commission=?, freight_payment_type=?, tender=?, profit=? WHERE id=?");
-        $stmt->bind_param("ssssssssiiisiii", $d, $v, $vt, $dn, $tn, $party, $l, $stops, $f, $commission, $freightPaymentType, $t, $p, $id);
+        $stmt->bind_param("ssssssssddsddi", $d, $v, $vt, $dn, $tn, $party, $l, $stops, $f, $commission, $freightPaymentType, $t, $p, $id);
         $stmt->execute(); $stmt->close();
         activity_notify_local(
             $conn,
@@ -409,18 +409,18 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
         <?php if($isSuperAdmin): ?>
           <div class="field">
             <label for="tender">Tender</label>
-            <input id="tender" type="number" name="tender" value="<?php echo htmlspecialchars($row['tender']); ?>" min="0" required>
+            <input id="tender" type="number" name="tender" value="<?php echo htmlspecialchars($row['tender']); ?>" min="0" step="any" required>
           </div>
         <?php else: ?>
           <input id="tender" type="hidden" name="tender" value="<?php echo htmlspecialchars($row['tender']); ?>">
         <?php endif; ?>
         <div class="field">
           <label for="freight">Freight</label>
-          <input id="freight" type="number" name="freight" value="<?php echo htmlspecialchars($row['freight']); ?>" min="0" required>
+          <input id="freight" type="number" name="freight" value="<?php echo htmlspecialchars($row['freight']); ?>" min="0" step="any" required>
         </div>
         <div class="field">
           <label for="commission">Commission</label>
-          <input id="commission" type="number" name="commission" value="<?php echo htmlspecialchars(isset($row['commission']) ? $row['commission'] : 0); ?>" min="0" required>
+          <input id="commission" type="number" name="commission" value="<?php echo htmlspecialchars(isset($row['commission']) ? $row['commission'] : 0); ?>" min="0" step="any" required>
         </div>
         <?php if($isSuperAdmin): ?>
           <div class="field">
@@ -481,7 +481,11 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
     if(cleaned === '') return null;
     var n = Number(cleaned);
     if(!Number.isFinite(n)) return null;
-    return Math.round(n);
+    return n;
+  }
+
+  function roundMoney(v){
+    return Math.round(v * 1000) / 1000;
   }
 
   function normalizeAlphaNum(v){
@@ -533,7 +537,7 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
     var baseTender = getBaseTenderFromRateList();
     var addon = getStopsAddon(vehicleTypeInput.value);
     if(baseTender === null && addon === 0) return;
-    tenderInput.value = (baseTender === null ? 0 : baseTender) + addon;
+    tenderInput.value = String(roundMoney((baseTender === null ? 0 : baseTender) + addon));
   }
 
   function makeStopChip(label, onRemove){

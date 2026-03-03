@@ -37,6 +37,22 @@ exit('Database connection failed. Check DB_HOST, DB_PORT, DB_USER, DB_PASS and D
 
 $conn->set_charset('utf8mb4');
 
+if(!function_exists('ensure_decimal_column_local')){
+    function ensure_decimal_column_local($conn, $table, $column, $nullable = false){
+        $colCheck = $conn->query("SHOW COLUMNS FROM `$table` LIKE '$column'");
+        if(!$colCheck || $colCheck->num_rows === 0){
+            return;
+        }
+        $col = $colCheck->fetch_assoc();
+        $type = strtolower((string)($col['Type'] ?? ''));
+        if(strpos($type, 'decimal(14,3)') === 0){
+            return;
+        }
+        $nullSql = $nullable ? 'NULL DEFAULT NULL' : 'NOT NULL DEFAULT 0';
+        $conn->query("ALTER TABLE `$table` MODIFY `$column` DECIMAL(14,3) $nullSql");
+    }
+}
+
 $conn->query("CREATE TABLE IF NOT EXISTS users(
 id INT AUTO_INCREMENT PRIMARY KEY,
 username VARCHAR(50),
@@ -108,12 +124,12 @@ party VARCHAR(100),
 feed_portion VARCHAR(30) NOT NULL DEFAULT 'al_amir',
 location VARCHAR(100),
 bags INT DEFAULT 0,
-freight INT,
-commission INT DEFAULT 0,
+freight DECIMAL(14,3) NOT NULL DEFAULT 0,
+commission DECIMAL(14,3) NOT NULL DEFAULT 0,
 freight_payment_type VARCHAR(20) NOT NULL DEFAULT 'to_pay',
-original_freight INT NULL,
-tender INT,
-profit INT
+original_freight DECIMAL(14,3) NULL,
+tender DECIMAL(14,3) NOT NULL DEFAULT 0,
+profit DECIMAL(14,3) NOT NULL DEFAULT 0
 )");
 
 $conn->query("CREATE TABLE IF NOT EXISTS haleeb_bilty(
@@ -126,11 +142,11 @@ token_no VARCHAR(50),
 party VARCHAR(100),
 location VARCHAR(100),
 stops VARCHAR(50) DEFAULT '',
-freight INT,
-commission INT DEFAULT 0,
+freight DECIMAL(14,3) NOT NULL DEFAULT 0,
+commission DECIMAL(14,3) NOT NULL DEFAULT 0,
 freight_payment_type VARCHAR(20) NOT NULL DEFAULT 'to_pay',
-tender INT,
-profit INT,
+tender DECIMAL(14,3) NOT NULL DEFAULT 0,
+profit DECIMAL(14,3) NOT NULL DEFAULT 0,
 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )");
 
@@ -156,17 +172,17 @@ $conn->query("ALTER TABLE bilty ADD sr_no VARCHAR(50) AFTER id");
 
 $origFreightColCheck = $conn->query("SHOW COLUMNS FROM bilty LIKE 'original_freight'");
 if($origFreightColCheck && $origFreightColCheck->num_rows === 0){
-$conn->query("ALTER TABLE bilty ADD original_freight INT NULL AFTER freight");
+$conn->query("ALTER TABLE bilty ADD original_freight DECIMAL(14,3) NULL AFTER freight");
 }
 
 $biltyCommissionColCheck = $conn->query("SHOW COLUMNS FROM bilty LIKE 'commission'");
 if($biltyCommissionColCheck && $biltyCommissionColCheck->num_rows === 0){
-$conn->query("ALTER TABLE bilty ADD commission INT NOT NULL DEFAULT 0 AFTER freight");
+$conn->query("ALTER TABLE bilty ADD commission DECIMAL(14,3) NOT NULL DEFAULT 0 AFTER freight");
 }
 
 $haleebCommissionColCheck = $conn->query("SHOW COLUMNS FROM haleeb_bilty LIKE 'commission'");
 if($haleebCommissionColCheck && $haleebCommissionColCheck->num_rows === 0){
-$conn->query("ALTER TABLE haleeb_bilty ADD commission INT NOT NULL DEFAULT 0 AFTER freight");
+$conn->query("ALTER TABLE haleeb_bilty ADD commission DECIMAL(14,3) NOT NULL DEFAULT 0 AFTER freight");
 }
 
 $biltyPaymentTypeColCheck = $conn->query("SHOW COLUMNS FROM bilty LIKE 'freight_payment_type'");
@@ -178,6 +194,16 @@ $haleebPaymentTypeColCheck = $conn->query("SHOW COLUMNS FROM haleeb_bilty LIKE '
 if($haleebPaymentTypeColCheck && $haleebPaymentTypeColCheck->num_rows === 0){
 $conn->query("ALTER TABLE haleeb_bilty ADD freight_payment_type VARCHAR(20) NOT NULL DEFAULT 'to_pay' AFTER commission");
 }
+
+ensure_decimal_column_local($conn, 'bilty', 'freight');
+ensure_decimal_column_local($conn, 'bilty', 'commission');
+ensure_decimal_column_local($conn, 'bilty', 'original_freight', true);
+ensure_decimal_column_local($conn, 'bilty', 'tender');
+ensure_decimal_column_local($conn, 'bilty', 'profit');
+ensure_decimal_column_local($conn, 'haleeb_bilty', 'freight');
+ensure_decimal_column_local($conn, 'haleeb_bilty', 'commission');
+ensure_decimal_column_local($conn, 'haleeb_bilty', 'tender');
+ensure_decimal_column_local($conn, 'haleeb_bilty', 'profit');
 
 $conn->query("UPDATE bilty SET commission=0 WHERE commission IS NULL");
 $conn->query("UPDATE haleeb_bilty SET commission=0 WHERE commission IS NULL");
@@ -210,7 +236,7 @@ category VARCHAR(20),
 entry_type VARCHAR(10),
 amount_mode VARCHAR(10),
 bilty_id INT NULL,
-amount DECIMAL(12,2),
+amount DECIMAL(14,3) NOT NULL DEFAULT 0,
 note VARCHAR(255),
 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )");
@@ -229,6 +255,8 @@ $haleebBiltyColCheck = $conn->query("SHOW COLUMNS FROM account_entries LIKE 'hal
 if($haleebBiltyColCheck && $haleebBiltyColCheck->num_rows === 0){
 $conn->query("ALTER TABLE account_entries ADD haleeb_bilty_id INT NULL AFTER bilty_id");
 }
+
+ensure_decimal_column_local($conn, 'account_entries', 'amount');
 
 $conn->query("CREATE TABLE IF NOT EXISTS image_processed_rates(
 id INT AUTO_INCREMENT PRIMARY KEY,

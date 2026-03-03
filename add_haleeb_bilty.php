@@ -222,18 +222,18 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
         <?php if($isSuperAdmin): ?>
           <div class="field">
             <label for="tender">Tender</label>
-            <input id="tender" type="number" name="tender" placeholder="0" min="0" required>
+            <input id="tender" type="number" name="tender" placeholder="0" min="0" step="any" required>
           </div>
         <?php else: ?>
           <input id="tender" type="hidden" name="tender" value="0">
         <?php endif; ?>
         <div class="field">
           <label for="freight">Freight</label>
-          <input id="freight" type="number" name="freight" placeholder="0" min="0" required>
+          <input id="freight" type="number" name="freight" placeholder="0" min="0" step="any" required>
         </div>
         <div class="field">
           <label for="commission">Commission</label>
-          <input id="commission" type="number" name="commission" placeholder="0" min="0" value="0" required>
+          <input id="commission" type="number" name="commission" placeholder="0" min="0" step="any" value="0" required>
         </div>
         <?php if($isSuperAdmin): ?>
           <div class="field">
@@ -290,7 +290,11 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
     if(cleaned === '') return null;
     var n = Number(cleaned);
     if(!Number.isFinite(n)) return null;
-    return Math.round(n);
+    return n;
+  }
+
+  function roundMoney(v){
+    return Math.round(v * 1000) / 1000;
   }
 
   function normalizeAlphaNum(v){
@@ -342,7 +346,7 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
     var baseTender = getBaseTenderFromRateList();
     var addon = getStopsAddon(vehicleTypeInput.value);
     if(baseTender === null && addon === 0) return;
-    tenderInput.value = (baseTender === null ? 0 : baseTender) + addon;
+    tenderInput.value = String(roundMoney((baseTender === null ? 0 : baseTender) + addon));
   }
 
   function makeStopChip(label, onRemove){

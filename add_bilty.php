@@ -329,11 +329,11 @@ $today = date('Y-m-d');
         </div>
         <div class="field">
           <label for="freight">Freight</label>
-          <input id="freight" type="number" name="freight" placeholder="0" min="0" required>
+          <input id="freight" type="number" name="freight" placeholder="0" min="0" step="any" required>
         </div>
         <div class="field">
           <label for="commission">Commission</label>
-          <input id="commission" type="number" name="commission" placeholder="0" min="0" value="0" required>
+          <input id="commission" type="number" name="commission" placeholder="0" min="0" step="any" value="0" required>
         </div>
         <?php if($isSuperAdmin): ?>
           <div class="field">
@@ -349,7 +349,7 @@ $today = date('Y-m-d');
         <?php if($isSuperAdmin): ?>
           <div class="field">
             <label for="tender">Tender</label>
-            <input id="tender" type="number" name="tender" placeholder="0" min="0" required>
+            <input id="tender" type="number" name="tender" placeholder="0" min="0" step="any" required>
             <input id="tender_raw" type="hidden" name="tender_raw" value="">
             <div class="field-meta" id="tender_discount_note"></div>
           </div>
@@ -482,7 +482,7 @@ $today = date('Y-m-d');
   }
 
   function roundTender(v){
-    return Math.round(v);
+    return Math.round(v * 1000) / 1000;
   }
 
   function parseNumeric(v){
