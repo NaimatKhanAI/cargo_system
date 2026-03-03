@@ -594,6 +594,14 @@ if(count($bindValues) > 0){
           <option value="pending">Pending</option>
         </select>
       </div>
+      <div class="field">
+        <label for="a_feed_driver_type">Driver Payment</label>
+        <select id="a_feed_driver_type">
+          <option value="">All</option>
+          <option value="to_pay">To Pay</option>
+          <option value="paid">Paid</option>
+        </select>
+      </div>
       <?php if($isSuperAdmin): ?>
       <div class="field">
         <label for="a_feed_section">Section</label>
@@ -734,6 +742,7 @@ if(count($bindValues) > 0){
             data-location="<?php echo htmlspecialchars((string)($row['location'] ?? '')); ?>"
             data-user="<?php echo htmlspecialchars((string)$addedByName); ?>"
             data-section="<?php echo htmlspecialchars((string)$sectionLabel); ?>"
+            data-driver-type="<?php echo htmlspecialchars((string)$paymentTypeRaw); ?>"
             data-bags="<?php echo (int)($row['bags'] ?? 0); ?>"
             data-freight="<?php echo (float)($row['freight'] ?? 0); ?>"
             data-total="<?php echo $totalCost; ?>"
@@ -836,6 +845,8 @@ if(count($bindValues) > 0){
       addedByL: String(d.user || '').toLowerCase(),
       section: String(d.section || ''),
       sectionL: String(d.section || '').toLowerCase(),
+      driverType: String(d.driverType || ''),
+      driverTypeL: String(d.driverType || '').toLowerCase(),
       bags: Number(d.bags || 0),
       freight: freight,
       commission: commission,
@@ -881,6 +892,7 @@ if(count($bindValues) > 0){
     location: document.getElementById('a_feed_location'),
     user: document.getElementById('a_feed_user'),
     status: document.getElementById('a_feed_status'),
+    driverType: document.getElementById('a_feed_driver_type'),
     section: document.getElementById('a_feed_section'),
     bagsMin: document.getElementById('a_feed_bags_min'),
     bagsMax: document.getElementById('a_feed_bags_max'),
@@ -930,6 +942,7 @@ if(count($bindValues) > 0){
       location: val(f.location),
       user: val(f.user),
       status: val(f.status),
+      driverType: val(f.driverType),
       section: val(f.section),
       bagsMin: num(f.bagsMin),
       bagsMax: num(f.bagsMax),
@@ -949,6 +962,7 @@ if(count($bindValues) > 0){
       if(ok && x.location && r.locationL.indexOf(x.location) === -1) ok = false;
       if(ok && x.user && r.addedByL.indexOf(x.user) === -1) ok = false;
       if(ok && x.section && r.sectionL.indexOf(x.section) === -1) ok = false;
+      if(ok && x.driverType && r.driverTypeL !== x.driverType) ok = false;
       if(ok && (x.status === 'confirmed' || x.status === 'paid') && r.remaining > 0.0001) ok = false;
       if(ok && x.status === 'pending' && r.remaining <= 0.0001) ok = false;
       if(ok && !inRange(r.bags, x.bagsMin, x.bagsMax)) ok = false;

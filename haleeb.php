@@ -562,6 +562,14 @@ if(count($bindValues) > 0){
         </select>
       </div>
       <div class="field">
+        <label for="a_h_driver_type">Driver Payment</label>
+        <select id="a_h_driver_type">
+          <option value="">All</option>
+          <option value="to_pay">To Pay</option>
+          <option value="paid">Paid</option>
+        </select>
+      </div>
+      <div class="field">
         <label for="a_h_user">Added By</label>
         <input id="a_h_user" list="a_h_user_list" placeholder="User">
       </div>
@@ -681,6 +689,7 @@ if(count($bindValues) > 0){
             data-party="<?php echo htmlspecialchars((string)($row['party'] ?? '')); ?>"
             data-location="<?php echo htmlspecialchars((string)($row['location'] ?? '')); ?>"
             data-user="<?php echo htmlspecialchars((string)$addedByName); ?>"
+            data-driver-type="<?php echo htmlspecialchars((string)$paymentTypeRaw); ?>"
             data-stops="<?php echo htmlspecialchars($stopsRaw); ?>"
             data-same-stops="<?php echo $sameStops; ?>"
             data-out-stops="<?php echo $outStops; ?>"
@@ -783,6 +792,8 @@ if(count($bindValues) > 0){
       locationL: String(d.location || '').toLowerCase(),
       addedBy: String(d.user || ''),
       addedByL: String(d.user || '').toLowerCase(),
+      driverType: String(d.driverType || ''),
+      driverTypeL: String(d.driverType || '').toLowerCase(),
       sameStops: Number(d.sameStops || 0),
       outStops: Number(d.outStops || 0),
       freight: freight,
@@ -831,6 +842,7 @@ if(count($bindValues) > 0){
     location: document.getElementById('a_h_location'),
     user: document.getElementById('a_h_user'),
     status: document.getElementById('a_h_status'),
+    driverType: document.getElementById('a_h_driver_type'),
     sameMin: document.getElementById('a_h_same_min'),
     outMin: document.getElementById('a_h_out_min'),
     freightMin: document.getElementById('a_h_freight_min'),
@@ -880,6 +892,7 @@ if(count($bindValues) > 0){
       location: val(f.location),
       user: val(f.user),
       status: val(f.status),
+      driverType: val(f.driverType),
       sameMin: num(f.sameMin),
       outMin: num(f.outMin),
       freightMin: num(f.freightMin),
@@ -898,6 +911,7 @@ if(count($bindValues) > 0){
       if(ok && x.party && r.partyL.indexOf(x.party) === -1) ok = false;
       if(ok && x.location && r.locationL.indexOf(x.location) === -1) ok = false;
       if(ok && x.user && r.addedByL.indexOf(x.user) === -1) ok = false;
+      if(ok && x.driverType && r.driverTypeL !== x.driverType) ok = false;
       if(ok && (x.status === 'confirmed' || x.status === 'paid') && r.remaining > 0.0001) ok = false;
       if(ok && x.status === 'pending' && r.remaining <= 0.0001) ok = false;
       if(ok && x.sameMin !== null && r.sameStops < x.sameMin) ok = false;
