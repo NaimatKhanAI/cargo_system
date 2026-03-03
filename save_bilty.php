@@ -58,16 +58,8 @@ if($ok && $freightPaymentType === 'to_pay' && auth_can_direct_modify() && $total
     $entryNote = 'Auto Driver Payment - Feed Bilty ' . ($b !== '' ? $b : ('#' . $newId));
     $autoPay = $conn->prepare("INSERT INTO account_entries(entry_date, category, entry_type, amount_mode, bilty_id, haleeb_bilty_id, amount, note) VALUES(?, ?, 'debit', ?, ?, NULL, ?, ?)");
     $autoPay->bind_param("sssids", $entryDate, $entryCategory, $entryMode, $newId, $totalFreight, $entryNote);
-    $autoPayOk = $autoPay->execute();
+    $autoPay->execute();
     $autoPay->close();
-    if($autoPayOk){
-        $paidType = 'paid';
-        $markPaid = $conn->prepare("UPDATE bilty SET freight_payment_type=? WHERE id=?");
-        $markPaid->bind_param("si", $paidType, $newId);
-        $markPaid->execute();
-        $markPaid->close();
-        $freightPaymentType = 'paid';
-    }
 }
 if($ok && $freightPaymentType === 'to_pay' && !auth_can_direct_modify() && $totalFreight > 0){
     $entryDate = $d !== '' ? $d : date('Y-m-d');
