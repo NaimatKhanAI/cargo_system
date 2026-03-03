@@ -6,6 +6,7 @@ require_once 'config/feed_portions.php';
 require_once 'config/activity_notifications.php';
 auth_require_login($conn);
 auth_require_module_access('feed');
+$currentUserId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 
 $sr = isset($_POST['sr_no']) ? trim((string)$_POST['sr_no']) : '';
 $d = isset($_POST['date']) ? trim((string)$_POST['date']) : '';
@@ -42,9 +43,10 @@ $t = ($bags > 300) ? round($scaledTender * 0.90, 3) : round($scaledTender, 3);
 $totalFreight = max(0, $f - $commission);
 
 $p = $t - $totalFreight;
+$addedByUserId = $currentUserId > 0 ? $currentUserId : null;
 
-$stmt = $conn->prepare("INSERT INTO bilty(sr_no, date, vehicle, bilty_no, party, feed_portion, location, bags, freight, commission, freight_payment_type, original_freight, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-$stmt->bind_param("sssssssiddsddd", $sr, $d, $v, $b, $party, $feedPortion, $l, $bags, $f, $commission, $freightPaymentType, $totalFreight, $t, $p);
+$stmt = $conn->prepare("INSERT INTO bilty(sr_no, date, vehicle, bilty_no, party, feed_portion, added_by_user_id, location, bags, freight, commission, freight_payment_type, original_freight, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+$stmt->bind_param("ssssssisiddsddd", $sr, $d, $v, $b, $party, $feedPortion, $addedByUserId, $l, $bags, $f, $commission, $freightPaymentType, $totalFreight, $t, $p);
 $ok = $stmt->execute();
 $newId = (int)$stmt->insert_id;
 $stmt->close();
@@ -75,6 +77,7 @@ if($ok){
             'vehicle' => $v,
             'party' => $party,
             'feed_portion' => $feedPortion,
+            'added_by_user_id' => $addedByUserId,
             'location' => $l,
             'bags' => $bags,
             'freight' => $f,
@@ -82,7 +85,7 @@ if($ok){
             'freight_payment_type' => $freightPaymentType,
             'tender' => $t
         ],
-        isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0
+        $currentUserId
     );
 }
 

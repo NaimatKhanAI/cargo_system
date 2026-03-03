@@ -5,6 +5,8 @@ require_once 'config/auth.php';
 auth_require_login($conn);
 auth_require_module_access('haleeb');
 auth_require_super_admin('dashboard.php');
+$currentUserId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
+$addedByUserId = $currentUserId > 0 ? $currentUserId : null;
 
 if($_SERVER['REQUEST_METHOD'] !== 'POST' || !isset($_FILES['csv_file']) || $_FILES['csv_file']['error'] !== UPLOAD_ERR_OK){
 header("location:haleeb.php?import=error");
@@ -187,7 +189,7 @@ if(count($allRows) === 0){
     exit();
 }
 
-$stmt = $conn->prepare("INSERT INTO haleeb_bilty(date, vehicle, vehicle_type, delivery_note, token_no, party, location, stops, freight, commission, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+$stmt = $conn->prepare("INSERT INTO haleeb_bilty(date, vehicle, vehicle_type, delivery_note, token_no, party, added_by_user_id, location, stops, freight, commission, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
 
 foreach($allRows as $data){
     $lineNo++;
@@ -310,7 +312,7 @@ foreach($allRows as $data){
         $profit = $tender - max(0, ($freight - $commission));
     }
 
-    $stmt->bind_param("ssssssssdddd", $date, $vehicle, $vehicleType, $deliveryNote, $tokenNo, $party, $location, $stops, $freight, $commission, $tender, $profit);
+    $stmt->bind_param("ssssssissdddd", $date, $vehicle, $vehicleType, $deliveryNote, $tokenNo, $party, $addedByUserId, $location, $stops, $freight, $commission, $tender, $profit);
     if($stmt->execute()){
         $inserted++;
     } else {

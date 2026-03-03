@@ -173,10 +173,12 @@ if($dateTo !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateTo)){ $where[] = "
 if($vehicleSearch !== ''){ $where[] = "vehicle LIKE ?"; $bindTypes .= "s"; $bindValues[] = "%" . $vehicleSearch . "%"; }
 
 $sql = "SELECT h.*,
+        COALESCE(NULLIF(u.username, ''), CASE WHEN h.added_by_user_id IS NULL THEN '-' ELSE CONCAT('User#', h.added_by_user_id) END) AS added_by_name,
         GREATEST((COALESCE(h.freight,0) - COALESCE(h.commission,0)), 0) AS total_cost,
         (COALESCE(h.tender,0) - GREATEST((COALESCE(h.freight,0) - COALESCE(h.commission,0)), 0)) AS calc_profit,
         GREATEST(GREATEST((COALESCE(h.freight,0) - COALESCE(h.commission,0)), 0) - COALESCE(p.paid_total, 0), 0) AS remaining_balance
         FROM haleeb_bilty h
+        LEFT JOIN users u ON u.id = h.added_by_user_id
         LEFT JOIN (
           SELECT haleeb_bilty_id, SUM(amount) AS paid_total
           FROM account_entries
@@ -546,6 +548,10 @@ if(count($bindValues) > 0){
         </select>
       </div>
       <div class="field">
+        <label for="a_h_user">Added By</label>
+        <input id="a_h_user" list="a_h_user_list" placeholder="User">
+      </div>
+      <div class="field">
         <label for="a_h_same_min">Min Same City Stops</label>
         <input id="a_h_same_min" type="number" min="0" placeholder="0">
       </div>
@@ -572,6 +578,7 @@ if(count($bindValues) > 0){
       <datalist id="a_h_type_list"></datalist>
       <datalist id="a_h_party_list"></datalist>
       <datalist id="a_h_location_list"></datalist>
+      <datalist id="a_h_user_list"></datalist>
     </div>
     <div class="analytics-stats" id="haleeb_analytics_stats"></div>
     <div class="analytics-charts">
@@ -616,6 +623,7 @@ if(count($bindValues) > 0){
       <thead>
         <tr>
           <th>Date</th>
+          <th>Added By</th>
           <th>Vehicle</th>
           <th>Type</th>
           <th>Delivery Note</th>
@@ -639,6 +647,7 @@ if(count($bindValues) > 0){
           $remaining = (float)($row['remaining_balance'] ?? 0);
           $commission = (float)($row['commission'] ?? 0);
           $totalCost = (float)($row['total_cost'] ?? max(((float)($row['freight'] ?? 0)) - $commission, 0));
+          $addedByName = isset($row['added_by_name']) && trim((string)$row['added_by_name']) !== '' ? (string)$row['added_by_name'] : '-';
           $paymentTypeRaw = isset($row['freight_payment_type']) ? strtolower(trim((string)$row['freight_payment_type'])) : 'to_pay';
           if(!in_array($paymentTypeRaw, ['to_pay', 'paid'], true)){ $paymentTypeRaw = 'to_pay'; }
           $paymentTypeLabel = $paymentTypeRaw === 'paid' ? 'Paid' : 'To Pay';
@@ -657,6 +666,7 @@ if(count($bindValues) > 0){
             data-token="<?php echo htmlspecialchars((string)($row['token_no'] ?? '')); ?>"
             data-party="<?php echo htmlspecialchars((string)($row['party'] ?? '')); ?>"
             data-location="<?php echo htmlspecialchars((string)($row['location'] ?? '')); ?>"
+            data-user="<?php echo htmlspecialchars((string)$addedByName); ?>"
             data-stops="<?php echo htmlspecialchars($stopsRaw); ?>"
             data-same-stops="<?php echo $sameStops; ?>"
             data-out-stops="<?php echo $outStops; ?>"
@@ -667,6 +677,7 @@ if(count($bindValues) > 0){
             data-remaining="<?php echo $remaining; ?>"
             data-profit="<?php echo $profit; ?>">
           <td><?php echo htmlspecialchars($row['date']); ?></td>
+          <td><?php echo htmlspecialchars($addedByName); ?></td>
           <td><?php echo htmlspecialchars($row['vehicle']); ?></td>
           <td><span class="vtype-badge"><?php echo htmlspecialchars($row['vehicle_type']); ?></span></td>
           <td><?php echo htmlspecialchars($row['delivery_note']); ?></td>
@@ -756,6 +767,8 @@ if(count($bindValues) > 0){
       partyL: String(d.party || '').toLowerCase(),
       location: String(d.location || ''),
       locationL: String(d.location || '').toLowerCase(),
+      addedBy: String(d.user || ''),
+      addedByL: String(d.user || '').toLowerCase(),
       sameStops: Number(d.sameStops || 0),
       outStops: Number(d.outStops || 0),
       freight: freight,
@@ -795,12 +808,14 @@ if(count($bindValues) > 0){
   fillDatalist('a_h_type_list', records.map(function(r){ return r.type; }), 100);
   fillDatalist('a_h_party_list', records.map(function(r){ return r.party; }), 300);
   fillDatalist('a_h_location_list', records.map(function(r){ return r.location; }), 300);
+  fillDatalist('a_h_user_list', records.map(function(r){ return r.addedBy; }), 300);
 
   var f = {
     text: document.getElementById('a_h_text'),
     type: document.getElementById('a_h_type'),
     party: document.getElementById('a_h_party'),
     location: document.getElementById('a_h_location'),
+    user: document.getElementById('a_h_user'),
     status: document.getElementById('a_h_status'),
     sameMin: document.getElementById('a_h_same_min'),
     outMin: document.getElementById('a_h_out_min'),
@@ -849,6 +864,7 @@ if(count($bindValues) > 0){
       type: val(f.type),
       party: val(f.party),
       location: val(f.location),
+      user: val(f.user),
       status: val(f.status),
       sameMin: num(f.sameMin),
       outMin: num(f.outMin),
@@ -867,6 +883,7 @@ if(count($bindValues) > 0){
       if(ok && x.type && r.typeL.indexOf(x.type) === -1) ok = false;
       if(ok && x.party && r.partyL.indexOf(x.party) === -1) ok = false;
       if(ok && x.location && r.locationL.indexOf(x.location) === -1) ok = false;
+      if(ok && x.user && r.addedByL.indexOf(x.user) === -1) ok = false;
       if(ok && (x.status === 'confirmed' || x.status === 'paid') && r.remaining > 0.0001) ok = false;
       if(ok && x.status === 'pending' && r.remaining <= 0.0001) ok = false;
       if(ok && x.sameMin !== null && r.sameStops < x.sameMin) ok = false;

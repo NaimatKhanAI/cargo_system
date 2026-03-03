@@ -183,10 +183,12 @@ if($vehicleSearch !== ''){ $where[] = "vehicle LIKE ?"; $bindTypes .= "s"; $bind
 if(!$isSuperAdmin){ $where[] = "feed_portion = ?"; $bindTypes .= "s"; $bindValues[] = $userFeedPortion; }
 
 $sql = "SELECT b.*,
+        COALESCE(NULLIF(u.username, ''), CASE WHEN b.added_by_user_id IS NULL THEN '-' ELSE CONCAT('User#', b.added_by_user_id) END) AS added_by_name,
         GREATEST((COALESCE(b.freight,0) - COALESCE(b.commission,0)), 0) AS total_cost,
         (COALESCE(b.tender,0) - GREATEST((COALESCE(b.freight,0) - COALESCE(b.commission,0)), 0)) AS calc_profit,
         GREATEST(COALESCE(b.original_freight, GREATEST((COALESCE(b.freight,0) - COALESCE(b.commission,0)), 0)) - COALESCE(p.paid_total, 0), 0) AS remaining_balance
         FROM bilty b
+        LEFT JOIN users u ON u.id = b.added_by_user_id
         LEFT JOIN (
           SELECT bilty_id, SUM(amount) AS paid_total
           FROM account_entries
@@ -590,6 +592,10 @@ if(count($bindValues) > 0){
       </div>
       <?php endif; ?>
       <div class="field">
+        <label for="a_feed_user">Added By</label>
+        <input id="a_feed_user" list="a_feed_user_list" placeholder="User">
+      </div>
+      <div class="field">
         <label for="a_feed_bags_min">Min Bags</label>
         <input id="a_feed_bags_min" type="number" min="0" placeholder="0">
       </div>
@@ -633,6 +639,7 @@ if(count($bindValues) > 0){
           <option value="<?php echo htmlspecialchars($opt); ?>"></option>
         <?php endforeach; ?>
       </datalist>
+      <datalist id="a_feed_user_list"></datalist>
     </div>
     <div class="analytics-stats" id="feed_analytics_stats"></div>
     <div class="analytics-charts">
@@ -674,6 +681,7 @@ if(count($bindValues) > 0){
         <tr>
           <th>SR.</th>
           <th>Date</th>
+          <th>Added By</th>
           <?php if($isSuperAdmin): ?><th>Section</th><?php endif; ?>
           <th>Vehicle</th>
           <th>Bilty No.</th>
@@ -696,6 +704,7 @@ if(count($bindValues) > 0){
           $remaining = (float)($row['remaining_balance'] ?? 0);
           $commission = (float)($row['commission'] ?? 0);
           $totalCost = (float)($row['total_cost'] ?? max(((float)($row['freight'] ?? 0)) - $commission, 0));
+          $addedByName = isset($row['added_by_name']) && trim((string)$row['added_by_name']) !== '' ? (string)$row['added_by_name'] : '-';
           $paymentTypeRaw = isset($row['freight_payment_type']) ? strtolower(trim((string)$row['freight_payment_type'])) : 'to_pay';
           if(!in_array($paymentTypeRaw, ['to_pay', 'paid'], true)){ $paymentTypeRaw = 'to_pay'; }
           $paymentTypeLabel = $paymentTypeRaw === 'paid' ? 'Paid' : 'To Pay';
@@ -709,6 +718,7 @@ if(count($bindValues) > 0){
             data-vehicle="<?php echo htmlspecialchars((string)($row['vehicle'] ?? '')); ?>"
             data-party="<?php echo htmlspecialchars((string)($row['party'] ?? '')); ?>"
             data-location="<?php echo htmlspecialchars((string)($row['location'] ?? '')); ?>"
+            data-user="<?php echo htmlspecialchars((string)$addedByName); ?>"
             data-section="<?php echo htmlspecialchars((string)$sectionLabel); ?>"
             data-bags="<?php echo (int)($row['bags'] ?? 0); ?>"
             data-freight="<?php echo (float)($row['freight'] ?? 0); ?>"
@@ -719,6 +729,7 @@ if(count($bindValues) > 0){
             data-profit="<?php echo $profit; ?>">
           <td><?php echo htmlspecialchars($row['sr_no']); ?></td>
           <td><?php echo htmlspecialchars($row['date']); ?></td>
+          <td><?php echo htmlspecialchars($addedByName); ?></td>
           <?php if($isSuperAdmin): ?>
             <td><?php echo htmlspecialchars($sectionLabel); ?></td>
           <?php endif; ?>
@@ -807,6 +818,8 @@ if(count($bindValues) > 0){
       partyL: String(d.party || '').toLowerCase(),
       location: String(d.location || ''),
       locationL: String(d.location || '').toLowerCase(),
+      addedBy: String(d.user || ''),
+      addedByL: String(d.user || '').toLowerCase(),
       section: String(d.section || ''),
       sectionL: String(d.section || '').toLowerCase(),
       bags: Number(d.bags || 0),
@@ -846,11 +859,13 @@ if(count($bindValues) > 0){
   }, []), 300);
   fillDatalist('a_feed_party_list', records.map(function(r){ return r.party; }), 300);
   fillDatalist('a_feed_location_list', records.map(function(r){ return r.location; }), 300);
+  fillDatalist('a_feed_user_list', records.map(function(r){ return r.addedBy; }), 300);
 
   var f = {
     text: document.getElementById('a_feed_text'),
     party: document.getElementById('a_feed_party'),
     location: document.getElementById('a_feed_location'),
+    user: document.getElementById('a_feed_user'),
     status: document.getElementById('a_feed_status'),
     section: document.getElementById('a_feed_section'),
     bagsMin: document.getElementById('a_feed_bags_min'),
@@ -899,6 +914,7 @@ if(count($bindValues) > 0){
       text: val(f.text),
       party: val(f.party),
       location: val(f.location),
+      user: val(f.user),
       status: val(f.status),
       section: val(f.section),
       bagsMin: num(f.bagsMin),
@@ -917,6 +933,7 @@ if(count($bindValues) > 0){
       if(x.text && (r.srL + ' ' + r.biltyL + ' ' + r.vehicleL).indexOf(x.text) === -1) ok = false;
       if(ok && x.party && r.partyL.indexOf(x.party) === -1) ok = false;
       if(ok && x.location && r.locationL.indexOf(x.location) === -1) ok = false;
+      if(ok && x.user && r.addedByL.indexOf(x.user) === -1) ok = false;
       if(ok && x.section && r.sectionL.indexOf(x.section) === -1) ok = false;
       if(ok && (x.status === 'confirmed' || x.status === 'paid') && r.remaining > 0.0001) ok = false;
       if(ok && x.status === 'pending' && r.remaining <= 0.0001) ok = false;

@@ -6,6 +6,8 @@ require_once 'config/feed_portions.php';
 auth_require_login($conn);
 auth_require_module_access('feed');
 auth_require_super_admin('dashboard.php');
+$currentUserId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
+$addedByUserId = $currentUserId > 0 ? $currentUserId : null;
 
 if($_SERVER['REQUEST_METHOD'] !== 'POST' || !isset($_FILES['csv_file']) || $_FILES['csv_file']['error'] !== UPLOAD_ERR_OK){
 header("location:feed.php?import=error");
@@ -57,7 +59,7 @@ function parse_csv_number($value){
     return round((float)$value, 3);
 }
 
-$stmt = $conn->prepare("INSERT INTO bilty(sr_no, date, vehicle, bilty_no, party, feed_portion, location, bags, freight, commission, original_freight, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+$stmt = $conn->prepare("INSERT INTO bilty(sr_no, date, vehicle, bilty_no, party, feed_portion, added_by_user_id, location, bags, freight, commission, original_freight, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
 
 while(($data = fgetcsv($handle)) !== false){
     $lineNo++;
@@ -177,7 +179,7 @@ while(($data = fgetcsv($handle)) !== false){
     }
 
     $totalFreight = max(0, ($freight - $commission));
-    $stmt->bind_param("sssssssiddddd", $srNo, $date, $vehicle, $biltyNo, $party, $feedPortion, $location, $bags, $freight, $commission, $totalFreight, $tender, $profit);
+    $stmt->bind_param("ssssssisiddddd", $srNo, $date, $vehicle, $biltyNo, $party, $feedPortion, $addedByUserId, $location, $bags, $freight, $commission, $totalFreight, $tender, $profit);
     if($stmt->execute()){
         $inserted++;
     } else {

@@ -5,6 +5,7 @@ require_once 'config/auth.php';
 require_once 'config/activity_notifications.php';
 auth_require_login($conn);
 auth_require_module_access('haleeb');
+$currentUserId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 
 $d = isset($_POST['date']) ? $_POST['date'] : date('Y-m-d');
 $v = isset($_POST['vehicle']) ? trim($_POST['vehicle']) : '';
@@ -29,9 +30,10 @@ if(!auth_can_direct_modify()){
 $totalFreight = max(0, $f - $commission);
 
 $p = $t - $totalFreight;
+$addedByUserId = $currentUserId > 0 ? $currentUserId : null;
 
-$stmt = $conn->prepare("INSERT INTO haleeb_bilty(date, vehicle, vehicle_type, delivery_note, token_no, party, location, stops, freight, commission, freight_payment_type, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-$stmt->bind_param("ssssssssddsdd", $d, $v, $vt, $dn, $tn, $party, $l, $stops, $f, $commission, $freightPaymentType, $t, $p);
+$stmt = $conn->prepare("INSERT INTO haleeb_bilty(date, vehicle, vehicle_type, delivery_note, token_no, party, added_by_user_id, location, stops, freight, commission, freight_payment_type, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+$stmt->bind_param("ssssssissddsdd", $d, $v, $vt, $dn, $tn, $party, $addedByUserId, $l, $stops, $f, $commission, $freightPaymentType, $t, $p);
 $ok = $stmt->execute();
 $newId = (int)$stmt->insert_id;
 $stmt->close();
@@ -59,12 +61,13 @@ if($ok){
             'token_no' => $tn,
             'vehicle' => $v,
             'party' => $party,
+            'added_by_user_id' => $addedByUserId,
             'freight' => $f,
             'commission' => $commission,
             'freight_payment_type' => $freightPaymentType,
             'tender' => $t
         ],
-        isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0
+        $currentUserId
     );
 }
 

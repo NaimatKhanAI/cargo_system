@@ -122,6 +122,7 @@ vehicle VARCHAR(50),
 bilty_no VARCHAR(50),
 party VARCHAR(100),
 feed_portion VARCHAR(30) NOT NULL DEFAULT 'al_amir',
+added_by_user_id INT NULL,
 location VARCHAR(100),
 bags INT DEFAULT 0,
 freight DECIMAL(14,3) NOT NULL DEFAULT 0,
@@ -140,6 +141,7 @@ vehicle_type VARCHAR(50),
 delivery_note VARCHAR(100),
 token_no VARCHAR(50),
 party VARCHAR(100),
+added_by_user_id INT NULL,
 location VARCHAR(100),
 stops VARCHAR(50) DEFAULT '',
 freight DECIMAL(14,3) NOT NULL DEFAULT 0,
@@ -163,6 +165,11 @@ $conn->query("ALTER TABLE bilty ADD party VARCHAR(100) AFTER bilty_no");
 $feedPortionColCheck = $conn->query("SHOW COLUMNS FROM bilty LIKE 'feed_portion'");
 if($feedPortionColCheck && $feedPortionColCheck->num_rows === 0){
 $conn->query("ALTER TABLE bilty ADD feed_portion VARCHAR(30) NOT NULL DEFAULT 'al_amir' AFTER party");
+}
+
+$biltyAddedByColCheck = $conn->query("SHOW COLUMNS FROM bilty LIKE 'added_by_user_id'");
+if($biltyAddedByColCheck && $biltyAddedByColCheck->num_rows === 0){
+$conn->query("ALTER TABLE bilty ADD added_by_user_id INT NULL AFTER feed_portion");
 }
 
 $srColCheck = $conn->query("SHOW COLUMNS FROM bilty LIKE 'sr_no'");
@@ -193,6 +200,11 @@ $conn->query("ALTER TABLE bilty ADD freight_payment_type VARCHAR(20) NOT NULL DE
 $haleebPaymentTypeColCheck = $conn->query("SHOW COLUMNS FROM haleeb_bilty LIKE 'freight_payment_type'");
 if($haleebPaymentTypeColCheck && $haleebPaymentTypeColCheck->num_rows === 0){
 $conn->query("ALTER TABLE haleeb_bilty ADD freight_payment_type VARCHAR(20) NOT NULL DEFAULT 'to_pay' AFTER commission");
+}
+
+$haleebAddedByColCheck = $conn->query("SHOW COLUMNS FROM haleeb_bilty LIKE 'added_by_user_id'");
+if($haleebAddedByColCheck && $haleebAddedByColCheck->num_rows === 0){
+$conn->query("ALTER TABLE haleeb_bilty ADD added_by_user_id INT NULL AFTER party");
 }
 
 ensure_decimal_column_local($conn, 'bilty', 'freight');
@@ -227,6 +239,14 @@ $conn->query("UPDATE bilty SET feed_portion='{$defaultFeedPortion}' WHERE feed_p
 $feedPortionIdxCheck = $conn->query("SHOW INDEX FROM bilty WHERE Key_name='idx_bilty_feed_portion'");
 if($feedPortionIdxCheck && $feedPortionIdxCheck->num_rows === 0){
 $conn->query("CREATE INDEX idx_bilty_feed_portion ON bilty(feed_portion)");
+}
+$biltyAddedByIdxCheck = $conn->query("SHOW INDEX FROM bilty WHERE Key_name='idx_bilty_added_by_user_id'");
+if($biltyAddedByIdxCheck && $biltyAddedByIdxCheck->num_rows === 0){
+$conn->query("CREATE INDEX idx_bilty_added_by_user_id ON bilty(added_by_user_id)");
+}
+$haleebAddedByIdxCheck = $conn->query("SHOW INDEX FROM haleeb_bilty WHERE Key_name='idx_haleeb_added_by_user_id'");
+if($haleebAddedByIdxCheck && $haleebAddedByIdxCheck->num_rows === 0){
+$conn->query("CREATE INDEX idx_haleeb_added_by_user_id ON haleeb_bilty(added_by_user_id)");
 }
 
 $conn->query("CREATE TABLE IF NOT EXISTS account_entries(
