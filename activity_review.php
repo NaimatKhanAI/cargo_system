@@ -11,6 +11,87 @@ $isSuperAdmin = auth_is_super_admin();
 $msg = '';
 $err = '';
 
+function bilty_detail_url_local($type, $id){
+    $type = strtolower(trim((string)$type));
+    $id = (int)$id;
+    if($id <= 0) return '';
+    if(!in_array($type, ['feed', 'haleeb'], true)) return '';
+    return 'bilty_detail.php?type=' . rawurlencode($type) . '&id=' . $id . '&src=activity_review';
+}
+
+function activity_related_bilty_url_local($conn, $item){
+    $referenceType = strtolower(trim((string)($item['reference_type'] ?? '')));
+    $referenceId = isset($item['reference_id']) ? (int)$item['reference_id'] : 0;
+    $payload = [];
+    if(isset($item['payload']) && trim((string)$item['payload']) !== ''){
+        $decoded = json_decode((string)$item['payload'], true);
+        if(is_array($decoded)) $payload = $decoded;
+    }
+
+    $resolvePayload = function($arr){
+        if(!is_array($arr)) return ['', 0];
+        if(isset($arr['bilty_id']) && (int)$arr['bilty_id'] > 0) return ['feed', (int)$arr['bilty_id']];
+        if(isset($arr['haleeb_bilty_id']) && (int)$arr['haleeb_bilty_id'] > 0) return ['haleeb', (int)$arr['haleeb_bilty_id']];
+        if(isset($arr['entity_table']) && isset($arr['entity_id'])){
+            $tbl = strtolower(trim((string)$arr['entity_table']));
+            $eid = (int)$arr['entity_id'];
+            if($eid > 0 && $tbl === 'bilty') return ['feed', $eid];
+            if($eid > 0 && $tbl === 'haleeb_bilty') return ['haleeb', $eid];
+        }
+        return ['', 0];
+    };
+
+    if($referenceType === 'bilty' && $referenceId > 0){
+        return bilty_detail_url_local('feed', $referenceId);
+    }
+    if($referenceType === 'haleeb_bilty' && $referenceId > 0){
+        return bilty_detail_url_local('haleeb', $referenceId);
+    }
+
+    $payloadEntity = $resolvePayload($payload);
+    if($payloadEntity[1] <= 0 && isset($payload['new']) && is_array($payload['new'])){
+        $payloadEntity = $resolvePayload($payload['new']);
+    }
+    if($payloadEntity[1] <= 0 && isset($payload['old']) && is_array($payload['old'])){
+        $payloadEntity = $resolvePayload($payload['old']);
+    }
+    if($payloadEntity[1] > 0){
+        return bilty_detail_url_local($payloadEntity[0], $payloadEntity[1]);
+    }
+
+    if($referenceType === 'account_entry' && $referenceId > 0){
+        static $entryCache = [];
+        if(!isset($entryCache[$referenceId])){
+            $stmt = $conn->prepare("SELECT bilty_id, haleeb_bilty_id FROM account_entries WHERE id=? LIMIT 1");
+            $stmt->bind_param("i", $referenceId);
+            $stmt->execute();
+            $entryCache[$referenceId] = $stmt->get_result()->fetch_assoc() ?: [];
+            $stmt->close();
+        }
+        $row = $entryCache[$referenceId];
+        if(isset($row['bilty_id']) && (int)$row['bilty_id'] > 0) return bilty_detail_url_local('feed', (int)$row['bilty_id']);
+        if(isset($row['haleeb_bilty_id']) && (int)$row['haleeb_bilty_id'] > 0) return bilty_detail_url_local('haleeb', (int)$row['haleeb_bilty_id']);
+    }
+
+    if($referenceType === 'change_request' && $referenceId > 0){
+        static $requestCache = [];
+        if(!isset($requestCache[$referenceId])){
+            $stmt = $conn->prepare("SELECT entity_table, entity_id FROM change_requests WHERE id=? LIMIT 1");
+            $stmt->bind_param("i", $referenceId);
+            $stmt->execute();
+            $requestCache[$referenceId] = $stmt->get_result()->fetch_assoc() ?: [];
+            $stmt->close();
+        }
+        $row = $requestCache[$referenceId];
+        $tbl = strtolower(trim((string)($row['entity_table'] ?? '')));
+        $eid = isset($row['entity_id']) ? (int)$row['entity_id'] : 0;
+        if($eid > 0 && $tbl === 'bilty') return bilty_detail_url_local('feed', $eid);
+        if($eid > 0 && $tbl === 'haleeb_bilty') return bilty_detail_url_local('haleeb', $eid);
+    }
+
+    return '';
+}
+
 if($_SERVER['REQUEST_METHOD'] === 'POST'){
     $notificationId = isset($_POST['notification_id']) ? (int)$_POST['notification_id'] : 0;
     $reviewNote = isset($_POST['review_note']) ? trim((string)$_POST['review_note']) : '';
@@ -130,6 +211,8 @@ $items = activity_fetch_items_local($conn, $statusFilter, 300, !$isSuperAdmin);
   .st-ok { color: var(--green); background: rgba(34,197,94,0.15); border-color: rgba(34,197,94,0.25); }
   .st-flagged { color: var(--red); background: rgba(239,68,68,0.15); border-color: rgba(239,68,68,0.25); }
   .msg { font-family: var(--font); font-size: 12px; line-height: 1.4; }
+  .msg-link { color: var(--blue); text-decoration: none; border-bottom: 1px solid rgba(96,165,250,0.35); }
+  .msg-link:hover { color: #93c5fd; border-bottom-color: rgba(147,197,253,0.8); }
   .meta { color: var(--muted); font-size: 10px; margin-top: 4px; }
   .payload {
     background: var(--bg); border: 1px solid var(--border); padding: 6px; margin-top: 6px;
@@ -218,6 +301,7 @@ $items = activity_fetch_items_local($conn, $statusFilter, 300, !$isSuperAdmin);
               if(isset($it['payload']) && trim((string)$it['payload']) !== ''){
                   $payloadText = (string)$it['payload'];
               }
+              $detailUrl = activity_related_bilty_url_local($conn, $it);
             ?>
             <tr>
               <td>#<?php echo (int)$it['id']; ?></td>
@@ -226,7 +310,12 @@ $items = activity_fetch_items_local($conn, $statusFilter, 300, !$isSuperAdmin);
                 <div class="meta"><?php echo htmlspecialchars((string)$it['activity_type']); ?> / <?php echo htmlspecialchars((string)$it['reference_type']); ?> #<?php echo (int)$it['reference_id']; ?></div>
               </td>
               <td>
-                <div class="msg"><?php echo htmlspecialchars((string)$it['message']); ?></div>
+                <?php if($detailUrl !== ''): ?>
+                  <a class="msg msg-link" href="<?php echo htmlspecialchars($detailUrl); ?>"><?php echo htmlspecialchars((string)$it['message']); ?></a>
+                  <div class="meta"><a class="msg-link" href="<?php echo htmlspecialchars($detailUrl); ?>">Open Linked Bilty Detail</a></div>
+                <?php else: ?>
+                  <div class="msg"><?php echo htmlspecialchars((string)$it['message']); ?></div>
+                <?php endif; ?>
                 <?php if($payloadText !== ''): ?>
                   <div class="payload"><?php echo htmlspecialchars($payloadText); ?></div>
                 <?php endif; ?>

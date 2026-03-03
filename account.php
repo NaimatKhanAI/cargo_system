@@ -23,6 +23,14 @@ function exec_prepared_result_local($conn, $sql, $types = '', $values = []){
     return [$stmt, $res];
 }
 
+function bilty_detail_link_local($moduleType, $entityId, $source = 'account'){
+    $moduleType = strtolower(trim((string)$moduleType));
+    $entityId = (int)$entityId;
+    if($entityId <= 0) return '';
+    if(!in_array($moduleType, ['feed', 'haleeb'], true)) return '';
+    return 'bilty_detail.php?type=' . rawurlencode($moduleType) . '&id=' . $entityId . '&src=' . rawurlencode((string)$source);
+}
+
 function payment_request_remaining_local($conn, $actionType, $entityId, &$error = ''){
     static $cache = [];
     $error = '';
@@ -638,11 +646,73 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
   }
   .act-edit:hover { background: rgba(240,192,64,0.25); }
   .col-action { text-align: center; width: 60px; }
+  .ref-link {
+    color: var(--blue);
+    text-decoration: none;
+    border-bottom: 1px solid rgba(96,165,250,0.35);
+    font-family: var(--font);
+    font-size: 12px;
+  }
+  .ref-link:hover { color: #93c5fd; border-bottom-color: rgba(147,197,253,0.8); }
+  .analytics-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    margin-bottom: 20px;
+  }
+  .analytics-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .analytics-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    padding: 14px 18px;
+  }
+  .analytics-actions {
+    display: flex;
+    align-items: end;
+    justify-content: flex-end;
+  }
+  .analytics-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    padding: 0 18px 16px;
+  }
+  .a-stat {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    padding: 10px 12px;
+  }
+  .a-stat .k {
+    color: var(--muted);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 4px;
+    font-weight: 700;
+  }
+  .a-stat .v {
+    font-family: var(--mono);
+    font-size: 16px;
+    font-weight: 500;
+  }
+  .tiny-meta {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
 
   @media(max-width: 1100px) {
     .stats-grid { grid-template-columns: 1fr 1fr; }
     .cat-cards { grid-template-columns: 1fr 1fr; }
     .form-row { grid-template-columns: 1fr 1fr 1fr; }
+    .analytics-grid { grid-template-columns: 1fr 1fr; }
+    .analytics-stats { grid-template-columns: 1fr 1fr; }
   }
   @media(max-width: 700px) {
     .topbar { padding: 14px 16px; flex-direction: column; align-items: flex-start; gap: 10px; }
@@ -664,6 +734,7 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
     <?php if($canReviewActivity): ?>
       <a class="nav-btn" href="activity_review.php">Activity Review<?php echo $flaggedActivityCount > 0 ? ' (' . $flaggedActivityCount . ')' : ''; ?></a>
     <?php endif; ?>
+    <a class="nav-btn" href="all_bilties.php">All Bilties</a>
     <?php if($isSuperAdmin): ?><a class="nav-btn" href="super_admin.php">Super Admin</a><?php endif; ?>
     <a class="nav-btn" href="dashboard.php">Dashboard</a>
     <a class="nav-btn danger" href="logout.php">Logout</a>
@@ -709,11 +780,14 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
                   $category = isset($p['category']) ? (string)$p['category'] : '';
                   $entryDate = isset($p['entry_date']) ? (string)$p['entry_date'] : '';
                   $note = isset($p['note']) ? (string)$p['note'] : '';
+                  $entityId = isset($r['entity_id']) ? (int)$r['entity_id'] : 0;
+                  $reqModule = strtolower((string)($r['module_key'] ?? 'feed'));
+                  $detailHref = bilty_detail_link_local($reqModule === 'haleeb' ? 'haleeb' : 'feed', $entityId, 'account');
                   $remainingErr = '';
                   $remainingAmt = payment_request_remaining_local(
                     $conn,
                     isset($r['action_type']) ? (string)$r['action_type'] : '',
-                    isset($r['entity_id']) ? (int)$r['entity_id'] : 0,
+                    $entityId,
                     $remainingErr
                   );
                 ?>
@@ -729,6 +803,9 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
                       <div class="pay-req-note">Remaining: <?php echo htmlspecialchars($remainingErr); ?></div>
                     <?php else: ?>
                       <div class="pay-req-note">Remaining now: Rs <?php echo number_format($remainingAmt, 2); ?></div>
+                    <?php endif; ?>
+                    <?php if($detailHref !== ''): ?>
+                      <div class="pay-req-note"><a class="ref-link" href="<?php echo htmlspecialchars($detailHref); ?>">Open Bilty Detail</a></div>
                     <?php endif; ?>
                   </td>
                   <td><?php echo htmlspecialchars((string)$r['created_at']); ?></td>
@@ -843,6 +920,63 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
     </form>
   </div>
 
+  <div class="analytics-wrap">
+    <div class="analytics-head">
+      <span class="tbl-title">Ledger Analytics Filters</span>
+      <button class="btn-apply" type="button" id="ledger_analytics_reset">Reset Analytics</button>
+    </div>
+    <div class="analytics-grid">
+      <div class="form-field">
+        <label for="a_led_text">Note / Search</label>
+        <input id="a_led_text" type="text" placeholder="Search note text">
+      </div>
+      <div class="form-field">
+        <label for="a_led_category">Category</label>
+        <select id="a_led_category">
+          <option value="">All</option>
+          <option value="feed">Feed</option>
+          <option value="haleeb">Haleeb</option>
+          <option value="loan">Loan</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label for="a_led_type">Entry Type</label>
+        <select id="a_led_type">
+          <option value="">All</option>
+          <option value="debit">Debit</option>
+          <option value="credit">Credit</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label for="a_led_mode">Mode</label>
+        <select id="a_led_mode">
+          <option value="">All</option>
+          <option value="cash">Cash</option>
+          <option value="account">Account</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label for="a_led_linked">Linked Bilty</label>
+        <select id="a_led_linked">
+          <option value="">All</option>
+          <option value="feed">Feed</option>
+          <option value="haleeb">Haleeb</option>
+          <option value="unlinked">Unlinked</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label for="a_led_amt_min">Min Amount</label>
+        <input id="a_led_amt_min" type="number" step="any" min="0" placeholder="0">
+      </div>
+      <div class="form-field">
+        <label for="a_led_amt_max">Max Amount</label>
+        <input id="a_led_amt_max" type="number" step="any" min="0" placeholder="Any">
+      </div>
+      <div class="analytics-actions tiny-meta" id="ledger_analytics_count">Rows: 0</div>
+    </div>
+    <div class="analytics-stats" id="ledger_analytics_stats"></div>
+  </div>
+
   <!-- OVERALL STATS -->
   <?php
   $netPos = $netBalance >= 0;
@@ -918,21 +1052,50 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
           <th>Type</th>
           <th>Mode</th>
           <th>Amount</th>
+          <th>Reference</th>
           <th>Note</th>
           <?php if($canManageLedger): ?><th class="col-action">Edit</th><?php endif; ?>
         </tr>
       </thead>
-      <tbody>
+      <tbody id="ledger_entries_tbody">
         <?php while($row = $entries->fetch_assoc()):
           $rType = strtolower($row['entry_type'] ?? '');
           $rMode = strtolower($row['amount_mode'] ?? 'cash');
+          $refType = '';
+          $refId = 0;
+          if(isset($row['bilty_id']) && (int)$row['bilty_id'] > 0){
+              $refType = 'feed';
+              $refId = (int)$row['bilty_id'];
+          } elseif(isset($row['haleeb_bilty_id']) && (int)$row['haleeb_bilty_id'] > 0){
+              $refType = 'haleeb';
+              $refId = (int)$row['haleeb_bilty_id'];
+          } else {
+              $refType = 'unlinked';
+          }
+          $refHref = ($refId > 0 && in_array($refType, ['feed', 'haleeb'], true)) ? bilty_detail_link_local($refType, $refId, 'account') : '';
         ?>
-        <tr>
+        <tr
+          data-ledger-row="1"
+          data-date="<?php echo htmlspecialchars((string)($row['entry_date'] ?? '')); ?>"
+          data-category="<?php echo htmlspecialchars(strtolower((string)($row['category'] ?? ''))); ?>"
+          data-type="<?php echo htmlspecialchars($rType); ?>"
+          data-mode="<?php echo htmlspecialchars($rMode); ?>"
+          data-amount="<?php echo (float)($row['amount'] ?? 0); ?>"
+          data-note="<?php echo htmlspecialchars(strtolower((string)($row['note'] ?? ''))); ?>"
+          data-link-type="<?php echo htmlspecialchars($refType); ?>"
+        >
           <td><?php echo htmlspecialchars($row['entry_date']); ?></td>
           <td><span class="cat-badge"><?php echo htmlspecialchars(ucfirst($row['category'])); ?></span></td>
           <td><span class="type-badge type-<?php echo $rType; ?>"><?php echo ucfirst($rType); ?></span></td>
           <td><span class="mode-badge mode-<?php echo $rMode; ?>"><?php echo ucfirst($rMode); ?></span></td>
           <td class="<?php echo $rType==='debit'?'val-debit':'val-credit'; ?>">Rs <?php echo number_format((float)$row['amount'],2); ?></td>
+          <td>
+            <?php if($refHref !== ''): ?>
+              <a class="ref-link" href="<?php echo htmlspecialchars($refHref); ?>"><?php echo htmlspecialchars(strtoupper($refType) . ' #' . $refId); ?></a>
+            <?php else: ?>
+              <span class="tiny-meta">-</span>
+            <?php endif; ?>
+          </td>
           <td class="td-note"><?php echo htmlspecialchars($row['note']); ?></td>
           <?php if($canManageLedger): ?>
             <td class="col-action">
@@ -944,8 +1107,102 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
       </tbody>
     </table>
   </div>
+
 </div>
 <?php if($entryStmt) $entryStmt->close(); ?>
+<script>
+(function(){
+  var rows = Array.prototype.slice.call(document.querySelectorAll('#ledger_entries_tbody tr[data-ledger-row="1"]'));
+  if(rows.length === 0) return;
+  var f = {
+    text: document.getElementById('a_led_text'),
+    category: document.getElementById('a_led_category'),
+    type: document.getElementById('a_led_type'),
+    mode: document.getElementById('a_led_mode'),
+    linked: document.getElementById('a_led_linked'),
+    min: document.getElementById('a_led_amt_min'),
+    max: document.getElementById('a_led_amt_max')
+  };
+  var resetBtn = document.getElementById('ledger_analytics_reset');
+  var statsBox = document.getElementById('ledger_analytics_stats');
+  var countBox = document.getElementById('ledger_analytics_count');
+
+  function val(el){ return el ? String(el.value || '').trim().toLowerCase() : ''; }
+  function num(el){
+    if(!el) return null;
+    var t = String(el.value || '').trim();
+    if(t === '') return null;
+    var n = Number(t);
+    return Number.isFinite(n) ? n : null;
+  }
+  function money(v){ return Number(v || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}); }
+  function inRange(v, min, max){
+    if(min !== null && v < min) return false;
+    if(max !== null && v > max) return false;
+    return true;
+  }
+
+  function apply(){
+    var x = {
+      text: val(f.text),
+      category: val(f.category),
+      type: val(f.type),
+      mode: val(f.mode),
+      linked: val(f.linked),
+      min: num(f.min),
+      max: num(f.max)
+    };
+    var shown = 0, debit = 0, credit = 0, cash = 0, account = 0;
+    rows.forEach(function(r){
+      var d = r.dataset || {};
+      var amount = Number(d.amount || 0);
+      var ok = true;
+      if(x.text && String(d.note || '').indexOf(x.text) === -1) ok = false;
+      if(ok && x.category && String(d.category || '') !== x.category) ok = false;
+      if(ok && x.type && String(d.type || '') !== x.type) ok = false;
+      if(ok && x.mode && String(d.mode || '') !== x.mode) ok = false;
+      if(ok && x.linked && String(d.linkType || '') !== x.linked) ok = false;
+      if(ok && !inRange(amount, x.min, x.max)) ok = false;
+      r.style.display = ok ? '' : 'none';
+      if(ok){
+        shown += 1;
+        if(String(d.type || '') === 'debit') debit += amount;
+        else credit += amount;
+        if(String(d.mode || '') === 'cash') cash += amount;
+        if(String(d.mode || '') === 'account') account += amount;
+      }
+    });
+    if(countBox) countBox.textContent = 'Rows: ' + shown;
+    if(statsBox){
+      statsBox.innerHTML = ''
+        + '<div class="a-stat"><div class="k">Shown Entries</div><div class="v">' + shown + '</div></div>'
+        + '<div class="a-stat"><div class="k">Shown Debit</div><div class="v" style="color:#ef4444;">Rs ' + money(debit) + '</div></div>'
+        + '<div class="a-stat"><div class="k">Shown Credit</div><div class="v" style="color:#22c55e;">Rs ' + money(credit) + '</div></div>'
+        + '<div class="a-stat"><div class="k">Shown Net</div><div class="v" style="color:' + (credit - debit >= 0 ? '#22c55e' : '#ef4444') + ';">Rs ' + money(credit - debit) + '</div></div>'
+        + '<div class="a-stat"><div class="k">Cash Total</div><div class="v">Rs ' + money(cash) + '</div></div>'
+        + '<div class="a-stat"><div class="k">Account Total</div><div class="v">Rs ' + money(account) + '</div></div>';
+    }
+  }
+
+  Object.keys(f).forEach(function(k){
+    if(!f[k]) return;
+    f[k].addEventListener('input', apply);
+    f[k].addEventListener('change', apply);
+  });
+  if(resetBtn){
+    resetBtn.addEventListener('click', function(){
+      Object.keys(f).forEach(function(k){
+        if(!f[k]) return;
+        if(f[k].tagName === 'SELECT') f[k].selectedIndex = 0;
+        else f[k].value = '';
+      });
+      apply();
+    });
+  }
+  apply();
+})();
+
+</script>
 </body>
 </html>
 
