@@ -91,7 +91,23 @@ function payment_request_remaining_local($conn, $actionType, $entityId, &$error 
     return 0.0;
 }
 
-$allowedCategories = ['feed', 'haleeb', 'loan'];
+function ledger_category_label_local($categoryKey, $labels){
+    $categoryKey = strtolower(trim((string)$categoryKey));
+    if(isset($labels[$categoryKey])) return (string)$labels[$categoryKey];
+    if($categoryKey === '') return '';
+    return ucwords(str_replace('_', ' ', $categoryKey));
+}
+
+$categoryLabels = [
+    'feed' => 'Feed',
+    'feed_ilyas' => 'Feed - Ilyas',
+    'feed_hamid' => 'Feed - Hamid',
+    'feed_amir' => 'Feed - Amir',
+    'haleeb' => 'Haleeb',
+    'loan' => 'Loan',
+];
+$allowedCategories = array_keys($categoryLabels);
+$feedCategoryGroup = ['feed', 'feed_ilyas', 'feed_hamid', 'feed_amir'];
 $allowedTypes = ['debit', 'credit'];
 $allowedModes = ['cash', 'account'];
 $msg = ''; $err = '';
@@ -351,7 +367,18 @@ if(!in_array($cat, array_merge(['all'], $allowedCategories), true)) $cat = 'all'
 $where = []; $bindTypes = ''; $bindValues = [];
 if($dateFrom !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateFrom)){ $where[] = "entry_date >= ?"; $bindTypes .= 's'; $bindValues[] = $dateFrom; }
 if($dateTo !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateTo)){ $where[] = "entry_date <= ?"; $bindTypes .= 's'; $bindValues[] = $dateTo; }
-if($cat !== 'all'){ $where[] = "category = ?"; $bindTypes .= 's'; $bindValues[] = $cat; }
+if($cat === 'feed'){
+    $feedGroup = array_values(array_intersect($feedCategoryGroup, $allowedCategories));
+    if(count($feedGroup) > 0){
+        $where[] = "category IN (" . implode(',', array_fill(0, count($feedGroup), '?')) . ")";
+        $bindTypes .= str_repeat('s', count($feedGroup));
+        foreach($feedGroup as $feedCategory) $bindValues[] = $feedCategory;
+    }
+} elseif($cat !== 'all'){
+    $where[] = "category = ?";
+    $bindTypes .= 's';
+    $bindValues[] = $cat;
+}
 $whereSql = count($where) > 0 ? (' WHERE ' . implode(' AND ', $where)) : '';
 $dateQueryTail = '';
 if($dateFrom !== '') $dateQueryTail .= '&date_from=' . urlencode($dateFrom);
@@ -923,9 +950,11 @@ $openAnalyticsPanel = false;
           <div class="form-field">
             <label>Category</label>
             <select name="category" required>
-              <option value="feed" <?php echo $formCategory==='feed'?'selected':''; ?>>Feed</option>
-              <option value="haleeb" <?php echo $formCategory==='haleeb'?'selected':''; ?>>Haleeb</option>
-              <option value="loan" <?php echo $formCategory==='loan'?'selected':''; ?>>Loan</option>
+              <?php foreach($allowedCategories as $categoryKey): ?>
+                <option value="<?php echo htmlspecialchars($categoryKey); ?>" <?php echo $formCategory === $categoryKey ? 'selected' : ''; ?>>
+                  <?php echo htmlspecialchars(ledger_category_label_local($categoryKey, $categoryLabels)); ?>
+                </option>
+              <?php endforeach; ?>
             </select>
           </div>
           <div class="form-field">
@@ -975,9 +1004,11 @@ $openAnalyticsPanel = false;
   <div class="cat-panel">
     <div class="cat-filter-row">
       <a class="cat-btn <?php echo $cat==='all'?'active':''; ?>" href="account.php?cat=all<?php echo $dateQueryTail; ?>">All</a>
-      <a class="cat-btn <?php echo $cat==='feed'?'active':''; ?>" href="account.php?cat=feed<?php echo $dateQueryTail; ?>">Feed</a>
-      <a class="cat-btn <?php echo $cat==='haleeb'?'active':''; ?>" href="account.php?cat=haleeb<?php echo $dateQueryTail; ?>">Haleeb</a>
-      <a class="cat-btn <?php echo $cat==='loan'?'active':''; ?>" href="account.php?cat=loan<?php echo $dateQueryTail; ?>">Loan</a>
+      <?php foreach($allowedCategories as $categoryKey): ?>
+        <a class="cat-btn <?php echo $cat === $categoryKey ? 'active' : ''; ?>" href="account.php?cat=<?php echo urlencode($categoryKey); ?><?php echo $dateQueryTail; ?>">
+          <?php echo htmlspecialchars(ledger_category_label_local($categoryKey, $categoryLabels)); ?>
+        </a>
+      <?php endforeach; ?>
     </div>
     <form class="date-filter" method="get">
       <input type="hidden" name="cat" value="<?php echo htmlspecialchars($cat); ?>">
@@ -1019,9 +1050,9 @@ $openAnalyticsPanel = false;
         <label for="a_led_category">Category</label>
         <select id="a_led_category">
           <option value="">All</option>
-          <option value="feed">Feed</option>
-          <option value="haleeb">Haleeb</option>
-          <option value="loan">Loan</option>
+          <?php foreach($allowedCategories as $categoryKey): ?>
+            <option value="<?php echo htmlspecialchars($categoryKey); ?>"><?php echo htmlspecialchars(ledger_category_label_local($categoryKey, $categoryLabels)); ?></option>
+          <?php endforeach; ?>
         </select>
       </div>
       <div class="form-field">
@@ -1124,7 +1155,11 @@ $openAnalyticsPanel = false;
   </div>
 
   <!-- CATEGORY CARDS -->
-  <?php $categoriesToShow = $cat === 'all' ? $allowedCategories : [$cat]; ?>
+  <?php
+  if($cat === 'all') $categoriesToShow = $allowedCategories;
+  elseif($cat === 'feed') $categoriesToShow = array_values(array_intersect($feedCategoryGroup, $allowedCategories));
+  else $categoriesToShow = [$cat];
+  ?>
   <div class="cat-cards">
     <?php foreach($categoriesToShow as $c):
       $d  = (float)($categoryTotals[$c]['debit_total'] ?? 0);
@@ -1138,7 +1173,7 @@ $openAnalyticsPanel = false;
       $nA = $cA - $dA;
     ?>
     <div class="cat-card">
-      <div class="cat-card-title"><?php echo ucfirst($c); ?></div>
+      <div class="cat-card-title"><?php echo htmlspecialchars(ledger_category_label_local($c, $categoryLabels)); ?></div>
       <div class="cat-line"><span class="cat-line-label">Debit</span><span class="cat-line-val val-debit">Rs <?php echo number_format($d,2); ?></span></div>
       <div class="cat-line"><span class="cat-line-label">Credit</span><span class="cat-line-val val-credit">Rs <?php echo number_format($cr,2); ?></span></div>
       <div class="cat-line"><span class="cat-line-label">Debit — Cash</span><span class="cat-line-val val-debit">Rs <?php echo number_format($dC,2); ?></span></div>
@@ -1210,7 +1245,7 @@ $openAnalyticsPanel = false;
           data-added-by-label="<?php echo htmlspecialchars($linkedAddedBy); ?>"
         >
           <td><?php echo htmlspecialchars($row['entry_date']); ?></td>
-          <td><span class="cat-badge"><?php echo htmlspecialchars(ucfirst($row['category'])); ?></span></td>
+          <td><span class="cat-badge"><?php echo htmlspecialchars(ledger_category_label_local((string)$row['category'], $categoryLabels)); ?></span></td>
           <td><span class="type-badge type-<?php echo $rType; ?>"><?php echo ucfirst($rType); ?></span></td>
           <td><span class="mode-badge mode-<?php echo $rMode; ?>"><?php echo ucfirst($rMode); ?></span></td>
           <td class="<?php echo $rType==='debit'?'val-debit':'val-credit'; ?>">Rs <?php echo number_format((float)$row['amount'],2); ?></td>
@@ -1265,6 +1300,7 @@ $openAnalyticsPanel = false;
 (function(){
   var rows = Array.prototype.slice.call(document.querySelectorAll('#ledger_entries_tbody tr[data-ledger-row="1"]'));
   if(rows.length === 0) return;
+  var feedCategoryGroup = <?php echo json_encode(array_values(array_intersect($feedCategoryGroup, $allowedCategories)), JSON_UNESCAPED_UNICODE); ?>;
   var f = {
     text: document.getElementById('a_led_text'),
     category: document.getElementById('a_led_category'),
@@ -1346,7 +1382,14 @@ $openAnalyticsPanel = false;
       var amount = Number(d.amount || 0);
       var ok = true;
       if(x.text && String(d.note || '').indexOf(x.text) === -1) ok = false;
-      if(ok && x.category && String(d.category || '') !== x.category) ok = false;
+      if(ok && x.category){
+        var rowCategory = String(d.category || '');
+        if(x.category === 'feed'){
+          if(feedCategoryGroup.indexOf(rowCategory) === -1) ok = false;
+        } else if(rowCategory !== x.category){
+          ok = false;
+        }
+      }
       if(ok && x.type && String(d.type || '') !== x.type) ok = false;
       if(ok && x.mode && String(d.mode || '') !== x.mode) ok = false;
       if(ok && x.linked && String(d.linkType || '') !== x.linked) ok = false;
