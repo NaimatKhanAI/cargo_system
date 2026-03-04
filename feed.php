@@ -12,6 +12,7 @@ $canHaleeb = auth_has_module_access('haleeb');
 $canManageUsers = auth_can_manage_users();
 $userFeedPortion = auth_get_feed_portion();
 $userFeedPortionLabel = feed_portion_label_local($userFeedPortion);
+$currentUserId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 
 if(isset($_GET['confirm_driver_pay'])){
     if(!$canDirectModify){
@@ -122,6 +123,7 @@ if($isSuperAdmin){
 $dateFrom = isset($_GET['date_from']) ? trim((string)$_GET['date_from']) : '';
 $dateTo = isset($_GET['date_to']) ? trim((string)$_GET['date_to']) : '';
 $vehicleSearch = isset($_GET['vehicle']) ? trim((string)$_GET['vehicle']) : '';
+$biltySearch = isset($_GET['bilty_no']) ? trim((string)$_GET['bilty_no']) : '';
 
 $import_message = "";
 $import_report_url = "";
@@ -176,10 +178,15 @@ if(isset($_GET['req']) && $_GET['req'] === 'submitted'){
 }
 
 $vehicleOptions = [];
+$biltyOptions = [];
 if($isSuperAdmin){
     $vehicleRes = $conn->query("SELECT DISTINCT vehicle FROM bilty WHERE vehicle IS NOT NULL AND vehicle <> '' ORDER BY vehicle ASC");
     while($vehicleRes && $vrow = $vehicleRes->fetch_assoc()){
         $vehicleOptions[] = (string)$vrow['vehicle'];
+    }
+    $biltyRes = $conn->query("SELECT DISTINCT bilty_no FROM bilty WHERE bilty_no IS NOT NULL AND bilty_no <> '' ORDER BY bilty_no ASC");
+    while($biltyRes && $brow = $biltyRes->fetch_assoc()){
+        $biltyOptions[] = (string)$brow['bilty_no'];
     }
 } else {
     $vehicleStmt = $conn->prepare("SELECT DISTINCT vehicle FROM bilty WHERE feed_portion=? AND vehicle IS NOT NULL AND vehicle <> '' ORDER BY vehicle ASC");
@@ -190,19 +197,49 @@ if($isSuperAdmin){
         $vehicleOptions[] = (string)$vrow['vehicle'];
     }
     $vehicleStmt->close();
+
+    $biltyStmt = $conn->prepare("SELECT DISTINCT bilty_no FROM bilty WHERE feed_portion=? AND bilty_no IS NOT NULL AND bilty_no <> '' ORDER BY bilty_no ASC");
+    $biltyStmt->bind_param("s", $userFeedPortion);
+    $biltyStmt->execute();
+    $biltyRes = $biltyStmt->get_result();
+    while($biltyRes && $brow = $biltyRes->fetch_assoc()){
+        $biltyOptions[] = (string)$brow['bilty_no'];
+    }
+    $biltyStmt->close();
 }
+
+$pendingOwnFeedChanges = [];
+if(!$canDirectModify && $currentUserId > 0){
+    $pendingEditDeleteStmt = $conn->prepare("SELECT id, entity_id, action_type, payload FROM change_requests WHERE status='pending' AND requested_by=? AND module_key='feed' AND entity_table='bilty' AND action_type IN ('feed_update', 'feed_delete') ORDER BY id DESC");
+    $pendingEditDeleteStmt->bind_param("i", $currentUserId);
+    $pendingEditDeleteStmt->execute();
+    $pendingEditDeleteRes = $pendingEditDeleteStmt->get_result();
+    while($pendingEditDeleteRes && $req = $pendingEditDeleteRes->fetch_assoc()){
+        $entityId = isset($req['entity_id']) ? (int)$req['entity_id'] : 0;
+        if($entityId <= 0 || isset($pendingOwnFeedChanges[$entityId])) continue;
+        $pendingOwnFeedChanges[$entityId] = [
+            'request_id' => isset($req['id']) ? (int)$req['id'] : 0,
+            'action_type' => isset($req['action_type']) ? (string)$req['action_type'] : '',
+            'payload' => request_payload_decode_local(isset($req['payload']) ? (string)$req['payload'] : '')
+        ];
+    }
+    $pendingEditDeleteStmt->close();
+}
+$pendingOwnFeedCount = count($pendingOwnFeedChanges);
 
 $where = []; $bindValues = []; $bindTypes = "";
 if($dateFrom !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateFrom)){ $where[] = "date >= ?"; $bindTypes .= "s"; $bindValues[] = $dateFrom; }
 if($dateTo !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateTo)){ $where[] = "date <= ?"; $bindTypes .= "s"; $bindValues[] = $dateTo; }
-if($vehicleSearch !== ''){ $where[] = "vehicle LIKE ?"; $bindTypes .= "s"; $bindValues[] = "%" . $vehicleSearch . "%"; }
+if($vehicleSearch !== '' && $canDirectModify){ $where[] = "vehicle LIKE ?"; $bindTypes .= "s"; $bindValues[] = "%" . $vehicleSearch . "%"; }
+if($biltySearch !== '' && $canDirectModify){ $where[] = "bilty_no LIKE ?"; $bindTypes .= "s"; $bindValues[] = "%" . $biltySearch . "%"; }
 if(!$isSuperAdmin){ $where[] = "feed_portion = ?"; $bindTypes .= "s"; $bindValues[] = $userFeedPortion; }
 
 $sql = "SELECT b.*,
         COALESCE(NULLIF(u.username, ''), CASE WHEN b.added_by_user_id IS NULL THEN '-' ELSE CONCAT('User#', b.added_by_user_id) END) AS added_by_name,
         GREATEST((COALESCE(b.freight,0) - COALESCE(b.commission,0)), 0) AS total_cost,
         (COALESCE(b.tender,0) - GREATEST((COALESCE(b.freight,0) - COALESCE(b.commission,0)), 0)) AS calc_profit,
-        GREATEST(COALESCE(b.original_freight, GREATEST((COALESCE(b.freight,0) - COALESCE(b.commission,0)), 0)) - COALESCE(p.paid_total, 0), 0) AS remaining_balance
+        GREATEST(COALESCE(b.original_freight, GREATEST((COALESCE(b.freight,0) - COALESCE(b.commission,0)), 0)) - COALESCE(p.paid_total, 0), 0) AS remaining_balance,
+        COALESCE(p.paid_total, 0) AS paid_total
         FROM bilty b
         LEFT JOIN users u ON u.id = b.added_by_user_id
         LEFT JOIN (
@@ -214,7 +251,7 @@ $sql = "SELECT b.*,
 if(count($where) > 0){
     $whereSql = [];
     foreach($where as $w){
-        $whereSql[] = str_replace(["date", "vehicle", "feed_portion"], ["b.date", "b.vehicle", "b.feed_portion"], $w);
+        $whereSql[] = str_replace(["date", "vehicle", "bilty_no", "feed_portion"], ["b.date", "b.vehicle", "b.bilty_no", "b.feed_portion"], $w);
     }
     $sql .= " WHERE " . implode(" AND ", $whereSql);
 }
@@ -229,6 +266,47 @@ if(count($bindValues) > 0){
     $result = $stmt->get_result();
 } else {
     $result = $conn->query($sql);
+}
+
+$feedRows = [];
+while($result && $row = $result->fetch_assoc()){
+    $rowId = isset($row['id']) ? (int)$row['id'] : 0;
+
+    if(!$canDirectModify && $rowId > 0 && isset($pendingOwnFeedChanges[$rowId])){
+        $pendingChange = $pendingOwnFeedChanges[$rowId];
+        $pendingAction = isset($pendingChange['action_type']) ? (string)$pendingChange['action_type'] : '';
+        $pendingPayload = isset($pendingChange['payload']) && is_array($pendingChange['payload']) ? $pendingChange['payload'] : [];
+
+        if($pendingAction === 'feed_delete'){
+            continue;
+        }
+
+        if($pendingAction === 'feed_update'){
+            $overlayFields = ['sr_no', 'date', 'vehicle', 'bilty_no', 'party', 'location', 'bags', 'freight', 'commission', 'freight_payment_type', 'tender'];
+            foreach($overlayFields as $field){
+                if(array_key_exists($field, $pendingPayload)){
+                    $row[$field] = $pendingPayload[$field];
+                }
+            }
+
+            $freight = isset($row['freight']) ? (float)$row['freight'] : 0.0;
+            $commission = isset($row['commission']) ? (float)$row['commission'] : 0.0;
+            $tender = isset($row['tender']) ? (float)$row['tender'] : 0.0;
+            $totalCost = max(0, $freight - $commission);
+            $paidTotal = isset($row['paid_total']) ? (float)$row['paid_total'] : 0.0;
+            $remaining = max(0, $totalCost - $paidTotal);
+
+            $row['total_cost'] = $totalCost;
+            $row['calc_profit'] = $tender - $totalCost;
+            $row['remaining_balance'] = $remaining;
+            $row['original_freight'] = $totalCost;
+        }
+    }
+
+    if($vehicleSearch !== '' && stripos((string)($row['vehicle'] ?? ''), $vehicleSearch) === false) continue;
+    if($biltySearch !== '' && stripos((string)($row['bilty_no'] ?? ''), $biltySearch) === false) continue;
+
+    $feedRows[] = $row;
 }
 ?>
 <!DOCTYPE html>
@@ -335,7 +413,7 @@ if(count($bindValues) > 0){
     background: var(--surface); border: 1px solid var(--border); padding: 16px 20px; margin-bottom: 20px;
   }
   .search-form {
-    display: grid; grid-template-columns: 1fr 1fr 1.5fr auto; gap: 12px; align-items: end;
+    display: grid; grid-template-columns: 1fr 1fr 1.3fr 1.3fr auto; gap: 12px; align-items: end;
   }
   .field label { display: block; font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
   .field input {
@@ -444,6 +522,7 @@ if(count($bindValues) > 0){
   @media(max-width: 900px) {
     .search-form { grid-template-columns: 1fr 1fr; }
     .search-form .field:nth-child(3) { grid-column: 1 / -1; }
+    .search-form .field:nth-child(4) { grid-column: 1 / -1; }
     .search-actions { grid-column: 1 / -1; justify-content: flex-end; }
     .analytics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .analytics-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -535,6 +614,9 @@ if(count($bindValues) > 0){
   <?php if($request_message !== ""): ?>
     <div class="alert"><?php echo htmlspecialchars($request_message); ?></div>
   <?php endif; ?>
+  <?php if(!$canDirectModify && $pendingOwnFeedCount > 0): ?>
+    <div class="alert">Pending requests view enabled: your submitted edit/delete requests are shown temporarily until reviewed.</div>
+  <?php endif; ?>
 
   <?php if($isSuperAdmin): ?>
     <div class="profit-banner">
@@ -560,6 +642,15 @@ if(count($bindValues) > 0){
         <input id="vehicle" name="vehicle" list="vehicle_list" placeholder="Vehicle" value="<?php echo htmlspecialchars($vehicleSearch); ?>">
         <datalist id="vehicle_list">
           <?php foreach($vehicleOptions as $opt): ?>
+            <option value="<?php echo htmlspecialchars($opt); ?>">
+          <?php endforeach; ?>
+        </datalist>
+      </div>
+      <div class="field">
+        <label for="bilty_no">Bilty No</label>
+        <input id="bilty_no" name="bilty_no" list="bilty_list" placeholder="Bilty no" value="<?php echo htmlspecialchars($biltySearch); ?>">
+        <datalist id="bilty_list">
+          <?php foreach($biltyOptions as $opt): ?>
             <option value="<?php echo htmlspecialchars($opt); ?>">
           <?php endforeach; ?>
         </datalist>
@@ -725,7 +816,7 @@ if(count($bindValues) > 0){
         </tr>
       </thead>
       <tbody id="feed_records_tbody">
-        <?php while($row = $result->fetch_assoc()):
+        <?php foreach($feedRows as $row):
           $profit = (float)$row['calc_profit'];
           $remaining = (float)($row['remaining_balance'] ?? 0);
           $commission = (float)($row['commission'] ?? 0);
@@ -801,7 +892,7 @@ if(count($bindValues) > 0){
             </div>
           </td>
         </tr>
-        <?php endwhile; ?>
+        <?php endforeach; ?>
       </tbody>
     </table>
   </div>

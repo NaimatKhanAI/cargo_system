@@ -9,6 +9,7 @@ $canDirectModify = auth_can_direct_modify('haleeb');
 $isSuperAdmin = auth_is_super_admin();
 $canFeed = auth_has_module_access('feed');
 $canManageUsers = auth_can_manage_users();
+$currentUserId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 
 if(isset($_GET['confirm_driver_pay'])){
     if(!$canDirectModify){
@@ -183,16 +184,36 @@ while($vehicleRes && $vrow = $vehicleRes->fetch_assoc()){
     $vehicleOptions[] = (string)$vrow['vehicle'];
 }
 
+$pendingOwnHaleebChanges = [];
+if(!$canDirectModify && $currentUserId > 0){
+    $pendingEditDeleteStmt = $conn->prepare("SELECT id, entity_id, action_type, payload FROM change_requests WHERE status='pending' AND requested_by=? AND module_key='haleeb' AND entity_table='haleeb_bilty' AND action_type IN ('haleeb_update', 'haleeb_delete') ORDER BY id DESC");
+    $pendingEditDeleteStmt->bind_param("i", $currentUserId);
+    $pendingEditDeleteStmt->execute();
+    $pendingEditDeleteRes = $pendingEditDeleteStmt->get_result();
+    while($pendingEditDeleteRes && $req = $pendingEditDeleteRes->fetch_assoc()){
+        $entityId = isset($req['entity_id']) ? (int)$req['entity_id'] : 0;
+        if($entityId <= 0 || isset($pendingOwnHaleebChanges[$entityId])) continue;
+        $pendingOwnHaleebChanges[$entityId] = [
+            'request_id' => isset($req['id']) ? (int)$req['id'] : 0,
+            'action_type' => isset($req['action_type']) ? (string)$req['action_type'] : '',
+            'payload' => request_payload_decode_local(isset($req['payload']) ? (string)$req['payload'] : '')
+        ];
+    }
+    $pendingEditDeleteStmt->close();
+}
+$pendingOwnHaleebCount = count($pendingOwnHaleebChanges);
+
 $where = []; $bindValues = []; $bindTypes = "";
 if($dateFrom !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateFrom)){ $where[] = "date >= ?"; $bindTypes .= "s"; $bindValues[] = $dateFrom; }
 if($dateTo !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateTo)){ $where[] = "date <= ?"; $bindTypes .= "s"; $bindValues[] = $dateTo; }
-if($vehicleSearch !== ''){ $where[] = "vehicle LIKE ?"; $bindTypes .= "s"; $bindValues[] = "%" . $vehicleSearch . "%"; }
+if($vehicleSearch !== '' && $canDirectModify){ $where[] = "vehicle LIKE ?"; $bindTypes .= "s"; $bindValues[] = "%" . $vehicleSearch . "%"; }
 
 $sql = "SELECT h.*,
         COALESCE(NULLIF(u.username, ''), CASE WHEN h.added_by_user_id IS NULL THEN '-' ELSE CONCAT('User#', h.added_by_user_id) END) AS added_by_name,
         GREATEST((COALESCE(h.freight,0) - COALESCE(h.commission,0)), 0) AS total_cost,
         (COALESCE(h.tender,0) - GREATEST((COALESCE(h.freight,0) - COALESCE(h.commission,0)), 0)) AS calc_profit,
-        GREATEST(GREATEST((COALESCE(h.freight,0) - COALESCE(h.commission,0)), 0) - COALESCE(p.paid_total, 0), 0) AS remaining_balance
+        GREATEST(GREATEST((COALESCE(h.freight,0) - COALESCE(h.commission,0)), 0) - COALESCE(p.paid_total, 0), 0) AS remaining_balance,
+        COALESCE(p.paid_total, 0) AS paid_total
         FROM haleeb_bilty h
         LEFT JOIN users u ON u.id = h.added_by_user_id
         LEFT JOIN (
@@ -219,6 +240,45 @@ if(count($bindValues) > 0){
     $result = $stmt->get_result();
 } else {
     $result = $conn->query($sql);
+}
+
+$haleebRows = [];
+while($result && $row = $result->fetch_assoc()){
+    $rowId = isset($row['id']) ? (int)$row['id'] : 0;
+
+    if(!$canDirectModify && $rowId > 0 && isset($pendingOwnHaleebChanges[$rowId])){
+        $pendingChange = $pendingOwnHaleebChanges[$rowId];
+        $pendingAction = isset($pendingChange['action_type']) ? (string)$pendingChange['action_type'] : '';
+        $pendingPayload = isset($pendingChange['payload']) && is_array($pendingChange['payload']) ? $pendingChange['payload'] : [];
+
+        if($pendingAction === 'haleeb_delete'){
+            continue;
+        }
+
+        if($pendingAction === 'haleeb_update'){
+            $overlayFields = ['date', 'vehicle', 'vehicle_type', 'delivery_note', 'token_no', 'party', 'location', 'stops', 'freight', 'commission', 'freight_payment_type', 'tender'];
+            foreach($overlayFields as $field){
+                if(array_key_exists($field, $pendingPayload)){
+                    $row[$field] = $pendingPayload[$field];
+                }
+            }
+
+            $freight = isset($row['freight']) ? (float)$row['freight'] : 0.0;
+            $commission = isset($row['commission']) ? (float)$row['commission'] : 0.0;
+            $tender = isset($row['tender']) ? (float)$row['tender'] : 0.0;
+            $totalCost = max(0, $freight - $commission);
+            $paidTotal = isset($row['paid_total']) ? (float)$row['paid_total'] : 0.0;
+            $remaining = max(0, $totalCost - $paidTotal);
+
+            $row['total_cost'] = $totalCost;
+            $row['calc_profit'] = $tender - $totalCost;
+            $row['remaining_balance'] = $remaining;
+        }
+    }
+
+    if($vehicleSearch !== '' && stripos((string)($row['vehicle'] ?? ''), $vehicleSearch) === false) continue;
+
+    $haleebRows[] = $row;
 }
 ?>
 <!DOCTYPE html>
@@ -498,6 +558,9 @@ if(count($bindValues) > 0){
   <?php if($request_message !== ""): ?>
     <div class="alert"><?php echo htmlspecialchars($request_message); ?></div>
   <?php endif; ?>
+  <?php if(!$canDirectModify && $pendingOwnHaleebCount > 0): ?>
+    <div class="alert">Pending requests view enabled: your submitted edit/delete requests are shown temporarily until reviewed.</div>
+  <?php endif; ?>
 
   <?php if($isSuperAdmin): ?>
     <div class="profit-banner">
@@ -668,7 +731,7 @@ if(count($bindValues) > 0){
         </tr>
       </thead>
       <tbody id="haleeb_records_tbody">
-        <?php while($row = $result->fetch_assoc()):
+        <?php foreach($haleebRows as $row):
           $profit = (float)$row['calc_profit'];
           $remaining = (float)($row['remaining_balance'] ?? 0);
           $commission = (float)($row['commission'] ?? 0);
@@ -748,7 +811,7 @@ if(count($bindValues) > 0){
             </div>
           </td>
         </tr>
-        <?php endwhile; ?>
+        <?php endforeach; ?>
       </tbody>
     </table>
   </div>
