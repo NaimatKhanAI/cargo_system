@@ -8,7 +8,7 @@ auth_require_login($conn);
 auth_require_module_access('haleeb');
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 if($id > 0){
-if(!auth_can_direct_modify()){
+if(!auth_can_direct_modify('haleeb')){
 $requestId = create_change_request_local($conn, 'haleeb', 'haleeb_bilty', $id, 'haleeb_delete', ['id' => $id], isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0);
 if($requestId > 0){
 header("location:haleeb.php?req=submitted");

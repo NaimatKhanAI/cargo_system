@@ -9,7 +9,7 @@ $canHaleeb = auth_has_module_access('haleeb');
 $canAccount = auth_has_module_access('account');
 $canImage = auth_has_module_access('image_processing');
 $canReviewActivity = auth_can_review_activity();
-$isSuperAdmin = auth_is_super_admin();
+$canManageUsers = auth_can_manage_users();
 
 $deniedModule = isset($_GET['denied']) ? trim((string)$_GET['denied']) : '';
 $deniedMessage = '';
@@ -155,7 +155,7 @@ if($deniedModule !== ''){
       </a>
     <?php endif; ?>
 
-    <?php if($isSuperAdmin): ?>
+    <?php if($canManageUsers): ?>
       <a class="card card-admin" href="super_admin.php">
         <div class="card-icon icon-admin">&#9881;</div>
         <div class="card-title">Super Admin</div>

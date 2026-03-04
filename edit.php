@@ -27,7 +27,7 @@ $rowStmt->close();
 if(!$row){ header("location:feed.php"); exit(); }
 $editFeedPortion = normalize_feed_portion_local(isset($row['feed_portion']) ? (string)$row['feed_portion'] : $userFeedPortion);
 $editFeedPortionLabel = feed_portion_label_local($editFeedPortion);
-if($linkedRequestId > 0 && auth_can_direct_modify()){
+if($linkedRequestId > 0 && auth_can_direct_modify('feed')){
     $candidate = fetch_pending_change_request_by_id_local($conn, $linkedRequestId);
     if(
         $candidate &&
@@ -62,7 +62,7 @@ if(isset($_POST['update'])){
     if(!in_array($freightPaymentType, ['to_pay', 'paid'], true)){
         $freightPaymentType = 'to_pay';
     }
-    if(!auth_can_direct_modify()){
+    if(!auth_can_direct_modify('feed')){
         $freightPaymentType = isset($row['freight_payment_type']) ? (string)$row['freight_payment_type'] : 'to_pay';
         if(!in_array($freightPaymentType, ['to_pay', 'paid'], true)){
             $freightPaymentType = 'to_pay';
@@ -80,7 +80,7 @@ if(isset($_POST['update'])){
     $scaledTender = ($bags > 0) ? (($baseTender / $baseBags) * $bags) : 0.0;
     $t = ($bags > 300) ? round($scaledTender * 0.90, 3) : round($scaledTender, 3);
     $totalFreight = max(0, $f - $commission);
-    if(!auth_can_direct_modify()){
+    if(!auth_can_direct_modify('feed')){
         $payload = [
             'sr_no' => $sr,
             'date' => $d,

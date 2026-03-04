@@ -5,12 +5,33 @@ require_once 'config/auth.php';
 require_once 'config/change_requests.php';
 require_once 'config/activity_notifications.php';
 auth_require_login($conn);
-auth_require_module_access('feed');
+$canFeedAccess = auth_has_module_access('feed');
+$canLedgerAccess = auth_can_direct_modify('account');
+if(!$canFeedAccess && !$canLedgerAccess){
+    header("location:dashboard.php?denied=" . urlencode('feed'));
+    exit();
+}
 $isSuperAdmin = auth_is_super_admin();
+$canDirectFeedPay = auth_can_direct_modify('feed') || $canLedgerAccess;
 $userFeedPortion = auth_get_feed_portion();
+$source = isset($_GET['src']) ? strtolower(trim((string)$_GET['src'])) : '';
+$fallbackReturnUrl = $source === 'all_bilties' ? 'all_bilties.php' : 'feed.php';
+$returnUrl = $fallbackReturnUrl;
+$backRaw = isset($_GET['back']) ? trim((string)$_GET['back']) : '';
+if($backRaw !== ''){
+    $hasProtocol = preg_match('/^[a-z][a-z0-9+.-]*:/i', $backRaw) === 1;
+    $hasCrlf = strpos($backRaw, "\r") !== false || strpos($backRaw, "\n") !== false;
+    if(!$hasProtocol && !$hasCrlf && strpos($backRaw, '//') !== 0){
+        $returnUrl = $backRaw;
+    }
+}
 
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
-if($id <= 0){ header("location:feed.php?pay=error"); exit(); }
+if($id <= 0){
+    $sep = strpos($returnUrl, '?') === false ? '?' : '&';
+    header("location:" . $returnUrl . $sep . "pay=error");
+    exit();
+}
 
 $allowedCategories = ['feed', 'haleeb', 'loan'];
 $msg = ''; $err = '';
@@ -18,7 +39,7 @@ $today = date('Y-m-d');
 $formDate = $today; $formCategory = 'feed'; $formAmountMode = 'account'; $formAmount = ''; $formNote = '';
 
 $stmt = null;
-if($isSuperAdmin){
+if($isSuperAdmin || $canLedgerAccess){
     $stmt = $conn->prepare("SELECT * FROM bilty WHERE id=? LIMIT 1");
     $stmt->bind_param("i", $id);
 } else {
@@ -27,7 +48,11 @@ if($isSuperAdmin){
 }
 $stmt->execute();
 $row = $stmt->get_result()->fetch_assoc(); $stmt->close();
-if(!$row){ header("location:feed.php?pay=error"); exit(); }
+if(!$row){
+    $sep = strpos($returnUrl, '?') === false ? '?' : '&';
+    header("location:" . $returnUrl . $sep . "pay=error");
+    exit();
+}
 
 $paidStmt = $conn->prepare("SELECT SUM(amount) AS paid_total FROM account_entries WHERE bilty_id=? AND entry_type='debit'");
 $paidStmt->bind_param("i", $id); $paidStmt->execute();
@@ -52,7 +77,7 @@ if(isset($_POST['pay_now'])){
     else {
         $baseNote = "Feed - Bil(" . $row['bilty_no'] . ") - ";
         $note = $formNote !== '' ? ($baseNote . " - " . $formNote) : $baseNote;
-        if(!auth_can_direct_modify()){
+        if(!$canDirectFeedPay){
             $payload = [
                 'entry_date' => $formDate,
                 'category' => $formCategory,
@@ -62,7 +87,8 @@ if(isset($_POST['pay_now'])){
             ];
             $requestId = create_change_request_local($conn, 'feed', 'bilty', $id, 'feed_pay', $payload, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0);
             if($requestId > 0){
-                header("location:feed.php?pay=requested");
+                $sep = strpos($returnUrl, '?') === false ? '?' : '&';
+                header("location:" . $returnUrl . $sep . "pay=requested");
                 exit();
             }
             $err = 'Payment request could not be sent.';
@@ -90,7 +116,8 @@ if(isset($_POST['pay_now'])){
                     isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0
                 );
                 $conn->commit();
-                header("location:feed.php?pay=success"); exit();
+                $sep = strpos($returnUrl, '?') === false ? '?' : '&';
+                header("location:" . $returnUrl . $sep . "pay=success"); exit();
             } catch (Throwable $e) { $conn->rollback(); $err = 'Payment failed. Please try again.'; }
         }
     }
@@ -183,7 +210,7 @@ $paidPct = $baseFreight > 0 ? min(100, round($paidTotal / $baseFreight * 100)) :
     <span class="badge">Pay</span>
     <h1>Pay Now — Bilty <?php echo htmlspecialchars($row['bilty_no']); ?></h1>
   </div>
-  <a class="nav-btn" href="feed.php">Back</a>
+  <a class="nav-btn" href="<?php echo htmlspecialchars($returnUrl); ?>">Back</a>
 </div>
 
 <div class="main">

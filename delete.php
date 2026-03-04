@@ -24,7 +24,7 @@ if(!$hasAccess){
 header("location:feed.php?req=failed");
 exit();
 }
-if(!auth_can_direct_modify()){
+if(!auth_can_direct_modify('feed')){
 $requestId = create_change_request_local($conn, 'feed', 'bilty', $id, 'feed_delete', ['id' => $id], isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0);
 if($requestId > 0){
 header("location:feed.php?req=submitted");

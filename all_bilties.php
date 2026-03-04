@@ -6,8 +6,9 @@ require_once 'config/activity_notifications.php';
 auth_require_login($conn);
 auth_require_module_access('account');
 
-$isSuperAdmin = auth_is_super_admin();
+$canManageUsers = auth_can_manage_users();
 $canReviewActivity = auth_can_review_activity();
+$canManageLedger = auth_can_direct_modify('account');
 $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
 
 function bilty_detail_link_local($moduleType, $entityId, $source = 'all_bilties'){
@@ -22,6 +23,11 @@ $module = isset($_GET['module']) ? strtolower(trim((string)$_GET['module'])) : '
 if(!in_array($module, ['all', 'feed', 'haleeb'], true)) $module = 'all';
 $dateFrom = isset($_GET['date_from']) ? trim((string)$_GET['date_from']) : '';
 $dateTo = isset($_GET['date_to']) ? trim((string)$_GET['date_to']) : '';
+$returnTailParts = [];
+$returnTailParts[] = 'module=' . rawurlencode($module);
+if($dateFrom !== '') $returnTailParts[] = 'date_from=' . rawurlencode($dateFrom);
+if($dateTo !== '') $returnTailParts[] = 'date_to=' . rawurlencode($dateTo);
+$returnToAllBilties = 'all_bilties.php' . (count($returnTailParts) > 0 ? ('?' . implode('&', $returnTailParts)) : '');
 
 $feedWhere = [];
 $haleebWhere = [];
@@ -40,6 +46,7 @@ $haleebWhereSql = count($haleebWhere) > 0 ? (' WHERE ' . implode(' AND ', $halee
 
 $feedSelect = "SELECT
   'feed' AS module_type,
+  COALESCE(b.feed_portion, '') AS feed_section_key,
   b.id AS bilty_id,
   b.date AS bilty_date,
   COALESCE(NULLIF(b.bilty_no,''), CONCAT('#', b.id)) AS ref_no,
@@ -61,6 +68,7 @@ LEFT JOIN (
 
 $haleebSelect = "SELECT
   'haleeb' AS module_type,
+  '' AS feed_section_key,
   h.id AS bilty_id,
   h.date AS bilty_date,
   COALESCE(NULLIF(h.token_no,''), CONCAT('#', h.id)) AS ref_no,
@@ -81,11 +89,11 @@ LEFT JOIN (
 ) hp ON hp.haleeb_bilty_id = h.id" . $haleebWhereSql;
 
 if($module === 'feed'){
-    $allBiltiesSql = $feedSelect . " ORDER BY bilty_date DESC, bilty_id DESC LIMIT 1000";
+    $allBiltiesSql = $feedSelect . " ORDER BY CASE WHEN ROUND(remaining_balance, 2) > 0 THEN 0 ELSE 1 END ASC, bilty_date DESC, bilty_id DESC";
 } elseif($module === 'haleeb'){
-    $allBiltiesSql = $haleebSelect . " ORDER BY bilty_date DESC, bilty_id DESC LIMIT 1000";
+    $allBiltiesSql = $haleebSelect . " ORDER BY CASE WHEN ROUND(remaining_balance, 2) > 0 THEN 0 ELSE 1 END ASC, bilty_date DESC, bilty_id DESC";
 } else {
-    $allBiltiesSql = "SELECT * FROM (" . $feedSelect . " UNION ALL " . $haleebSelect . ") x ORDER BY x.bilty_date DESC, x.bilty_id DESC LIMIT 1000";
+    $allBiltiesSql = "SELECT * FROM (" . $feedSelect . " UNION ALL " . $haleebSelect . ") x ORDER BY CASE WHEN ROUND(x.remaining_balance, 2) > 0 THEN 0 ELSE 1 END ASC, x.bilty_date DESC, x.bilty_id DESC";
 }
 
 $allBilties = [];
@@ -102,9 +110,10 @@ $pendingCount = 0;
 foreach($allBilties as $r){
     $cost = (float)($r['total_cost'] ?? 0);
     $remaining = (float)($r['remaining_balance'] ?? 0);
+    $remainingRounded = round($remaining, 2);
     $totalCost += $cost;
     $totalRemaining += $remaining;
-    if($remaining <= 0.0001) $confirmedCount++;
+    if($remainingRounded <= 0) $confirmedCount++;
     else $pendingCount++;
 }
 ?>
@@ -165,6 +174,19 @@ foreach($allBilties as $r){
   .type-badge { display: inline-block; padding: 3px 10px; font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
   .type-confirmed { background: rgba(34,197,94,0.12); color: var(--green); border: 1px solid rgba(34,197,94,0.25); }
   .type-pending { background: rgba(239,68,68,0.12); color: var(--red); border: 1px solid rgba(239,68,68,0.25); }
+  .row-actions { display: flex; align-items: center; gap: 8px; }
+  .act-pay {
+    width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center;
+    background: rgba(34,197,94,0.15); color: var(--green); border: 1px solid rgba(34,197,94,0.25);
+    text-decoration: none; font-size: 14px; transition: all 0.15s;
+  }
+  .act-pay:hover { background: rgba(34,197,94,0.28); }
+  .act-detail {
+    width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center;
+    background: rgba(96,165,250,0.16); color: var(--blue); border: 1px solid rgba(96,165,250,0.28);
+    text-decoration: none; font-size: 14px; transition: all 0.15s;
+  }
+  .act-detail:hover { background: rgba(96,165,250,0.30); }
   .ref-link { color: var(--blue); text-decoration: none; border-bottom: 1px solid rgba(96,165,250,0.35); font-family: var(--font); font-size: 12px; }
   .ref-link:hover { color: #93c5fd; border-bottom-color: rgba(147,197,253,0.8); }
   @media(max-width: 1100px){
@@ -188,7 +210,7 @@ foreach($allBilties as $r){
     <?php if($canReviewActivity): ?>
       <a class="nav-btn" href="activity_review.php">Activity Review<?php echo $flaggedActivityCount > 0 ? ' (' . $flaggedActivityCount . ')' : ''; ?></a>
     <?php endif; ?>
-    <?php if($isSuperAdmin): ?><a class="nav-btn" href="super_admin.php">Super Admin</a><?php endif; ?>
+    <?php if($canManageUsers): ?><a class="nav-btn" href="super_admin.php">Super Admin</a><?php endif; ?>
     <a class="nav-btn" href="account.php">Account</a>
     <a class="nav-btn" href="dashboard.php">Dashboard</a>
     <a class="nav-btn danger" href="logout.php">Logout</a>
@@ -235,6 +257,15 @@ foreach($allBilties as $r){
           <option value="">All</option>
           <option value="feed">Feed</option>
           <option value="haleeb">Haleeb</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="a_section">Section</label>
+        <select id="a_section">
+          <option value="">All</option>
+          <option value="amir">Amir</option>
+          <option value="hameed">Hameed</option>
+          <option value="ilyas">Ilyas</option>
         </select>
       </div>
       <div class="field">
@@ -286,7 +317,7 @@ foreach($allBilties as $r){
           <th>Driver Payment</th>
           <th>Status</th>
           <th>Remaining</th>
-          <th>Detail</th>
+          <th>Action</th>
         </tr>
       </thead>
       <tbody id="all_bilties_tbody">
@@ -296,22 +327,38 @@ foreach($allBilties as $r){
         <?php foreach($allBilties as $brow):
           $moduleType = strtolower((string)($brow['module_type'] ?? 'feed'));
           if(!in_array($moduleType, ['feed', 'haleeb'], true)) $moduleType = 'feed';
+          $sectionLabel = '';
+          if($moduleType === 'feed'){
+            $rawSectionKey = trim((string)($brow['feed_section_key'] ?? ''));
+            if($rawSectionKey !== ''){
+              $sectionLabel = strtolower(feed_portion_label_local($rawSectionKey));
+            }
+          }
           $driverType = strtolower(trim((string)($brow['freight_payment_type'] ?? 'to_pay')));
           if(!in_array($driverType, ['to_pay', 'paid'], true)) $driverType = 'to_pay';
           $remaining = (float)($brow['remaining_balance'] ?? 0);
-          $statusText = $remaining <= 0.0001 ? 'confirmed' : 'pending';
+          $remainingRounded = round($remaining, 2);
+          $statusText = $remainingRounded <= 0 ? 'confirmed' : 'pending';
           $searchBlob = strtolower(trim(
             (string)($brow['ref_no'] ?? '') . ' ' .
             (string)($brow['vehicle'] ?? '') . ' ' .
             (string)($brow['party'] ?? '') . ' ' .
-            (string)($brow['location'] ?? '')
+            (string)($brow['location'] ?? '') . ' ' .
+            (string)$sectionLabel
           ));
+          $payHref = '';
+          if($remainingRounded > 0){
+            $payHref = $moduleType === 'haleeb'
+              ? ('pay_now_haleeb.php?id=' . (int)($brow['bilty_id'] ?? 0) . '&src=all_bilties&back=' . rawurlencode($returnToAllBilties))
+              : ('pay_now.php?id=' . (int)($brow['bilty_id'] ?? 0) . '&src=all_bilties&back=' . rawurlencode($returnToAllBilties));
+          }
           $detailHref = bilty_detail_link_local($moduleType, (int)($brow['bilty_id'] ?? 0), 'all_bilties');
         ?>
         <tr
           data-row="1"
           data-search="<?php echo htmlspecialchars($searchBlob); ?>"
           data-module="<?php echo htmlspecialchars($moduleType); ?>"
+          data-section="<?php echo htmlspecialchars($sectionLabel); ?>"
           data-driver="<?php echo htmlspecialchars($driverType); ?>"
           data-status="<?php echo htmlspecialchars($statusText); ?>"
           data-total="<?php echo (float)($brow['total_cost'] ?? 0); ?>"
@@ -329,7 +376,19 @@ foreach($allBilties as $r){
           <td><span class="mode-badge <?php echo $driverType === 'paid' ? 'mode-paid' : 'mode-to-pay'; ?>"><?php echo $driverType === 'paid' ? 'Paid' : 'To Pay'; ?></span></td>
           <td><span class="type-badge <?php echo $statusText === 'confirmed' ? 'type-confirmed' : 'type-pending'; ?>"><?php echo ucfirst($statusText); ?></span></td>
           <td>Rs <?php echo number_format($remaining, 2); ?></td>
-          <td><?php if($detailHref !== ''): ?><a class="ref-link" href="<?php echo htmlspecialchars($detailHref); ?>">Open Detail</a><?php endif; ?></td>
+          <td>
+            <div class="row-actions">
+              <?php if($canManageLedger && $payHref !== ''): ?>
+                <a class="act-pay" href="<?php echo htmlspecialchars($payHref); ?>" title="Pay">&#8377;</a>
+              <?php endif; ?>
+              <?php if($detailHref !== ''): ?>
+                <a class="act-detail" href="<?php echo htmlspecialchars($detailHref); ?>" title="Detail">&#128065;</a>
+              <?php endif; ?>
+              <?php if((!$canManageLedger || $payHref === '') && $detailHref === ''): ?>
+                <span class="tiny-meta">-</span>
+              <?php endif; ?>
+            </div>
+          </td>
         </tr>
         <?php endforeach; ?>
       <?php endif; ?>
@@ -343,6 +402,7 @@ foreach($allBilties as $r){
   var rows = Array.prototype.slice.call(document.querySelectorAll('#all_bilties_tbody tr[data-row="1"]'));
   var text = document.getElementById('a_text');
   var moduleSel = document.getElementById('a_module');
+  var sectionSel = document.getElementById('a_section');
   var driverSel = document.getElementById('a_driver');
   var statusSel = document.getElementById('a_status');
   var resetBtn = document.getElementById('a_reset');
@@ -356,6 +416,7 @@ foreach($allBilties as $r){
   function apply(){
     var xText = val(text);
     var xModule = val(moduleSel);
+    var xSection = val(sectionSel);
     var xDriver = val(driverSel);
     var xStatus = val(statusSel);
     var shown = 0, total = 0, remaining = 0, confirmed = 0, pending = 0;
@@ -364,6 +425,7 @@ foreach($allBilties as $r){
       var ok = true;
       if(xText && String(d.search || '').indexOf(xText) === -1) ok = false;
       if(ok && xModule && String(d.module || '') !== xModule) ok = false;
+      if(ok && xSection && String(d.section || '') !== xSection) ok = false;
       if(ok && xDriver && String(d.driver || '') !== xDriver) ok = false;
       if(ok && xStatus && String(d.status || '') !== xStatus) ok = false;
       r.style.display = ok ? '' : 'none';
@@ -385,7 +447,7 @@ foreach($allBilties as $r){
       + '<div class="stat"><div class="k">Pending</div><div class="v">' + pending + '</div></div>';
   }
 
-  [text, moduleSel, driverSel, statusSel].forEach(function(el){
+  [text, moduleSel, sectionSel, driverSel, statusSel].forEach(function(el){
     if(!el) return;
     el.addEventListener('input', apply);
     el.addEventListener('change', apply);
@@ -394,6 +456,7 @@ foreach($allBilties as $r){
     resetBtn.addEventListener('click', function(){
       if(text) text.value = '';
       if(moduleSel) moduleSel.selectedIndex = 0;
+      if(sectionSel) sectionSel.selectedIndex = 0;
       if(driverSel) driverSel.selectedIndex = 0;
       if(statusSel) statusSel.selectedIndex = 0;
       apply();
@@ -404,4 +467,3 @@ foreach($allBilties as $r){
 </script>
 </body>
 </html>
-

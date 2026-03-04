@@ -25,7 +25,7 @@ $freightPaymentType = isset($_POST['freight_payment_type']) ? strtolower(trim((s
 if(!in_array($freightPaymentType, ['to_pay', 'paid'], true)){
     $freightPaymentType = 'to_pay';
 }
-if(!auth_can_direct_modify()){
+if(!auth_can_direct_modify('haleeb')){
     $freightPaymentType = 'to_pay';
 }
 $totalFreight = max(0, $f - $commission);
@@ -39,7 +39,7 @@ $ok = $stmt->execute();
 $newId = (int)$stmt->insert_id;
 $stmt->close();
 
-if($ok && $freightPaymentType === 'to_pay' && auth_can_direct_modify() && $totalFreight > 0){
+if($ok && $freightPaymentType === 'to_pay' && auth_can_direct_modify('haleeb') && $totalFreight > 0){
     $entryDate = $d !== '' ? $d : date('Y-m-d');
     $entryCategory = 'haleeb';
     $entryMode = 'account';
@@ -49,7 +49,7 @@ if($ok && $freightPaymentType === 'to_pay' && auth_can_direct_modify() && $total
     $autoPay->execute();
     $autoPay->close();
 }
-if($ok && $freightPaymentType === 'to_pay' && !auth_can_direct_modify() && $totalFreight > 0){
+if($ok && $freightPaymentType === 'to_pay' && !auth_can_direct_modify('haleeb') && $totalFreight > 0){
     $entryDate = $d !== '' ? $d : date('Y-m-d');
     $entryNote = 'Auto Driver Payment Request - Haleeb Token ' . ($tn !== '' ? $tn : ('#' . $newId));
     $payload = [

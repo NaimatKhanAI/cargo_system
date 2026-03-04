@@ -5,11 +5,32 @@ require_once 'config/auth.php';
 require_once 'config/change_requests.php';
 require_once 'config/activity_notifications.php';
 auth_require_login($conn);
-auth_require_module_access('haleeb');
+$canHaleebAccess = auth_has_module_access('haleeb');
+$canLedgerAccess = auth_can_direct_modify('account');
+if(!$canHaleebAccess && !$canLedgerAccess){
+    header("location:dashboard.php?denied=" . urlencode('haleeb'));
+    exit();
+}
 $isSuperAdmin = auth_is_super_admin();
+$canDirectHaleebPay = auth_can_direct_modify('haleeb') || $canLedgerAccess;
+$source = isset($_GET['src']) ? strtolower(trim((string)$_GET['src'])) : '';
+$fallbackReturnUrl = $source === 'all_bilties' ? 'all_bilties.php' : 'haleeb.php';
+$returnUrl = $fallbackReturnUrl;
+$backRaw = isset($_GET['back']) ? trim((string)$_GET['back']) : '';
+if($backRaw !== ''){
+    $hasProtocol = preg_match('/^[a-z][a-z0-9+.-]*:/i', $backRaw) === 1;
+    $hasCrlf = strpos($backRaw, "\r") !== false || strpos($backRaw, "\n") !== false;
+    if(!$hasProtocol && !$hasCrlf && strpos($backRaw, '//') !== 0){
+        $returnUrl = $backRaw;
+    }
+}
 
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
-if($id <= 0){ header("location:haleeb.php?pay=error"); exit(); }
+if($id <= 0){
+    $sep = strpos($returnUrl, '?') === false ? '?' : '&';
+    header("location:" . $returnUrl . $sep . "pay=error");
+    exit();
+}
 
 $allowedCategories = ['feed', 'haleeb', 'loan'];
 $msg = ''; $err = '';
@@ -19,7 +40,11 @@ $formDate = $today; $formCategory = 'haleeb'; $formAmountMode = 'account'; $form
 $stmt = $conn->prepare("SELECT * FROM haleeb_bilty WHERE id=? LIMIT 1");
 $stmt->bind_param("i", $id); $stmt->execute();
 $row = $stmt->get_result()->fetch_assoc(); $stmt->close();
-if(!$row){ header("location:haleeb.php?pay=error"); exit(); }
+if(!$row){
+    $sep = strpos($returnUrl, '?') === false ? '?' : '&';
+    header("location:" . $returnUrl . $sep . "pay=error");
+    exit();
+}
 
 $paidStmt = $conn->prepare("SELECT SUM(amount) AS paid_total FROM account_entries WHERE haleeb_bilty_id=? AND entry_type='debit'");
 $paidStmt->bind_param("i", $id); $paidStmt->execute();
@@ -44,7 +69,7 @@ if(isset($_POST['pay_now'])){
     else {
         $baseNote = "Haleeb - Tok(" . $row['token_no'] . ") - ";
         $note = $formNote !== '' ? ($baseNote . " - " . $formNote) : $baseNote;
-        if(!auth_can_direct_modify()){
+        if(!$canDirectHaleebPay){
             $payload = [
                 'entry_date' => $formDate,
                 'category' => $formCategory,
@@ -54,7 +79,8 @@ if(isset($_POST['pay_now'])){
             ];
             $requestId = create_change_request_local($conn, 'haleeb', 'haleeb_bilty', $id, 'haleeb_pay', $payload, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0);
             if($requestId > 0){
-                header("location:haleeb.php?pay=requested");
+                $sep = strpos($returnUrl, '?') === false ? '?' : '&';
+                header("location:" . $returnUrl . $sep . "pay=requested");
                 exit();
             }
             $err = 'Payment request could not be sent.';
@@ -82,7 +108,8 @@ if(isset($_POST['pay_now'])){
                     isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0
                 );
                 $conn->commit();
-                header("location:haleeb.php?pay=success"); exit();
+                $sep = strpos($returnUrl, '?') === false ? '?' : '&';
+                header("location:" . $returnUrl . $sep . "pay=success"); exit();
             } catch (Throwable $e) { $conn->rollback(); $err = 'Payment failed. Please try again.'; }
         }
     }
@@ -170,7 +197,7 @@ $paidPct = $baseFreight > 0 ? min(100, round($paidTotal / $baseFreight * 100)) :
     <span class="badge">Pay</span>
     <h1>Pay Now — Token <?php echo htmlspecialchars($row['token_no']); ?></h1>
   </div>
-  <a class="nav-btn" href="haleeb.php">Back</a>
+  <a class="nav-btn" href="<?php echo htmlspecialchars($returnUrl); ?>">Back</a>
 </div>
 
 <div class="main">

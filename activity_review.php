@@ -8,6 +8,7 @@ auth_require_activity_review('dashboard.php');
 
 $userId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 $isSuperAdmin = auth_is_super_admin();
+$canManageUsers = auth_can_manage_users();
 $msg = '';
 $err = '';
 
@@ -259,7 +260,7 @@ $items = activity_fetch_items_local($conn, $statusFilter, 300, !$isSuperAdmin);
   </div>
   <div class="nav-links">
     <a class="nav-btn" href="account.php">Account</a>
-    <?php if($isSuperAdmin): ?><a class="nav-btn" href="super_admin.php">Super Admin</a><?php endif; ?>
+    <?php if($canManageUsers): ?><a class="nav-btn" href="super_admin.php">Super Admin</a><?php endif; ?>
     <a class="nav-btn" href="dashboard.php">Dashboard</a>
   </div>
 </div>

@@ -6,7 +6,7 @@ require_once 'config/activity_notifications.php';
 $error = "";
 
 if(auth_sync_session_user($conn)){
-    if(auth_is_super_admin()){
+    if(auth_can_manage_users()){
         header("location:super_admin.php");
     } else {
         header("location:dashboard.php");
@@ -52,7 +52,7 @@ if(isset($_POST['login'])){
             );
             unset($_SESSION['login_verified']);
             unset($_SESSION['pending_user']);
-            if((string)$userRow['role'] === 'super_admin'){
+            if((int)$userRow['can_manage_users'] === 1){
                 header("location:super_admin.php");
             } else {
                 header("location:dashboard.php");

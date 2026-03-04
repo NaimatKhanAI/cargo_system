@@ -6,9 +6,9 @@ require_once 'config/change_requests.php';
 require_once 'config/activity_notifications.php';
 auth_require_login($conn);
 auth_require_module_access('account');
-$isSuperAdmin = auth_is_super_admin();
+$canManageUsers = auth_can_manage_users();
 $canReviewActivity = auth_can_review_activity();
-$canManageLedger = $isSuperAdmin;
+$canManageLedger = auth_can_direct_modify('account');
 $currentUserId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 
 function exec_prepared_result_local($conn, $sql, $types = '', $values = []){
@@ -393,10 +393,32 @@ list($catStmt, $catResult) = exec_prepared_result_local($conn, $catTotalsSql, $b
 while($r = $catResult->fetch_assoc()) $categoryTotals[$r['category']] = $r;
 if($catStmt) $catStmt->close();
 
-$entriesSql = "SELECT * FROM account_entries" . $whereSql . " ORDER BY entry_date DESC, id DESC";
+$entriesSql = "SELECT
+    account_entries.*,
+    COALESCE(NULLIF(b.party, ''), NULLIF(h.party, ''), '') AS linked_party,
+    COALESCE(NULLIF(b.vehicle, ''), NULLIF(h.vehicle, ''), '') AS linked_vehicle,
+    CASE
+        WHEN account_entries.bilty_id IS NOT NULL AND account_entries.bilty_id > 0 THEN COALESCE(b.feed_portion, '')
+        ELSE ''
+    END AS linked_feed_portion,
+    COALESCE(
+        NULLIF(ub.username, ''),
+        NULLIF(uh.username, ''),
+        CASE WHEN b.added_by_user_id IS NULL THEN '' ELSE CONCAT('User#', b.added_by_user_id) END,
+        CASE WHEN h.added_by_user_id IS NULL THEN '' ELSE CONCAT('User#', h.added_by_user_id) END,
+        ''
+    ) AS linked_added_by
+FROM account_entries
+LEFT JOIN bilty b ON b.id = account_entries.bilty_id
+LEFT JOIN users ub ON ub.id = b.added_by_user_id
+LEFT JOIN haleeb_bilty h ON h.id = account_entries.haleeb_bilty_id
+LEFT JOIN users uh ON uh.id = h.added_by_user_id"
+ . $whereSql . " ORDER BY account_entries.entry_date DESC, account_entries.id DESC";
 list($entryStmt, $entries) = exec_prepared_result_local($conn, $entriesSql, $bindTypes, $bindValues);
 $pendingPayRequests = $canManageLedger ? fetch_pending_change_requests_local($conn, [], ['feed_pay', 'haleeb_pay']) : [];
 $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
+$openEntryPanel = $canManageLedger && ($editingId > 0 || isset($_POST['add_entry']) || isset($_POST['update_entry']));
+$openAnalyticsPanel = false;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -453,6 +475,45 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
 
   .alert { padding: 12px 16px; margin-bottom: 16px; font-size: 13px; border-left: 3px solid var(--green); background: rgba(34,197,94,0.08); color: var(--green); }
   .alert.error { border-color: var(--red); background: rgba(239,68,68,0.08); color: var(--red); }
+  .section-toggle-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 13px 16px;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+    cursor: pointer;
+    text-align: left;
+    font-family: var(--font);
+  }
+  .section-toggle-btn:hover { background: var(--surface2); }
+  .section-toggle-text {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .toggle-icon {
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .toggle-body { display: none; }
+  .toggle-body.open { display: block; }
 
   .pay-req-panel {
     background: var(--surface); border: 1px solid var(--border); margin-bottom: 20px;
@@ -509,16 +570,16 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
     border: 1px solid rgba(239,68,68,0.24); cursor: pointer; font-family: var(--font); font-size: 12px; font-weight: 700;
   }
   .btn-reject:hover { background: rgba(239,68,68,0.18); }
-
   /* FORM */
   .form-panel {
-    background: var(--surface); border: 1px solid var(--border); padding: 20px 24px; margin-bottom: 20px;
+    background: var(--surface); border: 1px solid var(--border); margin-bottom: 20px;
   }
   .form-panel-title {
     font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase;
     color: var(--muted); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
   }
   .form-panel-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+  .form-panel-body { padding: 20px 24px; }
   .form-row {
     display: grid; grid-template-columns: 140px 120px 110px 110px 150px 1fr auto; gap: 10px; align-items: end;
   }
@@ -735,7 +796,7 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
       <a class="nav-btn" href="activity_review.php">Activity Review<?php echo $flaggedActivityCount > 0 ? ' (' . $flaggedActivityCount . ')' : ''; ?></a>
     <?php endif; ?>
     <a class="nav-btn" href="all_bilties.php">All Bilties</a>
-    <?php if($isSuperAdmin): ?><a class="nav-btn" href="super_admin.php">Super Admin</a><?php endif; ?>
+    <?php if($canManageUsers): ?><a class="nav-btn" href="super_admin.php">Super Admin</a><?php endif; ?>
     <a class="nav-btn" href="dashboard.php">Dashboard</a>
     <a class="nav-btn danger" href="logout.php">Logout</a>
   </div>
@@ -841,7 +902,18 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
   <!-- ENTRY FORM -->
   <?php if($canManageLedger): ?>
     <div class="form-panel">
-      <div class="form-panel-title"><?php echo $editingId > 0 ? 'Edit Entry' : 'New Entry'; ?></div>
+      <button
+        class="section-toggle-btn"
+        type="button"
+        id="ledger_entry_toggle"
+        data-toggle-target="ledger_entry_body"
+        aria-expanded="<?php echo $openEntryPanel ? 'true' : 'false'; ?>"
+      >
+        <span class="section-toggle-text"><?php echo $editingId > 0 ? 'Edit Entry' : 'New Entry'; ?></span>
+        <span class="toggle-icon"><?php echo $openEntryPanel ? '-' : '+'; ?></span>
+      </button>
+      <div id="ledger_entry_body" class="toggle-body<?php echo $openEntryPanel ? ' open' : ''; ?>">
+      <div class="form-panel-body">
       <form method="post">
         <div class="form-row">
           <div class="form-field">
@@ -890,6 +962,8 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
           </div>
         </div>
       </form>
+      </div>
+      </div>
     </div>
   <?php else: ?>
     <div class="form-panel" style="padding:14px 16px;">
@@ -921,6 +995,17 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
   </div>
 
   <div class="analytics-wrap">
+    <button
+      class="section-toggle-btn"
+      type="button"
+      id="ledger_analytics_toggle"
+      data-toggle-target="ledger_analytics_body"
+      aria-expanded="<?php echo $openAnalyticsPanel ? 'true' : 'false'; ?>"
+    >
+      <span class="section-toggle-text">Ledger Analytics Filters</span>
+      <span class="toggle-icon"><?php echo $openAnalyticsPanel ? '-' : '+'; ?></span>
+    </button>
+    <div id="ledger_analytics_body" class="toggle-body<?php echo $openAnalyticsPanel ? ' open' : ''; ?>">
     <div class="analytics-head">
       <span class="tbl-title">Ledger Analytics Filters</span>
       <button class="btn-apply" type="button" id="ledger_analytics_reset">Reset Analytics</button>
@@ -965,6 +1050,33 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
         </select>
       </div>
       <div class="form-field">
+        <label for="a_led_feed_section">Feed Section</label>
+        <select id="a_led_feed_section">
+          <option value="">All</option>
+          <option value="amir">Amir</option>
+          <option value="hameed">Hameed</option>
+          <option value="ilyas">Ilyas</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label for="a_led_party">Party</label>
+        <select id="a_led_party">
+          <option value="">All</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label for="a_led_vehicle">Vehicle</label>
+        <select id="a_led_vehicle">
+          <option value="">All</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label for="a_led_added_by">Added By User</label>
+        <select id="a_led_added_by">
+          <option value="">All</option>
+        </select>
+      </div>
+      <div class="form-field">
         <label for="a_led_amt_min">Min Amount</label>
         <input id="a_led_amt_min" type="number" step="any" min="0" placeholder="0">
       </div>
@@ -975,6 +1087,7 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
       <div class="analytics-actions tiny-meta" id="ledger_analytics_count">Rows: 0</div>
     </div>
     <div class="analytics-stats" id="ledger_analytics_stats"></div>
+    </div>
   </div>
 
   <!-- OVERALL STATS -->
@@ -1072,6 +1185,11 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
           } else {
               $refType = 'unlinked';
           }
+          $linkedParty = trim((string)($row['linked_party'] ?? ''));
+          $linkedVehicle = trim((string)($row['linked_vehicle'] ?? ''));
+          $linkedAddedBy = trim((string)($row['linked_added_by'] ?? ''));
+          $linkedFeedSectionKey = trim((string)($row['linked_feed_portion'] ?? ''));
+          $linkedFeedSectionLabel = $linkedFeedSectionKey !== '' ? feed_portion_label_local($linkedFeedSectionKey) : '';
           $refHref = ($refId > 0 && in_array($refType, ['feed', 'haleeb'], true)) ? bilty_detail_link_local($refType, $refId, 'account') : '';
         ?>
         <tr
@@ -1083,6 +1201,13 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
           data-amount="<?php echo (float)($row['amount'] ?? 0); ?>"
           data-note="<?php echo htmlspecialchars(strtolower((string)($row['note'] ?? ''))); ?>"
           data-link-type="<?php echo htmlspecialchars($refType); ?>"
+          data-feed-section="<?php echo htmlspecialchars(strtolower($linkedFeedSectionLabel)); ?>"
+          data-party="<?php echo htmlspecialchars(strtolower($linkedParty)); ?>"
+          data-party-label="<?php echo htmlspecialchars($linkedParty); ?>"
+          data-vehicle="<?php echo htmlspecialchars(strtolower($linkedVehicle)); ?>"
+          data-vehicle-label="<?php echo htmlspecialchars($linkedVehicle); ?>"
+          data-added-by="<?php echo htmlspecialchars(strtolower($linkedAddedBy)); ?>"
+          data-added-by-label="<?php echo htmlspecialchars($linkedAddedBy); ?>"
         >
           <td><?php echo htmlspecialchars($row['entry_date']); ?></td>
           <td><span class="cat-badge"><?php echo htmlspecialchars(ucfirst($row['category'])); ?></span></td>
@@ -1112,6 +1237,32 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
 <?php if($entryStmt) $entryStmt->close(); ?>
 <script>
 (function(){
+  var toggleButtons = Array.prototype.slice.call(document.querySelectorAll('[data-toggle-target]'));
+  if(toggleButtons.length === 0) return;
+
+  toggleButtons.forEach(function(btn){
+    var targetId = btn.getAttribute('data-toggle-target');
+    if(!targetId) return;
+    var body = document.getElementById(targetId);
+    if(!body) return;
+    var icon = btn.querySelector('.toggle-icon');
+
+    function syncToggle(){
+      var isOpen = body.classList.contains('open');
+      btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      if(icon) icon.textContent = isOpen ? '-' : '+';
+    }
+
+    btn.addEventListener('click', function(){
+      body.classList.toggle('open');
+      syncToggle();
+    });
+
+    syncToggle();
+  });
+})();
+
+(function(){
   var rows = Array.prototype.slice.call(document.querySelectorAll('#ledger_entries_tbody tr[data-ledger-row="1"]'));
   if(rows.length === 0) return;
   var f = {
@@ -1120,6 +1271,10 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
     type: document.getElementById('a_led_type'),
     mode: document.getElementById('a_led_mode'),
     linked: document.getElementById('a_led_linked'),
+    feedSection: document.getElementById('a_led_feed_section'),
+    party: document.getElementById('a_led_party'),
+    vehicle: document.getElementById('a_led_vehicle'),
+    addedBy: document.getElementById('a_led_added_by'),
     min: document.getElementById('a_led_amt_min'),
     max: document.getElementById('a_led_amt_max')
   };
@@ -1141,6 +1296,35 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
     if(max !== null && v > max) return false;
     return true;
   }
+  function setSelectOptions(selectEl, items){
+    if(!selectEl) return;
+    while(selectEl.options.length > 1) selectEl.remove(1);
+    items.forEach(function(item){
+      var o = document.createElement('option');
+      o.value = item.value;
+      o.textContent = item.label;
+      selectEl.appendChild(o);
+    });
+  }
+  function collectOptions(valueKey, labelKey){
+    var bucket = {};
+    rows.forEach(function(r){
+      var d = r.dataset || {};
+      var value = String(d[valueKey] || '').trim();
+      if(value === '' || bucket[value]) return;
+      var label = String(d[labelKey] || '').trim();
+      bucket[value] = label !== '' ? label : value;
+    });
+    return Object.keys(bucket).map(function(value){
+      return { value: value, label: bucket[value] };
+    }).sort(function(a, b){
+      return a.label.localeCompare(b.label);
+    });
+  }
+
+  setSelectOptions(f.party, collectOptions('party', 'partyLabel'));
+  setSelectOptions(f.vehicle, collectOptions('vehicle', 'vehicleLabel'));
+  setSelectOptions(f.addedBy, collectOptions('addedBy', 'addedByLabel'));
 
   function apply(){
     var x = {
@@ -1149,6 +1333,10 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
       type: val(f.type),
       mode: val(f.mode),
       linked: val(f.linked),
+      feedSection: val(f.feedSection),
+      party: val(f.party),
+      vehicle: val(f.vehicle),
+      addedBy: val(f.addedBy),
       min: num(f.min),
       max: num(f.max)
     };
@@ -1162,6 +1350,10 @@ $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
       if(ok && x.type && String(d.type || '') !== x.type) ok = false;
       if(ok && x.mode && String(d.mode || '') !== x.mode) ok = false;
       if(ok && x.linked && String(d.linkType || '') !== x.linked) ok = false;
+      if(ok && x.feedSection && String(d.feedSection || '') !== x.feedSection) ok = false;
+      if(ok && x.party && String(d.party || '') !== x.party) ok = false;
+      if(ok && x.vehicle && String(d.vehicle || '') !== x.vehicle) ok = false;
+      if(ok && x.addedBy && String(d.addedBy || '') !== x.addedBy) ok = false;
       if(ok && !inRange(amount, x.min, x.max)) ok = false;
       r.style.display = ok ? '' : 'none';
       if(ok){

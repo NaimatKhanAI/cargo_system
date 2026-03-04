@@ -10,7 +10,7 @@ $username = isset($_SESSION['user']) ? (string)$_SESSION['user'] : '';
 $canFeed = auth_has_module_access('feed');
 $canHaleeb = auth_has_module_access('haleeb');
 $canAccount = auth_has_module_access('account');
-$isSuperAdmin = auth_is_super_admin();
+$canManageUsers = auth_can_manage_users();
 
 function request_action_label_local($actionType){
     $label = trim((string)$actionType);
@@ -238,7 +238,7 @@ $stmt->close();
     <?php if($canFeed): ?><a class="nav-btn" href="feed.php">Feed</a><?php endif; ?>
     <?php if($canHaleeb): ?><a class="nav-btn" href="haleeb.php">Haleeb</a><?php endif; ?>
     <?php if($canAccount): ?><a class="nav-btn" href="account.php">Account</a><?php endif; ?>
-    <?php if($isSuperAdmin): ?><a class="nav-btn" href="super_admin.php">Super Admin</a><?php endif; ?>
+    <?php if($canManageUsers): ?><a class="nav-btn" href="super_admin.php">Super Admin</a><?php endif; ?>
     <a class="nav-btn" href="dashboard.php">Dashboard</a>
   </div>
 </div>

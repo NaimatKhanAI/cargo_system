@@ -5,8 +5,10 @@ require_once 'config/auth.php';
 require_once 'config/change_requests.php';
 auth_require_login($conn);
 auth_require_module_access('haleeb');
-$canDirectModify = auth_can_direct_modify();
+$canDirectModify = auth_can_direct_modify('haleeb');
 $isSuperAdmin = auth_is_super_admin();
+$canFeed = auth_has_module_access('feed');
+$canManageUsers = auth_can_manage_users();
 
 if(isset($_GET['confirm_driver_pay'])){
     if(!$canDirectModify){
@@ -74,7 +76,7 @@ if(isset($_GET['confirm_driver_pay'])){
 }
 
 if(isset($_GET['delete_all']) && $_GET['delete_all'] === '1'){
-    if(!auth_can_direct_modify()){
+    if(!auth_can_direct_modify('haleeb')){
         header("location:haleeb.php?clear=denied");
         exit();
     }
@@ -431,23 +433,25 @@ if(count($bindValues) > 0){
   </div>
   <div class="nav-links">
     <a class="nav-btn primary" href="add_haleeb_bilty.php">Add Bilty</a>
-    <?php if($isSuperAdmin): ?>
+    <?php if($canDirectModify): ?>
       <button class="nav-btn" type="button" id="haleeb_analytics_toggle">Analytics</button>
     <?php endif; ?>
-    <?php if($isSuperAdmin): ?>
+    <?php if($canFeed): ?>
       <a class="nav-btn" href="feed.php">Feed</a>
-      <a class="nav-btn" href="super_admin.php">Super Admin</a>
-      <a class="nav-btn" href="dashboard.php">Dashboard</a>
     <?php endif; ?>
+    <?php if($canManageUsers): ?>
+      <a class="nav-btn" href="super_admin.php">Super Admin</a>
+    <?php endif; ?>
+    <a class="nav-btn" href="dashboard.php">Dashboard</a>
     <div class="menu-wrap">
       <button class="menu-trigger" id="haleeb_menu_btn" type="button" aria-label="Menu">&#9776;</button>
       <div class="menu-pop" id="haleeb_menu_pop">
         <a class="nav-btn" href="dashboard.php">Dashboard</a>
         <a class="nav-btn" href="request_status.php">View Request Status</a>
-        <?php if($isSuperAdmin): ?>
+        <?php if($canDirectModify): ?>
           <button class="nav-btn" type="button" id="haleeb_analytics_toggle_menu">Analytics</button>
         <?php endif; ?>
-        <?php if($isSuperAdmin): ?>
+        <?php if($canDirectModify): ?>
           <div class="menu-sep"></div>
           <a class="nav-btn" href="haleeb_ratelist.php">Rate List</a>
           <a class="nav-btn" href="export_haleeb.php">Export CSV</a>

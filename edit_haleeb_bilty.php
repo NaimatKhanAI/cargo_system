@@ -71,7 +71,7 @@ if(isset($_POST['update'])){
     if(!in_array($freightPaymentType, ['to_pay', 'paid'], true)){
         $freightPaymentType = 'to_pay';
     }
-    if(!auth_can_direct_modify()){
+    if(!auth_can_direct_modify('haleeb')){
         $currentTypeStmt = $conn->prepare("SELECT freight_payment_type FROM haleeb_bilty WHERE id=? LIMIT 1");
         $currentTypeStmt->bind_param("i", $id);
         $currentTypeStmt->execute();
@@ -84,7 +84,7 @@ if(isset($_POST['update'])){
         $freightPaymentType = $existingType;
     }
     $totalFreight = max(0, $f - $commission);
-    if(!auth_can_direct_modify()){
+    if(!auth_can_direct_modify('haleeb')){
         $payload = [
             'date' => $d,
             'vehicle' => $v,
@@ -157,7 +157,7 @@ $stmt = $conn->prepare("SELECT * FROM haleeb_bilty WHERE id=? LIMIT 1");
 $stmt->bind_param("i", $id); $stmt->execute();
 $row = $stmt->get_result()->fetch_assoc(); $stmt->close();
 if(!$row){ header("location:haleeb.php"); exit(); }
-if($linkedRequestId > 0 && auth_can_direct_modify()){
+if($linkedRequestId > 0 && auth_can_direct_modify('haleeb')){
     $candidate = fetch_pending_change_request_by_id_local($conn, $linkedRequestId);
     if(
         $candidate &&

@@ -69,8 +69,6 @@ function auth_is_super_admin(){
 }
 
 function auth_has_module_access($module){
-    if(auth_is_super_admin()) return true;
-
     if($module === 'feed') return isset($_SESSION['can_access_feed']) && (int)$_SESSION['can_access_feed'] === 1;
     if($module === 'haleeb') return isset($_SESSION['can_access_haleeb']) && (int)$_SESSION['can_access_haleeb'] === 1;
     if($module === 'account') return isset($_SESSION['can_access_account']) && (int)$_SESSION['can_access_account'] === 1;
@@ -94,15 +92,17 @@ function auth_require_super_admin($fallback = 'dashboard.php'){
 }
 
 function auth_can_manage_users(){
-    return auth_is_super_admin() || (isset($_SESSION['can_manage_users']) && (int)$_SESSION['can_manage_users'] === 1);
+    return isset($_SESSION['can_manage_users']) && (int)$_SESSION['can_manage_users'] === 1;
 }
 
-function auth_can_direct_modify(){
-    return auth_is_super_admin();
+function auth_can_direct_modify($module = null){
+    if(!auth_is_super_admin()) return false;
+    if($module === null || trim((string)$module) === '') return true;
+    return auth_has_module_access((string)$module);
 }
 
 function auth_can_review_activity(){
-    return auth_is_super_admin() || (isset($_SESSION['can_review_activity']) && (int)$_SESSION['can_review_activity'] === 1);
+    return isset($_SESSION['can_review_activity']) && (int)$_SESSION['can_review_activity'] === 1;
 }
 
 function auth_get_feed_portion(){

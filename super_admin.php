@@ -5,7 +5,10 @@ require_once 'config/auth.php';
 require_once 'config/change_requests.php';
 
 auth_require_login($conn);
-auth_require_super_admin('dashboard.php');
+if(!auth_can_manage_users()){
+    header("location:dashboard.php");
+    exit();
+}
 
 $msg = '';
 $err = '';
@@ -81,8 +84,8 @@ if(isset($_POST['create_user'])){
         $chk = $conn->prepare("SELECT id FROM users WHERE username=? LIMIT 1"); $chk->bind_param("s", $username); $chk->execute(); $exists = $chk->get_result()->num_rows > 0; $chk->close();
         if($exists){ $err = 'Username already exists.'; }
         else {
-            $af = bool_post_local('can_access_feed'); $ah = bool_post_local('can_access_haleeb'); $aa = bool_post_local('can_access_account'); $aip = bool_post_local('can_access_image_processing'); $cra = bool_post_local('can_review_activity'); $ia = bool_post_local('is_active');
-            if($role === 'super_admin'){ $af = 1; $ah = 1; $aa = 1; $aip = 1; $cmu = 1; $cra = 1; } else { $cmu = 0; }
+            $af = bool_post_local('can_access_feed'); $ah = bool_post_local('can_access_haleeb'); $aa = bool_post_local('can_access_account'); $aip = bool_post_local('can_access_image_processing'); $cra = bool_post_local('can_review_activity'); $ia = bool_post_local('is_active'); $cmu = bool_post_local('can_manage_users');
+            if($role !== 'super_admin'){ $cmu = 0; }
             $cb = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null;
             $ins = $conn->prepare("INSERT INTO users(username, password, role, is_active, can_access_feed, feed_portion, can_access_haleeb, can_access_account, can_access_image_processing, can_manage_users, can_review_activity, created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)");
             $ins->bind_param("sssissiiiiii", $username, $password, $role, $ia, $af, $feedPortion, $ah, $aa, $aip, $cmu, $cra, $cb); $ins->execute(); $ins->close();
@@ -95,7 +98,7 @@ if(isset($_POST['update_user'])){
     $selfId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
     $role = isset($_POST['role']) ? trim((string)$_POST['role']) : 'sub_admin';
     $feedPortion = normalize_feed_portion_local(isset($_POST['feed_portion']) ? (string)$_POST['feed_portion'] : '');
-    $ia = bool_post_local('is_active'); $af = bool_post_local('can_access_feed'); $ah = bool_post_local('can_access_haleeb'); $aa = bool_post_local('can_access_account'); $aip = bool_post_local('can_access_image_processing'); $cra = bool_post_local('can_review_activity');
+    $ia = bool_post_local('is_active'); $af = bool_post_local('can_access_feed'); $ah = bool_post_local('can_access_haleeb'); $aa = bool_post_local('can_access_account'); $aip = bool_post_local('can_access_image_processing'); $cra = bool_post_local('can_review_activity'); $cmu = bool_post_local('can_manage_users');
     $password = isset($_POST['new_password']) ? trim((string)$_POST['new_password']) : '';
     if($userId <= 0){ $err = 'Invalid user.'; }
     elseif(!in_array($role, ['super_admin','sub_admin'], true)){ $err = 'Invalid role.'; }
@@ -112,12 +115,22 @@ if(isset($_POST['update_user'])){
                 $msg = 'Own role/access cannot be changed.';
             }
         } else {
-            if($role === 'super_admin'){ $af = 1; $ah = 1; $aa = 1; $aip = 1; $cmu = 1; $cra = 1; } else { $cmu = 0; }
-            if($role !== 'super_admin'){
-                $sc = $conn->query("SELECT COUNT(*) AS c FROM users WHERE role='super_admin'")->fetch_assoc()['c'];
-                $srStmt = $conn->prepare("SELECT role FROM users WHERE id=? LIMIT 1"); $srStmt->bind_param("i", $userId); $srStmt->execute(); $srRow = $srStmt->get_result()->fetch_assoc(); $srStmt->close();
-                if($srRow && $srRow['role'] === 'super_admin' && $sc <= 1) $err = 'Last super admin cannot be downgraded.';
+            if($role !== 'super_admin'){ $cmu = 0; }
+
+            $srStmt = $conn->prepare("SELECT role, can_manage_users FROM users WHERE id=? LIMIT 1");
+            $srStmt->bind_param("i", $userId);
+            $srStmt->execute();
+            $srRow = $srStmt->get_result()->fetch_assoc();
+            $srStmt->close();
+
+            $isCurrentManagerSuper = $srRow && $srRow['role'] === 'super_admin' && (int)$srRow['can_manage_users'] === 1;
+            $willRemainManagerSuper = ($role === 'super_admin' && (int)$cmu === 1);
+            if($isCurrentManagerSuper && !$willRemainManagerSuper){
+                $scRes = $conn->query("SELECT COUNT(*) AS c FROM users WHERE role='super_admin' AND can_manage_users=1");
+                $sc = $scRes ? (int)$scRes->fetch_assoc()['c'] : 0;
+                if($sc <= 1) $err = 'Last user-management super admin cannot be downgraded.';
             }
+
             if($err === ''){
                 $upd = $conn->prepare("UPDATE users SET role=?, is_active=?, can_access_feed=?, feed_portion=?, can_access_haleeb=?, can_access_account=?, can_access_image_processing=?, can_manage_users=?, can_review_activity=? WHERE id=?");
                 $upd->bind_param("siiisiiiii", $role, $ia, $af, $feedPortion, $ah, $aa, $aip, $cmu, $cra, $userId); $upd->execute(); $upd->close();
@@ -133,8 +146,8 @@ if(isset($_POST['delete_user'])){
     if($userId <= 0){ $err = 'Invalid user.'; }
     elseif($userId === $selfId){ $err = 'You cannot delete your own account.'; }
     else {
-        $rs = $conn->prepare("SELECT role FROM users WHERE id=? LIMIT 1"); $rs->bind_param("i", $userId); $rs->execute(); $rr = $rs->get_result()->fetch_assoc(); $rs->close();
-        if($rr && $rr['role'] === 'super_admin'){ $sc = $conn->query("SELECT COUNT(*) AS c FROM users WHERE role='super_admin'")->fetch_assoc()['c']; if($sc <= 1) $err = 'Last super admin cannot be deleted.'; }
+        $rs = $conn->prepare("SELECT role, can_manage_users FROM users WHERE id=? LIMIT 1"); $rs->bind_param("i", $userId); $rs->execute(); $rr = $rs->get_result()->fetch_assoc(); $rs->close();
+        if($rr && $rr['role'] === 'super_admin' && (int)$rr['can_manage_users'] === 1){ $scRes = $conn->query("SELECT COUNT(*) AS c FROM users WHERE role='super_admin' AND can_manage_users=1"); $sc = $scRes ? (int)$scRes->fetch_assoc()['c'] : 0; if($sc <= 1) $err = 'Last user-management super admin cannot be deleted.'; }
         if($err === ''){ $del = $conn->prepare("DELETE FROM users WHERE id=?"); $del->bind_param("i", $userId); $del->execute(); $del->close(); $msg = 'User deleted.'; }
     }
 }
@@ -157,7 +170,7 @@ if(isset($_POST['approve_request']) || isset($_POST['reject_request'])){
 }
 
 $users = [];
-$usersRes = $conn->query("SELECT id, username, role, is_active, can_access_feed, feed_portion, can_access_haleeb, can_access_account, can_access_image_processing, can_review_activity, created_at FROM users ORDER BY id ASC");
+$usersRes = $conn->query("SELECT id, username, role, is_active, can_access_feed, feed_portion, can_access_haleeb, can_access_account, can_access_image_processing, can_manage_users, can_review_activity, created_at FROM users ORDER BY id ASC");
 while($usersRes && $u = $usersRes->fetch_assoc()) $users[] = $u;
 $pendingRequests = fetch_pending_change_requests_local($conn);
 $selfId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
@@ -365,6 +378,7 @@ $feedPortionOptions = feed_portion_options_local();
               <label class="chk-label"><input type="checkbox" name="can_access_account"> Account</label>
               <label class="chk-label"><input type="checkbox" name="can_access_image_processing"> Image Processing</label>
               <label class="chk-label"><input type="checkbox" name="can_review_activity"> Activity Review</label>
+              <label class="chk-label"><input type="checkbox" name="can_manage_users"> Manage Users</label>
             </div>
           </div>
           <button class="btn-create" type="submit" name="create_user">Create User</button>
@@ -392,6 +406,7 @@ $feedPortionOptions = feed_portion_options_local();
             <th>Account</th>
             <th>Image Proc</th>
             <th>Act Review</th>
+            <th>Users</th>
             <th>New Password</th>
             <th>Update</th>
             <th>Delete</th>
@@ -412,8 +427,8 @@ $feedPortionOptions = feed_portion_options_local();
               </td>
               <td>
                 <?php if($isSelf): ?>
-                  <span class="role-super">super_admin</span>
-                  <input type="hidden" name="role" value="super_admin">
+                  <span class="<?php echo $u['role'] === 'super_admin' ? 'role-super' : 'role-sub'; ?>"><?php echo htmlspecialchars((string)$u['role']); ?></span>
+                  <input type="hidden" name="role" value="<?php echo htmlspecialchars((string)$u['role']); ?>">
                 <?php else: ?>
                   <select class="tbl-select" name="role">
                     <option value="sub_admin" <?php echo $u['role'] === 'sub_admin' ? 'selected' : ''; ?>>sub_admin</option>
@@ -441,6 +456,7 @@ $feedPortionOptions = feed_portion_options_local();
               <td><label class="chk-label"><input type="checkbox" name="can_access_account" <?php echo (int)$u['can_access_account'] ? 'checked' : ''; ?> <?php echo $isSelf ? 'disabled' : ''; ?>></label></td>
               <td><label class="chk-label"><input type="checkbox" name="can_access_image_processing" <?php echo (int)$u['can_access_image_processing'] ? 'checked' : ''; ?> <?php echo $isSelf ? 'disabled' : ''; ?>></label></td>
               <td><label class="chk-label"><input type="checkbox" name="can_review_activity" <?php echo (int)$u['can_review_activity'] ? 'checked' : ''; ?> <?php echo $isSelf ? 'disabled' : ''; ?>></label></td>
+              <td><label class="chk-label"><input type="checkbox" name="can_manage_users" <?php echo (int)$u['can_manage_users'] ? 'checked' : ''; ?> <?php echo $isSelf ? 'disabled' : ''; ?>></label></td>
               <td><input class="tbl-input" type="password" name="new_password" placeholder="keep same"></td>
               <td>
                 <input type="hidden" name="user_id" value="<?php echo (int)$u['id']; ?>">

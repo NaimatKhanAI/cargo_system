@@ -51,7 +51,7 @@ $ok = $stmt->execute();
 $newId = (int)$stmt->insert_id;
 $stmt->close();
 
-if($ok && $freightPaymentType === 'to_pay' && auth_can_direct_modify() && $totalFreight > 0){
+if($ok && $freightPaymentType === 'to_pay' && auth_can_direct_modify('feed') && $totalFreight > 0){
     $entryDate = $d !== '' ? $d : date('Y-m-d');
     $entryCategory = 'feed';
     $entryMode = 'account';
@@ -61,7 +61,7 @@ if($ok && $freightPaymentType === 'to_pay' && auth_can_direct_modify() && $total
     $autoPay->execute();
     $autoPay->close();
 }
-if($ok && $freightPaymentType === 'to_pay' && !auth_can_direct_modify() && $totalFreight > 0){
+if($ok && $freightPaymentType === 'to_pay' && !auth_can_direct_modify('feed') && $totalFreight > 0){
     $entryDate = $d !== '' ? $d : date('Y-m-d');
     $entryNote = 'Auto Driver Payment Request - Feed Bilty ' . ($b !== '' ? $b : ('#' . $newId));
     $payload = [

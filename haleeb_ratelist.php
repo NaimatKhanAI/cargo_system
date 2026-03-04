@@ -5,7 +5,7 @@ require_once 'config/auth.php';
 auth_require_login($conn);
 auth_require_module_access('haleeb');
 auth_require_super_admin('dashboard.php');
-$canDirectModify = auth_can_direct_modify();
+$canDirectModify = auth_can_direct_modify('haleeb');
 
 function slugify_label_to_key($label){
     $key = strtolower(trim($label));
