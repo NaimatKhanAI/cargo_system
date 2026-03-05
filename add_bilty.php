@@ -35,8 +35,14 @@ function get_feed_portion_column_key_local($conn, $portionKey, $activeColumns){
 
 $activeColumns = load_active_rate_columns_local($conn);
 $feedPortionOptions = feed_portion_options_local();
+$flashSuccess = '';
 $flashError = '';
 $flashOld = [];
+$resultFlag = isset($_GET['r']) ? strtolower(trim((string)$_GET['r'])) : '';
+if(isset($_SESSION['add_bilty_success'])){
+    $flashSuccess = trim((string)$_SESSION['add_bilty_success']);
+    unset($_SESSION['add_bilty_success']);
+}
 if(isset($_SESSION['add_bilty_error'])){
     $flashError = (string)$_SESSION['add_bilty_error'];
     unset($_SESSION['add_bilty_error']);
@@ -191,6 +197,28 @@ if($flashError === 'duplicate_bilty_same_date'){
     if($dupNo !== '' && $dupDate !== ''){
         $formErrorMessage .= ' Bilty No: ' . $dupNo . ' | Date: ' . $dupDate;
     }
+} elseif($flashError === 'save_failed'){
+    $formErrorMessage = 'Bilty save nahi ho saki. Dobara try karein.';
+}
+$centerNoticeType = '';
+$centerNoticeTitle = '';
+$centerNoticeMessage = '';
+if($flashSuccess !== ''){
+    $centerNoticeType = 'success';
+    $centerNoticeTitle = 'Saved';
+    $centerNoticeMessage = $flashSuccess;
+} elseif($formErrorMessage !== ''){
+    $centerNoticeType = 'error';
+    $centerNoticeTitle = 'Error';
+    $centerNoticeMessage = $formErrorMessage;
+} elseif($resultFlag === 'success'){
+    $centerNoticeType = 'success';
+    $centerNoticeTitle = 'Saved';
+    $centerNoticeMessage = 'Bilty save ho gai.';
+} elseif($resultFlag === 'error'){
+    $centerNoticeType = 'error';
+    $centerNoticeTitle = 'Error';
+    $centerNoticeMessage = 'Request complete nahi ho saki.';
 }
 $formValues = [
     'sr_no' => isset($flashOld['sr_no']) ? trim((string)$flashOld['sr_no']) : '',
@@ -243,8 +271,20 @@ if(!in_array($formValues['freight_payment_type'], ['to_pay', 'paid'], true)){
   .form-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--accent); }
 
   .form-title { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 28px; }
-  .form-alert { margin: -10px 0 18px; padding: 10px 12px; font-size: 12px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); }
-  .form-alert.err { border-color: rgba(239,68,68,0.55); background: rgba(239,68,68,0.12); color: #fecaca; }
+
+  .status-notice { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: none; align-items: center; justify-content: center; padding: 18px; z-index: 500; }
+  .status-notice.show { display: flex; }
+  .status-card { width: min(360px, 100%); background: var(--surface); border: 1px solid var(--border); padding: 18px 16px 16px; text-align: center; box-shadow: 0 12px 32px rgba(0,0,0,0.35); }
+  .status-icon { width: 64px; height: 64px; border-radius: 50%; margin: 0 auto 12px; position: relative; }
+  .status-icon::before, .status-icon::after { content: ''; position: absolute; background: #fff; border-radius: 2px; }
+  .status-notice.success .status-icon { background: var(--green); }
+  .status-notice.success .status-icon::before { width: 10px; height: 4px; transform: rotate(45deg); left: 16px; top: 34px; }
+  .status-notice.success .status-icon::after { width: 24px; height: 4px; transform: rotate(-45deg); left: 23px; top: 29px; }
+  .status-notice.error .status-icon { background: var(--red); }
+  .status-notice.error .status-icon::before { width: 30px; height: 4px; transform: rotate(45deg); left: 17px; top: 30px; }
+  .status-notice.error .status-icon::after { width: 30px; height: 4px; transform: rotate(-45deg); left: 17px; top: 30px; }
+  .status-title { font-size: 18px; font-weight: 800; margin-bottom: 6px; }
+  .status-text { font-size: 13px; color: var(--text); line-height: 1.45; word-break: break-word; }
 
   .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px 20px; }
   .field label { display: block; font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
@@ -313,9 +353,6 @@ if(!in_array($formValues['freight_payment_type'], ['to_pay', 'paid'], true)){
 <div class="main">
   <div class="form-card">
     <div class="form-title">Add Bilty</div>
-    <?php if($formErrorMessage !== ''): ?>
-      <div class="form-alert err"><?php echo htmlspecialchars($formErrorMessage); ?></div>
-    <?php endif; ?>
     <form action="save_bilty.php" method="post">
       <div class="grid">
         <?php if($isSuperAdmin): ?>
@@ -405,6 +442,16 @@ if(!in_array($formValues['freight_payment_type'], ['to_pay', 'paid'], true)){
     </form>
   </div>
 </div>
+
+<?php if($centerNoticeType !== '' && $centerNoticeMessage !== ''): ?>
+<div class="status-notice <?php echo htmlspecialchars($centerNoticeType); ?>" id="status_notice">
+  <div class="status-card">
+    <div class="status-icon" aria-hidden="true"></div>
+    <div class="status-title"><?php echo htmlspecialchars($centerNoticeTitle); ?></div>
+    <div class="status-text"><?php echo htmlspecialchars($centerNoticeMessage); ?></div>
+  </div>
+</div>
+<?php endif; ?>
 
 <?php if($isSuperAdmin): ?>
 <div class="modal" id="portion_settings_modal">
@@ -648,5 +695,23 @@ if(!in_array($formValues['freight_payment_type'], ['to_pay', 'paid'], true)){
   applyTenderBagRule();
 })();
 </script>
+<?php if($centerNoticeType !== '' && $centerNoticeMessage !== ''): ?>
+<script>
+window.addEventListener('DOMContentLoaded', function(){
+  var notice = document.getElementById('status_notice');
+  if(!notice) return;
+  notice.classList.add('show');
+
+  var hideTimer = setTimeout(function(){
+    notice.classList.remove('show');
+  }, 2200);
+
+  notice.addEventListener('click', function(){
+    clearTimeout(hideTimer);
+    notice.classList.remove('show');
+  });
+});
+</script>
+<?php endif; ?>
 </body>
 </html>

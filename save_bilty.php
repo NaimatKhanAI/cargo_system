@@ -130,6 +130,38 @@ if($ok){
     );
 }
 
-header("location:feed.php");
+if($ok){
+    $savedRef = $b !== '' ? $b : ('#' . $newId);
+    $_SESSION['add_bilty_success'] = 'Bilty ' . $savedRef . ' save ho gai.';
+    $redirect = "add_bilty.php";
+    if(auth_is_super_admin() && $feedPortion !== ''){
+        $redirect .= "?portion=" . rawurlencode($feedPortion);
+    }
+    header("location:" . $redirect);
+    exit();
+}
+
+$_SESSION['add_bilty_error'] = 'save_failed';
+$_SESSION['add_bilty_old'] = [
+    'sr_no' => $sr,
+    'date' => $d,
+    'vehicle' => $v,
+    'bilty' => $b,
+    'party' => $party,
+    'location' => $l,
+    'bags' => isset($_POST['bags']) ? (string)$_POST['bags'] : '0',
+    'freight' => isset($_POST['freight']) ? (string)$_POST['freight'] : '0',
+    'commission' => isset($_POST['commission']) ? (string)$_POST['commission'] : '0',
+    'freight_payment_type' => $freightPaymentType,
+    'tender' => isset($_POST['tender']) ? (string)$_POST['tender'] : '0',
+    'tender_raw' => isset($_POST['tender_raw']) ? (string)$_POST['tender_raw'] : '',
+    'feed_portion' => $feedPortion
+];
+$redirect = "add_bilty.php";
+if(auth_is_super_admin() && $feedPortion !== ''){
+    $redirect .= "?portion=" . rawurlencode($feedPortion);
+}
+header("location:" . $redirect);
+exit();
 ?>
 
