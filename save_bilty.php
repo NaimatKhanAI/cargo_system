@@ -27,6 +27,35 @@ if(!auth_is_super_admin()){
     $feedPortion = auth_get_feed_portion();
 }
 
+if($d !== '' && $b !== ''){
+    $dupStmt = $conn->prepare("SELECT id FROM bilty WHERE date=? AND bilty_no=? LIMIT 1");
+    $dupStmt->bind_param("ss", $d, $b);
+    $dupStmt->execute();
+    $dupRow = $dupStmt->get_result()->fetch_assoc();
+    $dupStmt->close();
+
+    if($dupRow){
+        $_SESSION['add_bilty_error'] = 'duplicate_bilty_same_date';
+        $_SESSION['add_bilty_old'] = [
+            'sr_no' => $sr,
+            'date' => $d,
+            'vehicle' => $v,
+            'bilty' => $b,
+            'party' => $party,
+            'location' => $l,
+            'bags' => isset($_POST['bags']) ? (string)$_POST['bags'] : '0',
+            'freight' => isset($_POST['freight']) ? (string)$_POST['freight'] : '0',
+            'commission' => isset($_POST['commission']) ? (string)$_POST['commission'] : '0',
+            'freight_payment_type' => $freightPaymentType,
+            'tender' => isset($_POST['tender']) ? (string)$_POST['tender'] : '0',
+            'tender_raw' => isset($_POST['tender_raw']) ? (string)$_POST['tender_raw'] : '',
+            'feed_portion' => $feedPortion
+        ];
+        header("location:add_bilty.php");
+        exit();
+    }
+}
+
 $submittedTender = isset($_POST['tender']) ? (float)$_POST['tender'] : 0.0;
 $baseTender = $submittedTender;
 if(isset($_POST['tender_raw']) && trim((string)$_POST['tender_raw']) !== ''){

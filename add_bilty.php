@@ -35,6 +35,16 @@ function get_feed_portion_column_key_local($conn, $portionKey, $activeColumns){
 
 $activeColumns = load_active_rate_columns_local($conn);
 $feedPortionOptions = feed_portion_options_local();
+$flashError = '';
+$flashOld = [];
+if(isset($_SESSION['add_bilty_error'])){
+    $flashError = (string)$_SESSION['add_bilty_error'];
+    unset($_SESSION['add_bilty_error']);
+}
+if(isset($_SESSION['add_bilty_old']) && is_array($_SESSION['add_bilty_old'])){
+    $flashOld = $_SESSION['add_bilty_old'];
+    unset($_SESSION['add_bilty_old']);
+}
 
 if(isset($_POST['save_portion_columns']) && $_POST['save_portion_columns'] === '1'){
     header('Content-Type: application/json; charset=utf-8');
@@ -156,6 +166,10 @@ if(isset($_GET['lookup_tender']) && $_GET['lookup_tender'] === '1'){
 }
 
 $selectedFeedPortion = $isSuperAdmin ? normalize_feed_portion_local(isset($_GET['portion']) ? (string)$_GET['portion'] : '') : $userFeedPortion;
+if($isSuperAdmin && isset($flashOld['feed_portion'])){
+    $oldFeedPortion = normalize_feed_portion_local((string)$flashOld['feed_portion']);
+    if(isset($feedPortionOptions[$oldFeedPortion])) $selectedFeedPortion = $oldFeedPortion;
+}
 $portionColumnMap = [];
 foreach($feedPortionOptions as $portionKey => $portionLabel){
     $columnKey = get_feed_portion_column_key_local($conn, $portionKey, $activeColumns);
@@ -169,6 +183,32 @@ $currentPortionColumn = isset($portionColumnMap[$selectedFeedPortion]) ? (string
 $currentPortionColumnLabel = isset($portionColumnMap[$selectedFeedPortion]) ? (string)$portionColumnMap[$selectedFeedPortion]['column_label'] : '';
 if($currentPortionColumnLabel === '' && count($activeColumns) > 0) $currentPortionColumnLabel = (string)$activeColumns[0]['label'];
 $today = date('Y-m-d');
+$formErrorMessage = '';
+if($flashError === 'duplicate_bilty_same_date'){
+    $dupNo = isset($flashOld['bilty']) ? trim((string)$flashOld['bilty']) : '';
+    $dupDate = isset($flashOld['date']) ? trim((string)$flashOld['date']) : '';
+    $formErrorMessage = 'Same date par yeh bilty number already maujood hai.';
+    if($dupNo !== '' && $dupDate !== ''){
+        $formErrorMessage .= ' Bilty No: ' . $dupNo . ' | Date: ' . $dupDate;
+    }
+}
+$formValues = [
+    'sr_no' => isset($flashOld['sr_no']) ? trim((string)$flashOld['sr_no']) : '',
+    'date' => isset($flashOld['date']) && trim((string)$flashOld['date']) !== '' ? trim((string)$flashOld['date']) : $today,
+    'vehicle' => isset($flashOld['vehicle']) ? trim((string)$flashOld['vehicle']) : '',
+    'bilty' => isset($flashOld['bilty']) ? trim((string)$flashOld['bilty']) : '',
+    'party' => isset($flashOld['party']) ? trim((string)$flashOld['party']) : '',
+    'location' => isset($flashOld['location']) ? trim((string)$flashOld['location']) : '',
+    'bags' => isset($flashOld['bags']) ? trim((string)$flashOld['bags']) : '0',
+    'freight' => isset($flashOld['freight']) ? trim((string)$flashOld['freight']) : '',
+    'commission' => isset($flashOld['commission']) ? trim((string)$flashOld['commission']) : '0',
+    'freight_payment_type' => isset($flashOld['freight_payment_type']) ? strtolower(trim((string)$flashOld['freight_payment_type'])) : 'to_pay',
+    'tender' => isset($flashOld['tender']) ? trim((string)$flashOld['tender']) : '0',
+    'tender_raw' => isset($flashOld['tender_raw']) ? trim((string)$flashOld['tender_raw']) : '',
+];
+if(!in_array($formValues['freight_payment_type'], ['to_pay', 'paid'], true)){
+    $formValues['freight_payment_type'] = 'to_pay';
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -203,6 +243,8 @@ $today = date('Y-m-d');
   .form-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--accent); }
 
   .form-title { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 28px; }
+  .form-alert { margin: -10px 0 18px; padding: 10px 12px; font-size: 12px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); }
+  .form-alert.err { border-color: rgba(239,68,68,0.55); background: rgba(239,68,68,0.12); color: #fecaca; }
 
   .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px 20px; }
   .field label { display: block; font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
@@ -271,6 +313,9 @@ $today = date('Y-m-d');
 <div class="main">
   <div class="form-card">
     <div class="form-title">Add Bilty</div>
+    <?php if($formErrorMessage !== ''): ?>
+      <div class="form-alert err"><?php echo htmlspecialchars($formErrorMessage); ?></div>
+    <?php endif; ?>
     <form action="save_bilty.php" method="post">
       <div class="grid">
         <?php if($isSuperAdmin): ?>
@@ -301,57 +346,57 @@ $today = date('Y-m-d');
 
         <div class="field">
           <label for="sr_no">SR No</label>
-          <input id="sr_no" name="sr_no" placeholder="SR number" required>
+          <input id="sr_no" name="sr_no" placeholder="SR number" value="<?php echo htmlspecialchars($formValues['sr_no']); ?>" required>
         </div>
         <div class="field">
           <label for="date">Date</label>
-          <input id="date" type="date" name="date" value="<?php echo $today; ?>" required>
+          <input id="date" type="date" name="date" value="<?php echo htmlspecialchars($formValues['date']); ?>" required>
         </div>
         <div class="field">
           <label for="vehicle">Vehicle</label>
-          <input id="vehicle" name="vehicle" placeholder="Vehicle number" required>
+          <input id="vehicle" name="vehicle" placeholder="Vehicle number" value="<?php echo htmlspecialchars($formValues['vehicle']); ?>" required>
         </div>
         <div class="field">
           <label for="bilty">Bilty No</label>
-          <input id="bilty" name="bilty" placeholder="Bilty number" required>
+          <input id="bilty" name="bilty" placeholder="Bilty number" value="<?php echo htmlspecialchars($formValues['bilty']); ?>" required>
         </div>
         <div class="field">
           <label for="party">Party</label>
-          <input id="party" name="party" placeholder="Party name">
+          <input id="party" name="party" placeholder="Party name" value="<?php echo htmlspecialchars($formValues['party']); ?>">
         </div>
         <div class="field">
           <label for="location">Location</label>
-          <input id="location" name="location" placeholder="Pickup / drop location" required>
+          <input id="location" name="location" placeholder="Pickup / drop location" value="<?php echo htmlspecialchars($formValues['location']); ?>" required>
         </div>
         <div class="field">
           <label for="bags">Bags</label>
-          <input id="bags" type="number" name="bags" placeholder="0" min="0" value="0" required>
+          <input id="bags" type="number" name="bags" placeholder="0" min="0" value="<?php echo htmlspecialchars($formValues['bags']); ?>" required>
         </div>
         <div class="field">
           <label for="freight">Freight</label>
-          <input id="freight" type="number" name="freight" placeholder="0" min="0" step="any" required>
+          <input id="freight" type="number" name="freight" placeholder="0" min="0" step="any" value="<?php echo htmlspecialchars($formValues['freight']); ?>" required>
         </div>
         <div class="field">
           <label for="commission">Commission</label>
-          <input id="commission" type="number" name="commission" placeholder="0" min="0" step="any" value="0" required>
+          <input id="commission" type="number" name="commission" placeholder="0" min="0" step="any" value="<?php echo htmlspecialchars($formValues['commission']); ?>" required>
         </div>
         <div class="field">
           <label for="freight_payment_type">Driver Payment</label>
           <select id="freight_payment_type" name="freight_payment_type" required>
-            <option value="to_pay">To Pay</option>
-            <option value="paid">Paid</option>
+            <option value="to_pay" <?php echo $formValues['freight_payment_type'] === 'to_pay' ? 'selected' : ''; ?>>To Pay</option>
+            <option value="paid" <?php echo $formValues['freight_payment_type'] === 'paid' ? 'selected' : ''; ?>>Paid</option>
           </select>
         </div>
         <?php if($isSuperAdmin): ?>
           <div class="field">
             <label for="tender">Tender</label>
-            <input id="tender" type="number" name="tender" placeholder="0" min="0" step="any" required>
-            <input id="tender_raw" type="hidden" name="tender_raw" value="">
+            <input id="tender" type="number" name="tender" placeholder="0" min="0" step="any" value="<?php echo htmlspecialchars($formValues['tender']); ?>" required>
+            <input id="tender_raw" type="hidden" name="tender_raw" value="<?php echo htmlspecialchars($formValues['tender_raw']); ?>">
             <div class="field-meta" id="tender_discount_note"></div>
           </div>
         <?php else: ?>
-          <input id="tender" type="hidden" name="tender" value="0">
-          <input id="tender_raw" type="hidden" name="tender_raw" value="">
+          <input id="tender" type="hidden" name="tender" value="<?php echo htmlspecialchars($formValues['tender']); ?>">
+          <input id="tender_raw" type="hidden" name="tender_raw" value="<?php echo htmlspecialchars($formValues['tender_raw']); ?>">
         <?php endif; ?>
       </div>
       <div class="form-footer">
