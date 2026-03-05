@@ -134,14 +134,23 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
     padding: 4px 8px; font-size: 11px; font-family: var(--font); cursor: pointer;
   }
   .stop-add:hover { border-color: var(--muted); }
-  .stop-list { display: flex; flex-wrap: wrap; gap: 6px; min-height: 28px; }
-  .stop-chip {
-    display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border);
-    background: var(--surface2); padding: 3px 8px; font-size: 11px; font-family: var(--mono);
+  .stop-list { display: grid; gap: 8px; min-height: 28px; }
+  .stop-item { border: 1px solid var(--border); background: var(--surface2); padding: 8px; display: grid; gap: 8px; }
+  .stop-item-head { display: flex; justify-content: space-between; align-items: center; }
+  .stop-item-title { font-size: 10px; letter-spacing: 1px; color: var(--muted); text-transform: uppercase; font-weight: 700; }
+  .stop-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .stop-input {
+    width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    padding: 7px 8px; font-family: var(--font); font-size: 12px;
   }
-  .stop-remove { border: none; background: transparent; color: var(--muted); cursor: pointer; font-size: 12px; line-height: 1; }
-  .stop-remove:hover { color: var(--red); }
+  .stop-input:focus { outline: none; border-color: var(--accent); }
+  .stop-remove {
+    border: 1px solid rgba(239,68,68,0.35); background: rgba(239,68,68,0.12); color: #fca5a5;
+    cursor: pointer; font-size: 11px; line-height: 1; padding: 5px 7px; font-family: var(--font);
+  }
+  .stop-remove:hover { background: rgba(239,68,68,0.2); color: #fecaca; }
   .stop-empty { font-size: 11px; color: var(--muted); }
+  .stops-error { margin-top: 8px; font-size: 11px; color: #fca5a5; min-height: 16px; }
 
   .form-footer { margin-top: 28px; display: flex; justify-content: flex-end; }
   .submit-btn { padding: 13px 36px; background: var(--accent); color: #0e0f11; border: none; cursor: pointer; font-family: var(--font); font-size: 14px; font-weight: 800; transition: background 0.15s; }
@@ -152,6 +161,7 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
     .form-card { padding: 22px 16px; }
     .grid { grid-template-columns: 1fr; }
     .topbar { padding: 14px 16px; }
+    .stop-fields { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -218,6 +228,9 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
               <input type="hidden" id="out_city_count" name="out_city_count" value="0">
             </div>
           </div>
+          <input type="hidden" id="same_stops_json" name="same_stops_json" value="[]">
+          <input type="hidden" id="out_stops_json" name="out_stops_json" value="[]">
+          <div class="stops-error" id="stops_error"></div>
         </div>
         <?php if($isSuperAdmin): ?>
           <div class="field">
@@ -274,7 +287,11 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
   var outStopList = document.getElementById('out_stop_list');
   var sameCityCountInput = document.getElementById('same_city_count');
   var outCityCountInput = document.getElementById('out_city_count');
-  if(!locationInput || !vehicleTypeInput || !tenderInput || !addSameStopBtn || !addOutStopBtn || !sameStopList || !outStopList || !sameCityCountInput || !outCityCountInput) return;
+  var sameStopsJsonInput = document.getElementById('same_stops_json');
+  var outStopsJsonInput = document.getElementById('out_stops_json');
+  var stopsError = document.getElementById('stops_error');
+  var form = document.querySelector('form[action="save_haleeb_bilty.php"]');
+  if(!locationInput || !vehicleTypeInput || !tenderInput || !addSameStopBtn || !addOutStopBtn || !sameStopList || !outStopList || !sameCityCountInput || !outCityCountInput || !sameStopsJsonInput || !outStopsJsonInput || !form) return;
 
   var vehicleTypeLookup = <?php echo $jsonVehicleTypeLookup; ?>;
   var rateLookup = <?php echo $jsonRateLookup; ?>;
@@ -310,26 +327,6 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
     return '';
   }
 
-  function getStopsAddon(vehicleTypeRaw){
-    var bucket = getVehicleBucket(vehicleTypeRaw);
-    if(bucket === '') return 0;
-
-    var sameCity = {
-      mazda: 3000,
-      '14ft': 3000,
-      '20ft': 5000,
-      '40ft': 7000
-    };
-    var outCity = {
-      mazda: 4000,
-      '14ft': 4000,
-      '20ft': 8000,
-      '40ft': 8000
-    };
-
-    return (sameStops.length * (sameCity[bucket] || 0)) + (outStops.length * (outCity[bucket] || 0));
-  }
-
   function getBaseTenderFromRateList(){
     var locationKey = normalizeToken(locationInput.value);
     var vehicleInputKey = normalizeToken(vehicleTypeInput.value);
@@ -344,22 +341,48 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
 
   function tryAutoTender(){
     var baseTender = getBaseTenderFromRateList();
-    var addon = getStopsAddon(vehicleTypeInput.value);
-    if(baseTender === null && addon === 0) return;
-    tenderInput.value = String(roundMoney((baseTender === null ? 0 : baseTender) + addon));
+    if(baseTender === null) return;
+    tenderInput.value = String(roundMoney(baseTender));
   }
 
-  function makeStopChip(label, onRemove){
-    var chip = document.createElement('span');
-    chip.className = 'stop-chip';
-    chip.appendChild(document.createTextNode(label));
+  function makeStopField(placeholder, value, onInput){
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'stop-input';
+    input.placeholder = placeholder;
+    input.value = value || '';
+    input.addEventListener('input', function(){
+      onInput(String(input.value || ''));
+    });
+    return input;
+  }
+
+  function makeStopItem(stop, title, onRemove, onUpdate){
+    var box = document.createElement('div');
+    box.className = 'stop-item';
+
+    var head = document.createElement('div');
+    head.className = 'stop-item-head';
+    var ttl = document.createElement('span');
+    ttl.className = 'stop-item-title';
+    ttl.textContent = title;
     var removeBtn = document.createElement('button');
     removeBtn.type = 'button';
     removeBtn.className = 'stop-remove';
-    removeBtn.textContent = 'x';
+    removeBtn.textContent = 'Remove';
     removeBtn.addEventListener('click', onRemove);
-    chip.appendChild(removeBtn);
-    return chip;
+    head.appendChild(ttl);
+    head.appendChild(removeBtn);
+
+    var fields = document.createElement('div');
+    fields.className = 'stop-fields';
+    fields.appendChild(makeStopField('Delivery Note', stop.delivery_note, function(v){ stop.delivery_note = v; onUpdate(); }));
+    fields.appendChild(makeStopField('Party', stop.party, function(v){ stop.party = v; onUpdate(); }));
+    fields.appendChild(makeStopField('City', stop.location, function(v){ stop.location = v; onUpdate(); }));
+
+    box.appendChild(head);
+    box.appendChild(fields);
+    return box;
   }
 
   function renderStopList(target, list, labelPrefix, removeCb){
@@ -371,31 +394,73 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
       target.appendChild(empty);
       return;
     }
-    list.forEach(function(_, idx){
-      target.appendChild(makeStopChip(labelPrefix + ' ' + (idx + 1), function(){ removeCb(idx); }));
+    list.forEach(function(stop, idx){
+      target.appendChild(makeStopItem(
+        stop,
+        labelPrefix + ' Stop ' + (idx + 1),
+        function(){ removeCb(idx); },
+        function(){ syncStopPayload(); clearStopsError(); }
+      ));
     });
   }
 
-  function renderStops(){
+  function syncStopPayload(){
     sameCityCountInput.value = String(sameStops.length);
     outCityCountInput.value = String(outStops.length);
+    sameStopsJsonInput.value = JSON.stringify(sameStops);
+    outStopsJsonInput.value = JSON.stringify(outStops);
+  }
+
+  function clearStopsError(){
+    if(stopsError) stopsError.textContent = '';
+  }
+
+  function setStopsError(msg){
+    if(stopsError) stopsError.textContent = msg || '';
+  }
+
+  function renderStops(){
+    syncStopPayload();
     renderStopList(sameStopList, sameStops, 'Same', function(idx){
       sameStops.splice(idx, 1);
       renderStops();
-      tryAutoTender();
     });
     renderStopList(outStopList, outStops, 'Out', function(idx){
       outStops.splice(idx, 1);
       renderStops();
-      tryAutoTender();
     });
   }
 
+  function validateStopRows(list, label){
+    for(var i = 0; i < list.length; i += 1){
+      var s = list[i] || {};
+      if(String(s.delivery_note || '').trim() === ''){
+        setStopsError(label + ' stop ' + (i + 1) + ': Delivery Note required.');
+        return false;
+      }
+      if(String(s.party || '').trim() === ''){
+        setStopsError(label + ' stop ' + (i + 1) + ': Party required.');
+        return false;
+      }
+      if(String(s.location || '').trim() === ''){
+        setStopsError(label + ' stop ' + (i + 1) + ': City required.');
+        return false;
+      }
+    }
+    return true;
+  }
+
   function addStop(type){
-    if(type === 'same') sameStops.push(1);
-    else outStops.push(1);
+    var details = {
+      delivery_note: '',
+      party: '',
+      location: String(locationInput.value || '').trim()
+    };
+    clearStopsError();
+
+    if(type === 'same') sameStops.push(details);
+    else outStops.push(details);
     renderStops();
-    tryAutoTender();
   }
 
   addSameStopBtn.addEventListener('click', function(){ addStop('same'); });
@@ -405,6 +470,19 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
   locationInput.addEventListener('blur', tryAutoTender);
   vehicleTypeInput.addEventListener('change', tryAutoTender);
   vehicleTypeInput.addEventListener('blur', tryAutoTender);
+
+  form.addEventListener('submit', function(e){
+    clearStopsError();
+    if(!validateStopRows(sameStops, 'Same City') || !validateStopRows(outStops, 'Out City')){
+      e.preventDefault();
+      if(stopsError){
+        stopsError.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      return;
+    }
+    syncStopPayload();
+  });
+
   renderStops();
   tryAutoTender();
 })();
