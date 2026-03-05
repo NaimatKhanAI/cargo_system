@@ -714,28 +714,6 @@ while($result && $row = $result->fetch_assoc()){
         <label for="a_feed_user">Added By</label>
         <input id="a_feed_user" list="a_feed_user_list" placeholder="User">
       </div>
-      <div class="field">
-        <label for="a_feed_bags_min">Min Bags</label>
-        <input id="a_feed_bags_min" type="number" min="0" placeholder="0">
-      </div>
-      <div class="field">
-        <label for="a_feed_bags_max">Max Bags</label>
-        <input id="a_feed_bags_max" type="number" min="0" placeholder="Any">
-      </div>
-      <div class="field">
-        <label for="a_feed_freight_min">Min Total Cost</label>
-        <input id="a_feed_freight_min" type="number" min="0" placeholder="0">
-      </div>
-      <div class="field">
-        <label for="a_feed_freight_max">Max Total Cost</label>
-        <input id="a_feed_freight_max" type="number" min="0" placeholder="Any">
-      </div>
-      <?php if($isSuperAdmin): ?>
-      <div class="field">
-        <label for="a_feed_profit_min">Min Profit</label>
-        <input id="a_feed_profit_min" type="number" placeholder="Any">
-      </div>
-      <?php endif; ?>
 
       <datalist id="a_feed_text_list"></datalist>
       <datalist id="a_feed_party_list">
@@ -974,20 +952,13 @@ while($result && $row = $result->fetch_assoc()){
     user: document.getElementById('a_feed_user'),
     status: document.getElementById('a_feed_status'),
     driverType: document.getElementById('a_feed_driver_type'),
-    section: document.getElementById('a_feed_section'),
-    bagsMin: document.getElementById('a_feed_bags_min'),
-    bagsMax: document.getElementById('a_feed_bags_max'),
-    freightMin: document.getElementById('a_feed_freight_min'),
-    freightMax: document.getElementById('a_feed_freight_max'),
-    profitMin: document.getElementById('a_feed_profit_min')
+    section: document.getElementById('a_feed_section')
   };
   var resetBtn = document.getElementById('feed_analytics_reset');
 
   function money(v){ return Number(v || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}); }
   function intVal(v){ return Number(v || 0).toLocaleString(undefined, {maximumFractionDigits:0}); }
   function val(el){ return el ? String(el.value || '').trim().toLowerCase() : ''; }
-  function num(el){ if(!el) return null; var t = String(el.value || '').trim(); if(t === '') return null; var n = Number(t); return Number.isFinite(n) ? n : null; }
-  function inRange(v, min, max){ if(min !== null && v < min) return false; if(max !== null && v > max) return false; return true; }
   function escHtml(s){ return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;').replace(/'/g,'&#39;'); }
 
   function makeBars(id, items, max, fmt){
@@ -1024,12 +995,7 @@ while($result && $row = $result->fetch_assoc()){
       user: val(f.user),
       status: val(f.status),
       driverType: val(f.driverType),
-      section: val(f.section),
-      bagsMin: num(f.bagsMin),
-      bagsMax: num(f.bagsMax),
-      freightMin: num(f.freightMin),
-      freightMax: num(f.freightMax),
-      profitMin: num(f.profitMin)
+      section: val(f.section)
     };
   }
 
@@ -1046,9 +1012,6 @@ while($result && $row = $result->fetch_assoc()){
       if(ok && x.driverType && r.driverTypeL !== x.driverType) ok = false;
       if(ok && (x.status === 'confirmed' || x.status === 'paid') && r.remaining > 0.0001) ok = false;
       if(ok && x.status === 'pending' && r.remaining <= 0.0001) ok = false;
-      if(ok && !inRange(r.bags, x.bagsMin, x.bagsMax)) ok = false;
-      if(ok && !inRange(r.totalCost, x.freightMin, x.freightMax)) ok = false;
-      if(ok && x.profitMin !== null && r.profit < x.profitMin) ok = false;
       r.el.style.display = ok ? '' : 'none';
       if(ok) shown.push(r);
     });
