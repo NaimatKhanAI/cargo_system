@@ -177,7 +177,6 @@ elseif($src === 'haleeb' && auth_has_module_access('haleeb')) $backHref = 'halee
         <tr><td class="label">Stops</td><td><?php echo htmlspecialchars((string)($row['stops'] ?? '')); ?></td></tr>
         <tr><td class="label">Freight</td><td>Rs <?php echo number_format((float)($row['freight'] ?? 0), 2); ?></td></tr>
         <tr><td class="label">Commission</td><td>Rs <?php echo number_format((float)($row['commission'] ?? 0), 2); ?></td></tr>
-        <tr><td class="label">Driver Payment Type</td><td><?php echo htmlspecialchars((string)($row['freight_payment_type'] ?? 'to_pay')); ?></td></tr>
         <tr><td class="label">Tender</td><td>Rs <?php echo number_format((float)($row['tender'] ?? 0), 2); ?></td></tr>
         <tr><td class="label">Profit</td><td>Rs <?php echo number_format((float)($row['profit'] ?? 0), 2); ?></td></tr>
         <tr><td class="label">Added By</td><td><?php echo htmlspecialchars((string)($row['added_by_name'] ?? '-')); ?></td></tr>
@@ -188,4 +187,3 @@ elseif($src === 'haleeb' && auth_has_module_access('haleeb')) $backHref = 'halee
 </div>
 </body>
 </html>
-

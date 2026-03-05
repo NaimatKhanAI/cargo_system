@@ -11,71 +11,6 @@ $canFeed = auth_has_module_access('feed');
 $canManageUsers = auth_can_manage_users();
 $currentUserId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 
-if(isset($_GET['confirm_driver_pay'])){
-    if(!$canDirectModify){
-        header("location:haleeb.php?driver_pay=denied");
-        exit();
-    }
-    $confirmId = isset($_GET['confirm_driver_pay']) ? (int)$_GET['confirm_driver_pay'] : 0;
-    if($confirmId <= 0){
-        header("location:haleeb.php?driver_pay=error");
-        exit();
-    }
-
-    $rowStmt = $conn->prepare("SELECT id, date, token_no, freight_payment_type, GREATEST((COALESCE(freight,0) - COALESCE(commission,0)), 0) AS base_freight FROM haleeb_bilty WHERE id=? LIMIT 1");
-    $rowStmt->bind_param("i", $confirmId);
-    $rowStmt->execute();
-    $driverRow = $rowStmt->get_result()->fetch_assoc();
-    $rowStmt->close();
-    if(!$driverRow){
-        header("location:haleeb.php?driver_pay=error");
-        exit();
-    }
-
-    $paidStmt = $conn->prepare("SELECT COALESCE(SUM(amount),0) AS paid_total FROM account_entries WHERE haleeb_bilty_id=? AND entry_type='debit'");
-    $paidStmt->bind_param("i", $confirmId);
-    $paidStmt->execute();
-    $paidRow = $paidStmt->get_result()->fetch_assoc();
-    $paidStmt->close();
-
-    $baseFreight = isset($driverRow['base_freight']) ? (float)$driverRow['base_freight'] : 0.0;
-    $paidTotal = $paidRow && isset($paidRow['paid_total']) ? (float)$paidRow['paid_total'] : 0.0;
-    $remaining = max(0, $baseFreight - $paidTotal);
-    if($remaining <= 0.0001){
-        header("location:haleeb.php?driver_pay=already");
-        exit();
-    }
-
-    $pendingStmt = $conn->prepare("SELECT id FROM change_requests WHERE status='pending' AND action_type='haleeb_pay' AND entity_table='haleeb_bilty' AND entity_id=? ORDER BY id DESC LIMIT 1");
-    $pendingStmt->bind_param("i", $confirmId);
-    $pendingStmt->execute();
-    $pendingRow = $pendingStmt->get_result()->fetch_assoc();
-    $pendingStmt->close();
-    if($pendingRow){
-        header("location:haleeb.php?driver_pay=requested");
-        exit();
-    }
-
-    $entryDate = isset($driverRow['date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$driverRow['date']) ? (string)$driverRow['date'] : date('Y-m-d');
-    $entryRef = isset($driverRow['token_no']) ? trim((string)$driverRow['token_no']) : '';
-    $entryNote = 'Full Driver Payment Request - Haleeb Token ' . ($entryRef !== '' ? $entryRef : ('#' . $confirmId));
-    $payload = [
-        'entry_date' => $entryDate,
-        'category' => 'haleeb',
-        'amount_mode' => 'account',
-        'amount' => round($remaining, 3),
-        'note' => $entryNote
-    ];
-    $requestId = create_change_request_local($conn, 'haleeb', 'haleeb_bilty', $confirmId, 'haleeb_pay', $payload, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0);
-
-    if($requestId > 0){
-        header("location:haleeb.php?driver_pay=requested");
-    } else {
-        header("location:haleeb.php?driver_pay=error");
-    }
-    exit();
-}
-
 if(isset($_GET['delete_all']) && $_GET['delete_all'] === '1'){
     if(!auth_can_direct_modify('haleeb')){
         header("location:haleeb.php?clear=denied");
@@ -150,15 +85,6 @@ if (isset($_GET['pay'])) {
     elseif ($_GET['pay'] === 'error') $pay_message = "Payment failed. Please try again.";
     elseif ($_GET['pay'] === 'requested') $pay_message = "Payment request sent to account ledger admin for approval.";
 }
-$driver_pay_message = "";
-if(isset($_GET['driver_pay'])){
-    if($_GET['driver_pay'] === 'success') $driver_pay_message = "Driver payment confirmed and debit posted.";
-    elseif($_GET['driver_pay'] === 'requested') $driver_pay_message = "Full driver payment request sent for approval.";
-    elseif($_GET['driver_pay'] === 'already') $driver_pay_message = "Driver payment already confirmed.";
-    elseif($_GET['driver_pay'] === 'denied') $driver_pay_message = "Only super admin can confirm driver payment.";
-    elseif($_GET['driver_pay'] === 'error') $driver_pay_message = "Driver payment request failed. Please try again.";
-}
-
 $clear_message = "";
 if(isset($_GET['clear'])){
     if($_GET['clear'] === 'success'){
@@ -256,7 +182,7 @@ while($result && $row = $result->fetch_assoc()){
         }
 
         if($pendingAction === 'haleeb_update'){
-            $overlayFields = ['date', 'vehicle', 'vehicle_type', 'delivery_note', 'token_no', 'party', 'location', 'stops', 'freight', 'commission', 'freight_payment_type', 'tender'];
+            $overlayFields = ['date', 'vehicle', 'vehicle_type', 'delivery_note', 'token_no', 'party', 'location', 'stops', 'freight', 'commission', 'tender'];
             foreach($overlayFields as $field){
                 if(array_key_exists($field, $pendingPayload)){
                     $row[$field] = $pendingPayload[$field];
@@ -545,11 +471,6 @@ while($result && $row = $result->fetch_assoc()){
       <?php echo htmlspecialchars($pay_message); ?>
     </div>
   <?php endif; ?>
-  <?php if($driver_pay_message !== ""): ?>
-    <div class="alert <?php echo (strpos($driver_pay_message, 'failed') !== false || strpos($driver_pay_message, 'Only super admin') !== false) ? 'error' : ''; ?>">
-      <?php echo htmlspecialchars($driver_pay_message); ?>
-    </div>
-  <?php endif; ?>
   <?php if($clear_message !== ""): ?>
     <div class="alert <?php echo strpos($clear_message,'failed') !== false ? 'error' : ''; ?>">
       <?php echo htmlspecialchars($clear_message); ?>
@@ -626,14 +547,6 @@ while($result && $row = $result->fetch_assoc()){
           <option value="">All</option>
           <option value="confirmed">Confirmed</option>
           <option value="pending">Pending</option>
-        </select>
-      </div>
-      <div class="field">
-        <label for="a_h_driver_type">Driver Payment</label>
-        <select id="a_h_driver_type">
-          <option value="">All</option>
-          <option value="to_pay">To Pay</option>
-          <option value="paid">Paid</option>
         </select>
       </div>
       <div class="field">
@@ -723,7 +636,6 @@ while($result && $row = $result->fetch_assoc()){
           <?php if($isSuperAdmin): ?><th>Tender</th><?php endif; ?>
           <th>Freight</th>
           <th>Commission</th>
-          <th>Driver Payment</th>
           <th>Status</th>
           <th>Remaining</th>
           <?php if($isSuperAdmin): ?><th>Profit</th><?php endif; ?>
@@ -737,9 +649,6 @@ while($result && $row = $result->fetch_assoc()){
           $commission = (float)($row['commission'] ?? 0);
           $totalCost = (float)($row['total_cost'] ?? max(((float)($row['freight'] ?? 0)) - $commission, 0));
           $addedByName = isset($row['added_by_name']) && trim((string)$row['added_by_name']) !== '' ? (string)$row['added_by_name'] : '-';
-          $paymentTypeRaw = isset($row['freight_payment_type']) ? strtolower(trim((string)$row['freight_payment_type'])) : 'to_pay';
-          if(!in_array($paymentTypeRaw, ['to_pay', 'paid'], true)){ $paymentTypeRaw = 'to_pay'; }
-          $paymentTypeLabel = $paymentTypeRaw === 'paid' ? 'Paid' : 'To Pay';
           $driverStatus = $remaining <= 0.0001 ? 'Confirmed' : 'Pending';
           $stopsRaw = isset($row['stops']) ? (string)$row['stops'] : '';
           $sameStops = 0;
@@ -756,7 +665,6 @@ while($result && $row = $result->fetch_assoc()){
             data-party="<?php echo htmlspecialchars((string)($row['party'] ?? '')); ?>"
             data-location="<?php echo htmlspecialchars((string)($row['location'] ?? '')); ?>"
             data-user="<?php echo htmlspecialchars((string)$addedByName); ?>"
-            data-driver-type="<?php echo htmlspecialchars((string)$paymentTypeRaw); ?>"
             data-stops="<?php echo htmlspecialchars($stopsRaw); ?>"
             data-same-stops="<?php echo $sameStops; ?>"
             data-out-stops="<?php echo $outStops; ?>"
@@ -781,11 +689,6 @@ while($result && $row = $result->fetch_assoc()){
           <td>Rs <?php echo number_format((float)$row['freight'], 2); ?></td>
           <td>Rs <?php echo number_format($commission, 2); ?></td>
           <td>
-            <span class="paytype-badge <?php echo $paymentTypeRaw === 'paid' ? 'type-paid' : 'type-to-pay'; ?>">
-              <?php echo htmlspecialchars($paymentTypeLabel); ?>
-            </span>
-          </td>
-          <td>
             <span class="rem-badge <?php echo $remaining <= 0.0001 ? 'rem-zero' : 'rem-pending'; ?>">
               <?php echo htmlspecialchars($driverStatus); ?>
             </span>
@@ -803,9 +706,6 @@ while($result && $row = $result->fetch_assoc()){
           <td>
             <div class="action-cell">
               <a class="act-btn act-pay" href="pay_now_haleeb.php?id=<?php echo $row['id']; ?>" title="Pay">&#8377;</a>
-              <?php if($canDirectModify && $paymentTypeRaw === 'to_pay' && $remaining > 0.0001): ?>
-                <a class="act-btn act-confirm" href="haleeb.php?confirm_driver_pay=<?php echo (int)$row['id']; ?>" title="Request Full Driver Payment" onclick="return confirm('Send full driver payment request for approval?')">&#10003;</a>
-              <?php endif; ?>
               <a class="act-btn act-edit" href="edit_haleeb_bilty.php?id=<?php echo $row['id']; ?>" title="Edit">&#9998;</a>
               <a class="act-btn act-pdf" href="haleeb_pdf.php?id=<?php echo $row['id']; ?>" target="_blank" title="PDF">&#128196;</a>
             </div>
@@ -859,8 +759,6 @@ while($result && $row = $result->fetch_assoc()){
       locationL: String(d.location || '').toLowerCase(),
       addedBy: String(d.user || ''),
       addedByL: String(d.user || '').toLowerCase(),
-      driverType: String(d.driverType || ''),
-      driverTypeL: String(d.driverType || '').toLowerCase(),
       sameStops: Number(d.sameStops || 0),
       outStops: Number(d.outStops || 0),
       freight: freight,
@@ -909,7 +807,6 @@ while($result && $row = $result->fetch_assoc()){
     location: document.getElementById('a_h_location'),
     user: document.getElementById('a_h_user'),
     status: document.getElementById('a_h_status'),
-    driverType: document.getElementById('a_h_driver_type'),
     sameMin: document.getElementById('a_h_same_min'),
     outMin: document.getElementById('a_h_out_min'),
     freightMin: document.getElementById('a_h_freight_min'),
@@ -959,7 +856,6 @@ while($result && $row = $result->fetch_assoc()){
       location: val(f.location),
       user: val(f.user),
       status: val(f.status),
-      driverType: val(f.driverType),
       sameMin: num(f.sameMin),
       outMin: num(f.outMin),
       freightMin: num(f.freightMin),
@@ -978,7 +874,6 @@ while($result && $row = $result->fetch_assoc()){
       if(ok && x.party && r.partyL.indexOf(x.party) === -1) ok = false;
       if(ok && x.location && r.locationL.indexOf(x.location) === -1) ok = false;
       if(ok && x.user && r.addedByL.indexOf(x.user) === -1) ok = false;
-      if(ok && x.driverType && r.driverTypeL !== x.driverType) ok = false;
       if(ok && (x.status === 'confirmed' || x.status === 'paid') && r.remaining > 0.0001) ok = false;
       if(ok && x.status === 'pending' && r.remaining <= 0.0001) ok = false;
       if(ok && x.sameMin !== null && r.sameStops < x.sameMin) ok = false;

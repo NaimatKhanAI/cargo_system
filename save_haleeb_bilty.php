@@ -68,31 +68,6 @@ function insert_haleeb_bilty_row_local($conn, $d, $v, $vt, $dn, $tn, $party, $ad
     return [$ok, $newId];
 }
 
-function apply_haleeb_driver_payment_local($conn, $freightPaymentType, $canDirectModify, $totalFreight, $entryDate, $entryRef, $haleebBiltyId, $currentUserId){
-    if($freightPaymentType !== 'to_pay' || $totalFreight <= 0) return;
-
-    if($canDirectModify){
-        $entryCategory = 'haleeb';
-        $entryMode = 'account';
-        $entryNote = 'Auto Driver Payment - Haleeb Token ' . $entryRef;
-        $autoPay = $conn->prepare("INSERT INTO account_entries(entry_date, category, entry_type, amount_mode, bilty_id, haleeb_bilty_id, amount, note) VALUES(?, ?, 'debit', ?, NULL, ?, ?, ?)");
-        $autoPay->bind_param("sssids", $entryDate, $entryCategory, $entryMode, $haleebBiltyId, $totalFreight, $entryNote);
-        $autoPay->execute();
-        $autoPay->close();
-        return;
-    }
-
-    $entryNote = 'Auto Driver Payment Request - Haleeb Token ' . $entryRef;
-    $payload = [
-        'entry_date' => $entryDate,
-        'category' => 'haleeb',
-        'amount_mode' => 'account',
-        'amount' => round($totalFreight, 3),
-        'note' => $entryNote
-    ];
-    create_change_request_local($conn, 'haleeb', 'haleeb_bilty', $haleebBiltyId, 'haleeb_pay', $payload, $currentUserId);
-}
-
 $d = isset($_POST['date']) ? trim((string)$_POST['date']) : date('Y-m-d');
 $v = isset($_POST['vehicle']) ? trim((string)$_POST['vehicle']) : '';
 $vt = isset($_POST['vehicle_type']) ? trim((string)$_POST['vehicle_type']) : '';
@@ -131,19 +106,11 @@ $stops = 'SC:' . max(0, $sameCityCount) . '|OC:' . max(0, $outCityCount);
 $t = isset($_POST['tender']) ? max(0, round((float)$_POST['tender'], 3)) : 0.0;
 $f = isset($_POST['freight']) ? max(0, round((float)$_POST['freight'], 3)) : 0.0;
 $commission = isset($_POST['commission']) ? max(0, round((float)$_POST['commission'], 3)) : 0.0;
-$freightPaymentType = isset($_POST['freight_payment_type']) ? strtolower(trim((string)$_POST['freight_payment_type'])) : 'to_pay';
-if(!in_array($freightPaymentType, ['to_pay', 'paid'], true)){
-    $freightPaymentType = 'to_pay';
-}
-$canDirectModify = auth_can_direct_modify('haleeb');
-if(!$canDirectModify){
-    $freightPaymentType = 'to_pay';
-}
+$freightPaymentType = 'paid';
 $totalFreight = max(0, $f - $commission);
 
 $p = $t - $totalFreight;
 $addedByUserId = $currentUserId > 0 ? $currentUserId : null;
-$entryDate = $d !== '' ? $d : date('Y-m-d');
 $ok = false;
 $newId = 0;
 $stopRowsCreated = 0;
@@ -157,9 +124,6 @@ try{
         throw new RuntimeException('Could not insert main haleeb bilty row.');
     }
 
-    $mainRef = $tn !== '' ? $tn : ('#' . $newId);
-    apply_haleeb_driver_payment_local($conn, $freightPaymentType, $canDirectModify, $totalFreight, $entryDate, $mainRef, $newId, $currentUserId);
-
     foreach($sameStops as $idx => $stop){
         $stopDn = trim((string)($stop['delivery_note'] ?? ''));
         $stopParty = trim((string)($stop['party'] ?? ''));
@@ -171,8 +135,7 @@ try{
         $stopTender = max(0, round(stop_tender_amount_local($vt, 'same'), 3));
         $stopFreight = 0.0;
         $stopCommission = 0.0;
-        $stopTotalFreight = 0.0;
-        $stopProfit = $stopTender - $stopTotalFreight;
+        $stopProfit = $stopTender;
         $stopStops = 'SC:1|OC:0';
 
         $insertStop = insert_haleeb_bilty_row_local($conn, $d, $v, $vt, $stopDn, $tn, $stopParty, $addedByUserId, $stopLocation, $stopStops, $stopFreight, $stopCommission, $freightPaymentType, $stopTender, $stopProfit);
@@ -182,9 +145,6 @@ try{
             throw new RuntimeException('Could not insert same-city stop row.');
         }
         $stopRowsCreated++;
-
-        $stopRef = ($tn !== '' ? $tn : ('#' . $stopId)) . ' / ' . $stopDn;
-        apply_haleeb_driver_payment_local($conn, $freightPaymentType, $canDirectModify, $stopTotalFreight, $entryDate, $stopRef, $stopId, $currentUserId);
     }
 
     foreach($outStops as $idx => $stop){
@@ -198,8 +158,7 @@ try{
         $stopTender = max(0, round(stop_tender_amount_local($vt, 'out'), 3));
         $stopFreight = 0.0;
         $stopCommission = 0.0;
-        $stopTotalFreight = 0.0;
-        $stopProfit = $stopTender - $stopTotalFreight;
+        $stopProfit = $stopTender;
         $stopStops = 'SC:0|OC:1';
 
         $insertStop = insert_haleeb_bilty_row_local($conn, $d, $v, $vt, $stopDn, $tn, $stopParty, $addedByUserId, $stopLocation, $stopStops, $stopFreight, $stopCommission, $freightPaymentType, $stopTender, $stopProfit);
@@ -209,9 +168,6 @@ try{
             throw new RuntimeException('Could not insert out-city stop row.');
         }
         $stopRowsCreated++;
-
-        $stopRef = ($tn !== '' ? $tn : ('#' . $stopId)) . ' / ' . $stopDn;
-        apply_haleeb_driver_payment_local($conn, $freightPaymentType, $canDirectModify, $stopTotalFreight, $entryDate, $stopRef, $stopId, $currentUserId);
     }
 
     activity_notify_local(
