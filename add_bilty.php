@@ -382,10 +382,6 @@ if(!in_array($formValues['freight_payment_type'], ['to_pay', 'paid'], true)){
         </div>
 
         <div class="field">
-          <label for="sr_no">SR No</label>
-          <input id="sr_no" name="sr_no" placeholder="SR number" value="<?php echo htmlspecialchars($formValues['sr_no']); ?>" required>
-        </div>
-        <div class="field">
           <label for="date">Date</label>
           <input id="date" type="date" name="date" value="<?php echo htmlspecialchars($formValues['date']); ?>" required>
         </div>
@@ -410,19 +406,23 @@ if(!in_array($formValues['freight_payment_type'], ['to_pay', 'paid'], true)){
           <input id="bags" type="number" name="bags" placeholder="0" min="0" value="<?php echo htmlspecialchars($formValues['bags']); ?>" required>
         </div>
         <div class="field">
-          <label for="freight">Freight</label>
-          <input id="freight" type="number" name="freight" placeholder="0" min="0" step="any" value="<?php echo htmlspecialchars($formValues['freight']); ?>" required>
-        </div>
-        <div class="field">
-          <label for="commission">Commission</label>
-          <input id="commission" type="number" name="commission" placeholder="0" min="0" step="any" value="<?php echo htmlspecialchars($formValues['commission']); ?>" required>
-        </div>
-        <div class="field">
           <label for="freight_payment_type">Driver Payment</label>
           <select id="freight_payment_type" name="freight_payment_type" required>
             <option value="to_pay" <?php echo $formValues['freight_payment_type'] === 'to_pay' ? 'selected' : ''; ?>>To Pay</option>
             <option value="paid" <?php echo $formValues['freight_payment_type'] === 'paid' ? 'selected' : ''; ?>>Paid</option>
           </select>
+        </div>
+        <div class="field">
+          <label for="freight">Freight</label>
+          <input id="freight" type="number" name="freight" placeholder="0" min="0" step="any" value="<?php echo htmlspecialchars($formValues['freight']); ?>" required>
+        </div>
+        <div class="field">
+          <label for="sr_no">SR No</label>
+          <input id="sr_no" name="sr_no" placeholder="SR number" value="<?php echo htmlspecialchars($formValues['sr_no']); ?>" required>
+        </div>
+        <div class="field">
+          <label for="commission">Commission</label>
+          <input id="commission" type="number" name="commission" placeholder="0" min="0" step="any" value="<?php echo htmlspecialchars($formValues['commission']); ?>" required>
         </div>
         <?php if($isSuperAdmin): ?>
           <div class="field">
