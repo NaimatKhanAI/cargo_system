@@ -781,7 +781,7 @@ while($result && $row = $result->fetch_assoc()){
           <th>Bilty</th>
           <th>Party</th>
           <th>Location</th>
-          <th>Driver Payment</th>
+          <th>Method</th>
           <th>Bags</th>
           <th>Freight</th>
           <th>SR</th>
