@@ -461,6 +461,8 @@ while($result && $row = $result->fetch_assoc()){
     text-decoration: none; font-size: 13px; border: 1px solid transparent;
     transition: all 0.15s; cursor: pointer;
   }
+  .act-view { background: rgba(59,130,246,0.15); color: #60a5fa; border-color: rgba(59,130,246,0.25); }
+  .act-view:hover { background: rgba(59,130,246,0.25); }
   .act-pay { background: rgba(34,197,94,0.15); color: var(--green); border-color: rgba(34,197,94,0.25); }
   .act-pay:hover { background: rgba(34,197,94,0.25); }
   .act-confirm { background: rgba(16,185,129,0.15); color: #10b981; border-color: rgba(16,185,129,0.25); }
@@ -796,23 +798,18 @@ while($result && $row = $result->fetch_assoc()){
     <table id="feed_records_table">
       <thead>
         <tr>
-          <th>SR.</th>
           <th>Date</th>
-          <th>Added By</th>
-          <?php if($isSuperAdmin): ?><th>Section</th><?php endif; ?>
           <th>Vehicle</th>
-          <th>Bilty No.</th>
+          <th>Bilty</th>
           <th>Party</th>
           <th>Location</th>
+          <th>Driver Payment</th>
           <th>Bags</th>
           <th>Freight</th>
-          <th>Commission</th>
-          <th>Driver Payment</th>
-          <th>Status</th>
-          <?php if($isSuperAdmin): ?><th>Tender</th><?php endif; ?>
+          <th>SR</th>
           <th>Remaining</th>
-          <?php if($isSuperAdmin): ?><th>Profit</th><?php endif; ?>
           <th class="th-action">Actions</th>
+          <?php if($isSuperAdmin): ?><th>Tender</th><th>Profit</th><?php endif; ?>
         </tr>
       </thead>
       <tbody id="feed_records_tbody">
@@ -825,8 +822,8 @@ while($result && $row = $result->fetch_assoc()){
           $paymentTypeRaw = isset($row['freight_payment_type']) ? strtolower(trim((string)$row['freight_payment_type'])) : 'to_pay';
           if(!in_array($paymentTypeRaw, ['to_pay', 'paid'], true)){ $paymentTypeRaw = 'to_pay'; }
           $paymentTypeLabel = $paymentTypeRaw === 'paid' ? 'Paid' : 'To Pay';
-          $driverStatus = $remaining <= 0.0001 ? 'Confirmed' : 'Pending';
           $sectionLabel = $isSuperAdmin ? feed_portion_label_local(isset($row['feed_portion']) ? $row['feed_portion'] : '') : '';
+          $detailHref = 'bilty_detail.php?type=feed&id=' . (int)$row['id'] . '&src=feed';
         ?>
         <tr data-analytics-row="1"
             data-date="<?php echo htmlspecialchars((string)($row['date'] ?? '')); ?>"
@@ -845,44 +842,27 @@ while($result && $row = $result->fetch_assoc()){
             data-tender="<?php echo (float)($row['tender'] ?? 0); ?>"
             data-remaining="<?php echo $remaining; ?>"
             data-profit="<?php echo $profit; ?>">
-          <td><?php echo htmlspecialchars($row['sr_no']); ?></td>
           <td><?php echo htmlspecialchars($row['date']); ?></td>
-          <td><?php echo htmlspecialchars($addedByName); ?></td>
-          <?php if($isSuperAdmin): ?>
-            <td><?php echo htmlspecialchars($sectionLabel); ?></td>
-          <?php endif; ?>
           <td><?php echo htmlspecialchars($row['vehicle']); ?></td>
           <td><?php echo htmlspecialchars($row['bilty_no']); ?></td>
           <td><?php echo htmlspecialchars($row['party']); ?></td>
           <td><?php echo htmlspecialchars($row['location']); ?></td>
-          <td><?php echo (int)($row['bags'] ?? 0); ?></td>
-          <td><?php echo number_format((float)$row['freight'], 2); ?></td>
-          <td><?php echo number_format($commission, 2); ?></td>
           <td>
             <span class="paytype-badge <?php echo $paymentTypeRaw === 'paid' ? 'type-paid' : 'type-to-pay'; ?>">
               <?php echo htmlspecialchars($paymentTypeLabel); ?>
             </span>
           </td>
-          <td>
-            <span class="rem-badge <?php echo $remaining <= 0.0001 ? 'rem-zero' : 'rem-pending'; ?>">
-              <?php echo htmlspecialchars($driverStatus); ?>
-            </span>
-          </td>
-          <?php if($isSuperAdmin): ?>
-            <td><?php echo number_format((float)$row['tender'], 2); ?></td>
-          <?php endif; ?>
+          <td><?php echo (int)($row['bags'] ?? 0); ?></td>
+          <td><?php echo number_format((float)$row['freight'], 2); ?></td>
+          <td><?php echo htmlspecialchars((string)($row['sr_no'] ?? '')); ?></td>
           <td>
             <span class="rem-badge <?php echo $remaining <= 0 ? 'rem-zero' : 'rem-pending'; ?>">
               <?php echo number_format($remaining, 2); ?>
             </span>
           </td>
-          <?php if($isSuperAdmin): ?>
-            <td class="td-profit <?php echo $profit < 0 ? 'neg' : ''; ?>">
-              <?php echo number_format($profit, 2); ?>
-            </td>
-          <?php endif; ?>
           <td>
             <div class="action-cell">
+              <a class="act-btn act-view" href="<?php echo htmlspecialchars($detailHref); ?>" title="View Details">&#128065;</a>
               <a class="act-btn act-pay" href="pay_now.php?id=<?php echo $row['id']; ?>" title="Pay">&#8377;</a>
               <?php if($canDirectModify && $paymentTypeRaw === 'to_pay' && $remaining > 0.0001): ?>
                 <a class="act-btn act-confirm" href="feed.php?confirm_driver_pay=<?php echo (int)$row['id']; ?>" title="Request Full Driver Payment" onclick="return confirm('Send full driver payment request for approval?')">&#10003;</a>
@@ -891,6 +871,12 @@ while($result && $row = $result->fetch_assoc()){
               <a class="act-btn act-pdf" href="pdf.php?id=<?php echo $row['id']; ?>" target="_blank" title="PDF">&#128196;</a>
             </div>
           </td>
+          <?php if($isSuperAdmin): ?>
+            <td><?php echo number_format((float)$row['tender'], 2); ?></td>
+            <td class="td-profit <?php echo $profit < 0 ? 'neg' : ''; ?>">
+              <?php echo number_format($profit, 2); ?>
+            </td>
+          <?php endif; ?>
         </tr>
         <?php endforeach; ?>
       </tbody>
