@@ -10,9 +10,9 @@ header('Content-Type: text/csv; charset=utf-8');
 header('Content-Disposition: attachment; filename=haleeb_entries_' . date('Y-m-d_H-i-s') . '.csv');
 
 $output = fopen('php://output', 'w');
-fputcsv($output, ['id', 'date', 'vehicle', 'vehicle_type', 'delivery_note', 'token_no', 'party', 'location', 'stops', 'freight', 'commission', 'tender', 'profit']);
+fputcsv($output, ['id', 'date', 'vehicle', 'vehicle_type', 'delivery_note', 'token_no', 'party', 'location', 'stops', 'freight', 'commission', 'freight_payment_type', 'tender', 'profit']);
 
-$result = $conn->query("SELECT id, date, vehicle, vehicle_type, delivery_note, token_no, party, location, stops, freight, commission, tender, profit FROM haleeb_bilty ORDER BY id DESC");
+$result = $conn->query("SELECT id, date, vehicle, vehicle_type, delivery_note, token_no, party, location, stops, freight, commission, COALESCE(NULLIF(freight_payment_type, ''), 'to_pay') AS freight_payment_type, tender, profit FROM haleeb_bilty ORDER BY id DESC");
 
 while($row = $result->fetch_assoc()){
 fputcsv($output, $row);
