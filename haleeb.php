@@ -629,9 +629,10 @@ while($result && $row = $result->fetch_assoc()){
           <th>Date</th>
           <th>Vehicle</th>
           <th>Type</th>
-          <th>Phone No</th>
+          <th>Driver No</th>
           <th>Party</th>
           <th>Location</th>
+          <th>Delivery Status</th>
           <th>Token No</th>
           <th>Delivery Note</th>
           <th>Remaining</th>
@@ -647,6 +648,9 @@ while($result && $row = $result->fetch_assoc()){
           $totalCost = (float)($row['total_cost'] ?? max(((float)($row['freight'] ?? 0)) - $commission, 0));
           $addedByName = isset($row['added_by_name']) && trim((string)$row['added_by_name']) !== '' ? (string)$row['added_by_name'] : '-';
           $driverPhoneNo = trim((string)($row['driver_phone_no'] ?? ''));
+          $deliveryStatusRaw = strtolower(trim((string)($row['delivery_status'] ?? 'not_received')));
+          $deliveryStatusLabel = $deliveryStatusRaw === 'received' ? 'Received' : 'Not Received';
+          $deliveryStatusClass = $deliveryStatusRaw === 'received' ? 'rem-zero' : 'rem-pending';
           $detailHref = 'bilty_detail.php?type=haleeb&id=' . (int)$row['id'] . '&src=haleeb';
           $stopsRaw = isset($row['stops']) ? (string)$row['stops'] : '';
           $sameStops = 0;
@@ -662,6 +666,7 @@ while($result && $row = $result->fetch_assoc()){
             data-token="<?php echo htmlspecialchars((string)($row['token_no'] ?? '')); ?>"
             data-party="<?php echo htmlspecialchars((string)($row['party'] ?? '')); ?>"
             data-location="<?php echo htmlspecialchars((string)($row['location'] ?? '')); ?>"
+            data-delivery-status="<?php echo htmlspecialchars((string)$deliveryStatusRaw); ?>"
             data-user="<?php echo htmlspecialchars((string)$addedByName); ?>"
             data-stops="<?php echo htmlspecialchars($stopsRaw); ?>"
             data-same-stops="<?php echo $sameStops; ?>"
@@ -678,6 +683,11 @@ while($result && $row = $result->fetch_assoc()){
           <td><?php echo htmlspecialchars($driverPhoneNo !== '' ? $driverPhoneNo : '-'); ?></td>
           <td><?php echo htmlspecialchars($row['party']); ?></td>
           <td><?php echo htmlspecialchars($row['location']); ?></td>
+          <td>
+            <span class="rem-badge <?php echo $deliveryStatusClass; ?>">
+              <?php echo htmlspecialchars($deliveryStatusLabel); ?>
+            </span>
+          </td>
           <td><?php echo htmlspecialchars($row['token_no']); ?></td>
           <td><?php echo htmlspecialchars($row['delivery_note']); ?></td>
           <td>
