@@ -625,7 +625,7 @@ while($result && $row = $result->fetch_assoc()){
     <div class="profit-banner">
       <div>
         <div class="profit-label">Total Profit</div>
-        <div class="profit-value"><?php echo number_format((float)$total_profit, 2); ?></div>
+        <div class="profit-value"><?php echo format_amount_local((float)$total_profit, 1); ?></div>
       </div>
     </div>
   <?php endif; ?>
@@ -832,11 +832,11 @@ while($result && $row = $result->fetch_assoc()){
             </span>
           </td>
           <td><?php echo (int)($row['bags'] ?? 0); ?></td>
-          <td><?php echo number_format((float)$row['freight'], 2); ?></td>
+          <td><?php echo format_amount_local((float)$row['freight'], 1); ?></td>
           <td><?php echo htmlspecialchars((string)($row['sr_no'] ?? '')); ?></td>
           <td>
             <span class="rem-badge <?php echo $remaining <= 0 ? 'rem-zero' : 'rem-pending'; ?>">
-              <?php echo number_format($remaining, 2); ?>
+              <?php echo format_amount_local($remaining, 1); ?>
             </span>
           </td>
           <td>
@@ -851,9 +851,9 @@ while($result && $row = $result->fetch_assoc()){
             </div>
           </td>
           <?php if($isSuperAdmin): ?>
-            <td><?php echo number_format((float)$row['tender'], 2); ?></td>
+            <td><?php echo format_amount_local((float)$row['tender'], 1); ?></td>
             <td class="td-profit <?php echo $profit < 0 ? 'neg' : ''; ?>">
-              <?php echo number_format($profit, 2); ?>
+              <?php echo format_amount_local($profit, 1); ?>
             </td>
           <?php endif; ?>
         </tr>
@@ -957,7 +957,7 @@ while($result && $row = $result->fetch_assoc()){
   };
   var resetBtn = document.getElementById('feed_analytics_reset');
 
-  function money(v){ return Number(v || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}); }
+  function money(v){ return Number(v || 0).toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:1}); }
   function intVal(v){ return Number(v || 0).toLocaleString(undefined, {maximumFractionDigits:0}); }
   function val(el){ return el ? String(el.value || '').trim().toLowerCase() : ''; }
   function escHtml(s){ return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;').replace(/'/g,'&#39;'); }
@@ -1029,7 +1029,7 @@ while($result && $row = $result->fetch_assoc()){
       ['Total Cost', money(totals.total)],
       ['Paid', money(totals.paid)],
       ['Remaining', money(totals.remaining)],
-      ['Collection %', totals.total > 0 ? ((totals.paid / totals.total) * 100).toFixed(2) + '%' : '0.00%']
+      ['Collection %', totals.total > 0 ? ((totals.paid / totals.total) * 100).toFixed(1) + '%' : '0.0%']
     ];
     if(isSuperAdmin){ cards.push(['Tender', money(totals.tender)]); cards.push(['Profit', money(totals.profit)]); }
     statsBox.innerHTML = cards.map(function(c){ return '<div class=\"a-stat\"><div class=\"k\">' + escHtml(c[0]) + '</div><div class=\"v\">' + escHtml(c[1]) + '</div></div>'; }).join('');

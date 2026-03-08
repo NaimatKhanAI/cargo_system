@@ -884,13 +884,13 @@ $openAnalyticsPanel = false;
                   <td><?php echo htmlspecialchars(strtoupper((string)$r['module_key'])); ?></td>
                   <td><?php echo htmlspecialchars((string)($r['requested_by_name'] ?: ('User#' . (int)$r['requested_by']))); ?></td>
                   <td>
-                    <div>Amount: <strong>Rs <?php echo number_format($amt, 2); ?></strong></div>
+                    <div>Amount: <strong>Rs <?php echo format_amount_local($amt, 1); ?></strong></div>
                     <div class="pay-req-note">Mode: <?php echo htmlspecialchars($mode); ?> | Category: <?php echo htmlspecialchars($category); ?> | Date: <?php echo htmlspecialchars($entryDate); ?></div>
                     <?php if($note !== ''): ?><div class="pay-req-note">Note: <?php echo htmlspecialchars($note); ?></div><?php endif; ?>
                     <?php if($remainingErr !== ''): ?>
                       <div class="pay-req-note">Remaining: <?php echo htmlspecialchars($remainingErr); ?></div>
                     <?php else: ?>
-                      <div class="pay-req-note">Remaining now: Rs <?php echo number_format($remainingAmt, 2); ?></div>
+                      <div class="pay-req-note">Remaining now: Rs <?php echo format_amount_local($remainingAmt, 1); ?></div>
                     <?php endif; ?>
                     <?php if($detailHref !== ''): ?>
                       <div class="pay-req-note"><a class="ref-link" href="<?php echo htmlspecialchars($detailHref); ?>">Open Bilty Detail</a></div>
@@ -907,7 +907,7 @@ $openAnalyticsPanel = false;
                         type="number"
                         name="request_amount"
                         step="any"
-                        value="<?php echo htmlspecialchars(number_format($amt, 2, '.', '')); ?>"
+                        value="<?php echo htmlspecialchars(format_amount_local($amt, 1, false)); ?>"
                         placeholder="0.00"
                       >
                       <input class="pay-req-note-input" type="text" name="review_note" placeholder="Optional note">
@@ -1132,24 +1132,24 @@ $openAnalyticsPanel = false;
   <div class="stats-grid">
     <div class="stat-card debit">
       <div class="stat-label">Total Debit</div>
-      <div class="stat-val red">Rs <?php echo number_format((float)$totalDebit, 2); ?></div>
-      <div class="stat-sub">Cash: <?php echo number_format((float)$dCash,2); ?> · Acc: <?php echo number_format((float)$dAccount,2); ?></div>
+      <div class="stat-val red">Rs <?php echo format_amount_local((float)$totalDebit, 1); ?></div>
+      <div class="stat-sub">Cash: <?php echo format_amount_local((float)$dCash, 1); ?> · Acc: <?php echo format_amount_local((float)$dAccount, 1); ?></div>
     </div>
     <div class="stat-card credit">
       <div class="stat-label">Total Credit</div>
-      <div class="stat-val green">Rs <?php echo number_format((float)$totalCredit, 2); ?></div>
-      <div class="stat-sub">Cash: <?php echo number_format((float)$cCash,2); ?> · Acc: <?php echo number_format((float)$cAccount,2); ?></div>
+      <div class="stat-val green">Rs <?php echo format_amount_local((float)$totalCredit, 1); ?></div>
+      <div class="stat-sub">Cash: <?php echo format_amount_local((float)$cCash, 1); ?> · Acc: <?php echo format_amount_local((float)$cAccount, 1); ?></div>
     </div>
     <div class="stat-card neutral">
       <div class="stat-label">Cash Balance</div>
       <div class="stat-val <?php echo ((float)$cCash-(float)$dCash)>=0?'green':'red'; ?>">
-        Rs <?php echo number_format((float)$cCash-(float)$dCash, 2); ?>
+        Rs <?php echo format_amount_local((float)$cCash-(float)$dCash, 1); ?>
       </div>
       <div class="stat-sub">Cash Credit - Debit</div>
     </div>
     <div class="stat-card <?php echo $netPos ? 'net-pos' : 'net-neg'; ?>">
       <div class="stat-label">Net Balance</div>
-      <div class="stat-val <?php echo $netPos ? 'green' : 'red'; ?>">Rs <?php echo number_format((float)$netBalance, 2); ?></div>
+      <div class="stat-val <?php echo $netPos ? 'green' : 'red'; ?>">Rs <?php echo format_amount_local((float)$netBalance, 1); ?></div>
       <div class="stat-sub">Credit − Debit (All)</div>
     </div>
   </div>
@@ -1174,15 +1174,15 @@ $openAnalyticsPanel = false;
     ?>
     <div class="cat-card">
       <div class="cat-card-title"><?php echo htmlspecialchars(ledger_category_label_local($c, $categoryLabels)); ?></div>
-      <div class="cat-line"><span class="cat-line-label">Debit</span><span class="cat-line-val val-debit">Rs <?php echo number_format($d,2); ?></span></div>
-      <div class="cat-line"><span class="cat-line-label">Credit</span><span class="cat-line-val val-credit">Rs <?php echo number_format($cr,2); ?></span></div>
-      <div class="cat-line"><span class="cat-line-label">Debit — Cash</span><span class="cat-line-val val-debit">Rs <?php echo number_format($dC,2); ?></span></div>
-      <div class="cat-line"><span class="cat-line-label">Debit — Account</span><span class="cat-line-val val-debit">Rs <?php echo number_format($dA,2); ?></span></div>
-      <div class="cat-line"><span class="cat-line-label">Credit — Cash</span><span class="cat-line-val val-credit">Rs <?php echo number_format($cC,2); ?></span></div>
-      <div class="cat-line"><span class="cat-line-label">Credit — Account</span><span class="cat-line-val val-credit">Rs <?php echo number_format($cA,2); ?></span></div>
-      <div class="cat-line"><span class="cat-line-label">Net Cash</span><span class="cat-line-val <?php echo $nC>=0?'val-net-pos':'val-net-neg'; ?>">Rs <?php echo number_format($nC,2); ?></span></div>
-      <div class="cat-line"><span class="cat-line-label">Net Account</span><span class="cat-line-val <?php echo $nA>=0?'val-net-pos':'val-net-neg'; ?>">Rs <?php echo number_format($nA,2); ?></span></div>
-      <div class="cat-line" style="border-top: 1px solid var(--border); margin-top:4px; padding-top:8px;"><span class="cat-line-label">Net Total</span><span class="cat-line-val <?php echo $n>=0?'val-net-pos':'val-net-neg'; ?>">Rs <?php echo number_format($n,2); ?></span></div>
+      <div class="cat-line"><span class="cat-line-label">Debit</span><span class="cat-line-val val-debit">Rs <?php echo format_amount_local($d, 1); ?></span></div>
+      <div class="cat-line"><span class="cat-line-label">Credit</span><span class="cat-line-val val-credit">Rs <?php echo format_amount_local($cr, 1); ?></span></div>
+      <div class="cat-line"><span class="cat-line-label">Debit — Cash</span><span class="cat-line-val val-debit">Rs <?php echo format_amount_local($dC, 1); ?></span></div>
+      <div class="cat-line"><span class="cat-line-label">Debit — Account</span><span class="cat-line-val val-debit">Rs <?php echo format_amount_local($dA, 1); ?></span></div>
+      <div class="cat-line"><span class="cat-line-label">Credit — Cash</span><span class="cat-line-val val-credit">Rs <?php echo format_amount_local($cC, 1); ?></span></div>
+      <div class="cat-line"><span class="cat-line-label">Credit — Account</span><span class="cat-line-val val-credit">Rs <?php echo format_amount_local($cA, 1); ?></span></div>
+      <div class="cat-line"><span class="cat-line-label">Net Cash</span><span class="cat-line-val <?php echo $nC>=0?'val-net-pos':'val-net-neg'; ?>">Rs <?php echo format_amount_local($nC, 1); ?></span></div>
+      <div class="cat-line"><span class="cat-line-label">Net Account</span><span class="cat-line-val <?php echo $nA>=0?'val-net-pos':'val-net-neg'; ?>">Rs <?php echo format_amount_local($nA, 1); ?></span></div>
+      <div class="cat-line" style="border-top: 1px solid var(--border); margin-top:4px; padding-top:8px;"><span class="cat-line-label">Net Total</span><span class="cat-line-val <?php echo $n>=0?'val-net-pos':'val-net-neg'; ?>">Rs <?php echo format_amount_local($n, 1); ?></span></div>
     </div>
     <?php endforeach; ?>
   </div>
@@ -1248,7 +1248,7 @@ $openAnalyticsPanel = false;
           <td><span class="cat-badge"><?php echo htmlspecialchars(ledger_category_label_local((string)$row['category'], $categoryLabels)); ?></span></td>
           <td><span class="type-badge type-<?php echo $rType; ?>"><?php echo ucfirst($rType); ?></span></td>
           <td><span class="mode-badge mode-<?php echo $rMode; ?>"><?php echo ucfirst($rMode); ?></span></td>
-          <td class="<?php echo $rType==='debit'?'val-debit':'val-credit'; ?>">Rs <?php echo number_format((float)$row['amount'],2); ?></td>
+          <td class="<?php echo $rType==='debit'?'val-debit':'val-credit'; ?>">Rs <?php echo format_amount_local((float)$row['amount'], 1); ?></td>
           <td>
             <?php if($refHref !== ''): ?>
               <a class="ref-link" href="<?php echo htmlspecialchars($refHref); ?>"><?php echo htmlspecialchars(strtoupper($refType) . ' #' . $refId); ?></a>
@@ -1326,7 +1326,7 @@ $openAnalyticsPanel = false;
     var n = Number(t);
     return Number.isFinite(n) ? n : null;
   }
-  function money(v){ return Number(v || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}); }
+  function money(v){ return Number(v || 0).toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:1}); }
   function inRange(v, min, max){
     if(min !== null && v < min) return false;
     if(max !== null && v > max) return false;

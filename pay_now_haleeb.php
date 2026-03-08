@@ -234,24 +234,24 @@ $paidPct = $baseFreight > 0 ? min(100, round($paidTotal / $baseFreight * 100)) :
           <?php if($isSuperAdmin): ?>
             <div class="info-item">
               <div class="info-label">Tender</div>
-              <div class="info-val yellow">Rs <?php echo number_format((float)$row['tender'], 3); ?></div>
+              <div class="info-val yellow">Rs <?php echo format_amount_local((float)$row['tender'], 1); ?></div>
             </div>
           <?php endif; ?>
           <div class="info-item">
             <div class="info-label">Freight Total</div>
-            <div class="info-val">Rs <?php echo number_format((float)$row['freight'], 3); ?></div>
+            <div class="info-val">Rs <?php echo format_amount_local((float)$row['freight'], 1); ?></div>
           </div>
           <div class="info-item">
             <div class="info-label">Commission</div>
-            <div class="info-val">Rs <?php echo number_format($commission, 3); ?></div>
+            <div class="info-val">Rs <?php echo format_amount_local($commission, 1); ?></div>
           </div>
           <div class="info-item">
             <div class="info-label">Total Cost</div>
-            <div class="info-val">Rs <?php echo number_format($baseFreight, 3); ?></div>
+            <div class="info-val">Rs <?php echo format_amount_local($baseFreight, 1); ?></div>
           </div>
           <div class="info-item">
             <div class="info-label">Paid</div>
-            <div class="info-val green">Rs <?php echo number_format($paidTotal, 3); ?></div>
+            <div class="info-val green">Rs <?php echo format_amount_local($paidTotal, 1); ?></div>
           </div>
         </div>
       </div>
@@ -265,8 +265,8 @@ $paidPct = $baseFreight > 0 ? min(100, round($paidTotal / $baseFreight * 100)) :
           <div class="progress-fill" style="width:<?php echo $paidPct; ?>%"></div>
         </div>
         <div class="progress-detail">
-          <span>Paid: Rs <?php echo number_format($paidTotal, 3); ?></span>
-          <span>Remaining: Rs <?php echo number_format($remainingFreight, 3); ?></span>
+          <span>Paid: Rs <?php echo format_amount_local($paidTotal, 1); ?></span>
+          <span>Remaining: Rs <?php echo format_amount_local($remainingFreight, 1); ?></span>
         </div>
       </div>
     </div>
@@ -302,7 +302,7 @@ $paidPct = $baseFreight > 0 ? min(100, round($paidTotal / $baseFreight * 100)) :
         <div class="field">
           <label for="pay_amount">Amount</label>
           <input id="pay_amount" type="number" name="pay_amount" min="0.001" step="any" max="<?php echo htmlspecialchars((string)$remainingFreight); ?>" value="<?php echo htmlspecialchars($formAmount); ?>" placeholder="0" required>
-          <div class="field-hint">Max: Rs <?php echo number_format($remainingFreight, 3); ?></div>
+          <div class="field-hint">Max: Rs <?php echo format_amount_local($remainingFreight, 1); ?></div>
         </div>
         <div class="field">
           <label for="note">Note</label>

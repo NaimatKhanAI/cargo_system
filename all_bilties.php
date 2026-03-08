@@ -290,8 +290,8 @@ foreach($allBilties as $r){
     </div>
     <div class="stats" id="a_stats">
       <div class="stat"><div class="k">Rows</div><div class="v"><?php echo $totalRows; ?></div></div>
-      <div class="stat"><div class="k">Total Cost</div><div class="v">Rs <?php echo number_format($totalCost, 2); ?></div></div>
-      <div class="stat"><div class="k">Remaining</div><div class="v">Rs <?php echo number_format($totalRemaining, 2); ?></div></div>
+      <div class="stat"><div class="k">Total Cost</div><div class="v">Rs <?php echo format_amount_local($totalCost, 1); ?></div></div>
+      <div class="stat"><div class="k">Remaining</div><div class="v">Rs <?php echo format_amount_local($totalRemaining, 1); ?></div></div>
       <div class="stat"><div class="k">Confirmed</div><div class="v"><?php echo $confirmedCount; ?></div></div>
       <div class="stat"><div class="k">Pending</div><div class="v"><?php echo $pendingCount; ?></div></div>
     </div>
@@ -370,12 +370,12 @@ foreach($allBilties as $r){
           <td><?php echo htmlspecialchars((string)($brow['vehicle'] ?? '')); ?></td>
           <td><?php echo htmlspecialchars((string)($brow['party'] ?? '')); ?></td>
           <td><?php echo htmlspecialchars((string)($brow['location'] ?? '')); ?></td>
-          <td>Rs <?php echo number_format((float)($brow['freight'] ?? 0), 2); ?></td>
-          <td>Rs <?php echo number_format((float)($brow['commission'] ?? 0), 2); ?></td>
-          <td>Rs <?php echo number_format((float)($brow['total_cost'] ?? 0), 2); ?></td>
+          <td>Rs <?php echo format_amount_local((float)($brow['freight'] ?? 0), 1); ?></td>
+          <td>Rs <?php echo format_amount_local((float)($brow['commission'] ?? 0), 1); ?></td>
+          <td>Rs <?php echo format_amount_local((float)($brow['total_cost'] ?? 0), 1); ?></td>
           <td><span class="mode-badge <?php echo $driverType === 'paid' ? 'mode-paid' : 'mode-to-pay'; ?>"><?php echo $driverType === 'paid' ? 'Paid' : 'To Pay'; ?></span></td>
           <td><span class="type-badge <?php echo $statusText === 'confirmed' ? 'type-confirmed' : 'type-pending'; ?>"><?php echo ucfirst($statusText); ?></span></td>
-          <td>Rs <?php echo number_format($remaining, 2); ?></td>
+          <td>Rs <?php echo format_amount_local($remaining, 1); ?></td>
           <td>
             <div class="row-actions">
               <?php if($canManageLedger && $payHref !== ''): ?>
@@ -411,7 +411,7 @@ foreach($allBilties as $r){
   if(!countLabel || !statsBox) return;
 
   function val(el){ return el ? String(el.value || '').trim().toLowerCase() : ''; }
-  function money(v){ return Number(v || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}); }
+  function money(v){ return Number(v || 0).toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:1}); }
 
   function apply(){
     var xText = val(text);

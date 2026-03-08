@@ -1,6 +1,20 @@
 <?php
 require_once __DIR__ . '/activity_notifications.php';
 
+if(!function_exists('format_amount_local')){
+    function format_amount_local($value, $maxDecimals = 1, $groupThousands = true){
+        $decimals = max(0, (int)$maxDecimals);
+        $num = is_numeric($value) ? (float)$value : 0.0;
+        $formatted = number_format($num, $decimals, '.', $groupThousands ? ',' : '');
+        if($decimals > 0){
+            $formatted = rtrim($formatted, '0');
+            $formatted = rtrim($formatted, '.');
+        }
+        if($formatted === '-0') $formatted = '0';
+        return $formatted;
+    }
+}
+
 function request_payload_decode_local($raw){
     if(trim((string)$raw) === '') return [];
     $decoded = json_decode((string)$raw, true);
@@ -13,7 +27,7 @@ function request_action_summary_local($actionType, $entityId, $payload){
     if($actionType === 'feed_pay' || $actionType === 'haleeb_pay'){
         $amt = isset($payload['amount']) ? (float)$payload['amount'] : 0;
         $mode = isset($payload['amount_mode']) ? (string)$payload['amount_mode'] : '';
-        return 'Payment request: Rs ' . number_format($amt, 2) . ' (' . $mode . ')';
+        return 'Payment request: Rs ' . format_amount_local($amt, 1) . ' (' . $mode . ')';
     }
     if($actionType === 'feed_update' || $actionType === 'haleeb_update' || $actionType === 'account_update'){
         return 'Update request for entity #' . $entityId;

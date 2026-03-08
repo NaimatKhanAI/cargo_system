@@ -132,15 +132,15 @@ elseif($src === 'haleeb' && auth_has_module_access('haleeb')) $backHref = 'halee
   <div class="stats">
     <div class="card">
       <div class="k">Total Cost</div>
-      <div class="v">Rs <?php echo number_format($baseFreight, 2); ?></div>
+      <div class="v">Rs <?php echo format_amount_local($baseFreight, 1); ?></div>
     </div>
     <div class="card">
       <div class="k">Paid</div>
-      <div class="v green">Rs <?php echo number_format($paidTotal, 2); ?></div>
+      <div class="v green">Rs <?php echo format_amount_local($paidTotal, 1); ?></div>
     </div>
     <div class="card">
       <div class="k">Remaining</div>
-      <div class="v <?php echo $remaining > 0.0001 ? 'red' : 'green'; ?>">Rs <?php echo number_format($remaining, 2); ?></div>
+      <div class="v <?php echo $remaining > 0.0001 ? 'red' : 'green'; ?>">Rs <?php echo format_amount_local($remaining, 1); ?></div>
     </div>
   </div>
 
@@ -160,11 +160,11 @@ elseif($src === 'haleeb' && auth_has_module_access('haleeb')) $backHref = 'halee
         <tr><td class="label">Party</td><td><?php echo htmlspecialchars((string)($row['party'] ?? '')); ?></td></tr>
         <tr><td class="label">Location</td><td><?php echo htmlspecialchars((string)($row['location'] ?? '')); ?></td></tr>
         <tr><td class="label">Bags</td><td><?php echo (int)($row['bags'] ?? 0); ?></td></tr>
-        <tr><td class="label">Freight</td><td>Rs <?php echo number_format((float)($row['freight'] ?? 0), 2); ?></td></tr>
-        <tr><td class="label">Commission</td><td>Rs <?php echo number_format((float)($row['commission'] ?? 0), 2); ?></td></tr>
+        <tr><td class="label">Freight</td><td>Rs <?php echo format_amount_local((float)($row['freight'] ?? 0), 1); ?></td></tr>
+        <tr><td class="label">Commission</td><td>Rs <?php echo format_amount_local((float)($row['commission'] ?? 0), 1); ?></td></tr>
         <tr><td class="label">Driver Payment Type</td><td><?php echo htmlspecialchars((string)($row['freight_payment_type'] ?? 'to_pay')); ?></td></tr>
-        <tr><td class="label">Tender</td><td>Rs <?php echo number_format((float)($row['tender'] ?? 0), 2); ?></td></tr>
-        <tr><td class="label">Profit</td><td>Rs <?php echo number_format((float)($row['profit'] ?? 0), 2); ?></td></tr>
+        <tr><td class="label">Tender</td><td>Rs <?php echo format_amount_local((float)($row['tender'] ?? 0), 1); ?></td></tr>
+        <tr><td class="label">Profit</td><td>Rs <?php echo format_amount_local((float)($row['profit'] ?? 0), 1); ?></td></tr>
         <tr><td class="label">Added By</td><td><?php echo htmlspecialchars((string)($row['added_by_name'] ?? '-')); ?></td></tr>
       <?php else: ?>
         <tr><td class="label">Date</td><td><?php echo htmlspecialchars((string)($row['date'] ?? '')); ?></td></tr>
@@ -177,10 +177,10 @@ elseif($src === 'haleeb' && auth_has_module_access('haleeb')) $backHref = 'halee
         <tr><td class="label">Party</td><td><?php echo htmlspecialchars((string)($row['party'] ?? '')); ?></td></tr>
         <tr><td class="label">Location</td><td><?php echo htmlspecialchars((string)($row['location'] ?? '')); ?></td></tr>
         <tr><td class="label">Stops</td><td><?php echo htmlspecialchars((string)($row['stops'] ?? '')); ?></td></tr>
-        <tr><td class="label">Freight</td><td>Rs <?php echo number_format((float)($row['freight'] ?? 0), 2); ?></td></tr>
-        <tr><td class="label">Commission</td><td>Rs <?php echo number_format((float)($row['commission'] ?? 0), 2); ?></td></tr>
-        <tr><td class="label">Tender</td><td>Rs <?php echo number_format((float)($row['tender'] ?? 0), 2); ?></td></tr>
-        <tr><td class="label">Profit</td><td>Rs <?php echo number_format((float)($row['profit'] ?? 0), 2); ?></td></tr>
+        <tr><td class="label">Freight</td><td>Rs <?php echo format_amount_local((float)($row['freight'] ?? 0), 1); ?></td></tr>
+        <tr><td class="label">Commission</td><td>Rs <?php echo format_amount_local((float)($row['commission'] ?? 0), 1); ?></td></tr>
+        <tr><td class="label">Tender</td><td>Rs <?php echo format_amount_local((float)($row['tender'] ?? 0), 1); ?></td></tr>
+        <tr><td class="label">Profit</td><td>Rs <?php echo format_amount_local((float)($row['profit'] ?? 0), 1); ?></td></tr>
         <tr><td class="label">Added By</td><td><?php echo htmlspecialchars((string)($row['added_by_name'] ?? '-')); ?></td></tr>
       <?php endif; ?>
       </tbody>

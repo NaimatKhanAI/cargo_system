@@ -620,7 +620,7 @@ while($result && $row = $result->fetch_assoc()){
     <div class="profit-banner">
       <div>
         <div class="profit-label">Total Profit</div>
-        <div class="profit-value">Rs <?php echo number_format((float)$total_profit, 2); ?></div>
+        <div class="profit-value">Rs <?php echo format_amount_local((float)$total_profit, 1); ?></div>
       </div>
     </div>
   <?php endif; ?>
@@ -834,7 +834,7 @@ while($result && $row = $result->fetch_assoc()){
           <td><?php echo htmlspecialchars($row['delivery_note']); ?></td>
           <td>
             <span class="rem-badge <?php echo $remaining <= 0 ? 'rem-zero' : 'rem-pending'; ?>">
-              Rs <?php echo number_format($remaining, 2); ?>
+              Rs <?php echo format_amount_local($remaining, 1); ?>
             </span>
           </td>
           <td>
@@ -846,9 +846,9 @@ while($result && $row = $result->fetch_assoc()){
             </div>
           </td>
           <?php if($isSuperAdmin): ?>
-            <td>Rs <?php echo number_format((float)$row['tender'], 2); ?></td>
+            <td>Rs <?php echo format_amount_local((float)$row['tender'], 1); ?></td>
             <td class="td-profit <?php echo $profit < 0 ? 'neg' : ''; ?>">
-              Rs <?php echo number_format($profit, 2); ?>
+              Rs <?php echo format_amount_local($profit, 1); ?>
             </td>
           <?php endif; ?>
         </tr>
@@ -1093,7 +1093,7 @@ while($result && $row = $result->fetch_assoc()){
   };
   var resetBtn = document.getElementById('haleeb_analytics_reset');
 
-  function money(v){ return Number(v || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}); }
+  function money(v){ return Number(v || 0).toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:1}); }
   function intVal(v){ return Number(v || 0).toLocaleString(undefined, {maximumFractionDigits:0}); }
   function val(el){ return el ? String(el.value || '').trim().toLowerCase() : ''; }
   function num(el){ if(!el) return null; var t = String(el.value || '').trim(); if(t === '') return null; var n = Number(t); return Number.isFinite(n) ? n : null; }
