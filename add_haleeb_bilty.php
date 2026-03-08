@@ -118,13 +118,16 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
   .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px 20px; }
   .field.span-2 { grid-column: 1 / -1; }
   .field label { display: block; font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
-  .field input {
+  .field input, .field select {
     width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text);
     padding: 11px 14px; font-family: var(--font); font-size: 14px; transition: border-color 0.15s;
   }
-  .field input:focus { outline: none; border-color: var(--accent); }
+  .field input:focus, .field select:focus { outline: none; border-color: var(--accent); }
   .field input::-webkit-calendar-picker-indicator { filter: invert(0.5); cursor: pointer; }
   .field input::placeholder { color: var(--muted); }
+  .field select.status-tag { font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; }
+  .field select.status-tag.is-received { border-color: rgba(34,197,94,0.65); color: #86efac; background: rgba(34,197,94,0.09); }
+  .field select.status-tag.is-not-received { border-color: rgba(239,68,68,0.65); color: #fca5a5; background: rgba(239,68,68,0.09); }
   .stops-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .stop-box { border: 1px solid var(--border); background: var(--bg); padding: 10px; min-height: 92px; }
   .stop-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
@@ -193,12 +196,8 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
           <input id="vehicle_type" name="vehicle_type" placeholder="Truck" list="vehicle_type_list" required>
         </div>
         <div class="field">
-          <label for="delivery_note">Delivery Note</label>
-          <input id="delivery_note" name="delivery_note" placeholder="Delivery note number" required>
-        </div>
-        <div class="field">
-          <label for="token_no">Token No</label>
-          <input id="token_no" name="token_no" placeholder="Token number" required>
+          <label for="driver_phone_no">Driver Phone No</label>
+          <input id="driver_phone_no" name="driver_phone_no" placeholder="03xx-xxxxxxx" inputmode="tel">
         </div>
         <div class="field">
           <label for="party">Party</label>
@@ -207,6 +206,21 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
         <div class="field">
           <label for="location">Location</label>
           <input id="location" name="location" placeholder="Location" list="location_list" required>
+        </div>
+        <div class="field">
+          <label for="delivery_status">Delivery Status</label>
+          <select id="delivery_status" name="delivery_status" class="status-tag is-not-received" required>
+            <option value="not_received" selected>Not Received</option>
+            <option value="received">Received</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="token_no">Token No</label>
+          <input id="token_no" name="token_no" placeholder="Token number" required>
+        </div>
+        <div class="field">
+          <label for="delivery_note">Delivery Note</label>
+          <input id="delivery_note" name="delivery_note" placeholder="Delivery note number" required>
         </div>
         <div class="field span-2">
           <label>Stops</label>
@@ -244,10 +258,6 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
           <label for="freight">Freight</label>
           <input id="freight" type="number" name="freight" placeholder="0" min="0" step="any" required>
         </div>
-        <div class="field">
-          <label for="commission">Commission</label>
-          <input id="commission" type="number" name="commission" placeholder="0" min="0" step="any" value="0" required>
-        </div>
       </div>
       <div class="form-footer">
         <button class="submit-btn" type="submit">Save</button>
@@ -270,6 +280,7 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
   var locationInput = document.getElementById('location');
   var vehicleTypeInput = document.getElementById('vehicle_type');
   var tenderInput = document.getElementById('tender');
+  var deliveryStatusInput = document.getElementById('delivery_status');
   var addSameStopBtn = document.getElementById('add_same_stop');
   var addOutStopBtn = document.getElementById('add_out_stop');
   var sameStopList = document.getElementById('same_stop_list');
@@ -332,6 +343,17 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
     var baseTender = getBaseTenderFromRateList();
     if(baseTender === null) return;
     tenderInput.value = String(roundMoney(baseTender));
+  }
+
+  function syncDeliveryStatusTag(){
+    if(!deliveryStatusInput) return;
+    if(String(deliveryStatusInput.value) === 'received'){
+      deliveryStatusInput.classList.add('is-received');
+      deliveryStatusInput.classList.remove('is-not-received');
+      return;
+    }
+    deliveryStatusInput.classList.add('is-not-received');
+    deliveryStatusInput.classList.remove('is-received');
   }
 
   function makeStopField(placeholder, value, onInput){
@@ -459,6 +481,9 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
   locationInput.addEventListener('blur', tryAutoTender);
   vehicleTypeInput.addEventListener('change', tryAutoTender);
   vehicleTypeInput.addEventListener('blur', tryAutoTender);
+  if(deliveryStatusInput){
+    deliveryStatusInput.addEventListener('change', syncDeliveryStatusTag);
+  }
 
   form.addEventListener('submit', function(e){
     clearStopsError();
@@ -474,6 +499,7 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
 
   renderStops();
   tryAutoTender();
+  syncDeliveryStatusTag();
 })();
 </script>
 </body>

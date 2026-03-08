@@ -138,6 +138,8 @@ id INT AUTO_INCREMENT PRIMARY KEY,
 date DATE,
 vehicle VARCHAR(50),
 vehicle_type VARCHAR(50),
+driver_phone_no VARCHAR(40) DEFAULT '',
+delivery_status VARCHAR(20) NOT NULL DEFAULT 'not_received',
 delivery_note VARCHAR(100),
 token_no VARCHAR(50),
 party VARCHAR(100),
@@ -155,6 +157,16 @@ created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 $haleebStopsColCheck = $conn->query("SHOW COLUMNS FROM haleeb_bilty LIKE 'stops'");
 if($haleebStopsColCheck && $haleebStopsColCheck->num_rows === 0){
 $conn->query("ALTER TABLE haleeb_bilty ADD stops VARCHAR(50) DEFAULT '' AFTER location");
+}
+
+$haleebDriverPhoneColCheck = $conn->query("SHOW COLUMNS FROM haleeb_bilty LIKE 'driver_phone_no'");
+if($haleebDriverPhoneColCheck && $haleebDriverPhoneColCheck->num_rows === 0){
+$conn->query("ALTER TABLE haleeb_bilty ADD driver_phone_no VARCHAR(40) DEFAULT '' AFTER vehicle_type");
+}
+
+$haleebDeliveryStatusColCheck = $conn->query("SHOW COLUMNS FROM haleeb_bilty LIKE 'delivery_status'");
+if($haleebDeliveryStatusColCheck && $haleebDeliveryStatusColCheck->num_rows === 0){
+$conn->query("ALTER TABLE haleeb_bilty ADD delivery_status VARCHAR(20) NOT NULL DEFAULT 'not_received' AFTER driver_phone_no");
 }
 
 $colCheck = $conn->query("SHOW COLUMNS FROM bilty LIKE 'party'");
@@ -219,6 +231,11 @@ ensure_decimal_column_local($conn, 'haleeb_bilty', 'profit');
 
 $conn->query("UPDATE bilty SET commission=0 WHERE commission IS NULL");
 $conn->query("UPDATE haleeb_bilty SET commission=0 WHERE commission IS NULL");
+$conn->query("UPDATE haleeb_bilty SET driver_phone_no='' WHERE driver_phone_no IS NULL");
+$conn->query("UPDATE haleeb_bilty SET delivery_status='not_received' WHERE delivery_status IS NULL OR delivery_status=''");
+$conn->query("UPDATE haleeb_bilty SET delivery_status='not_received' WHERE LOWER(REPLACE(delivery_status, ' ', '_')) NOT IN ('received', 'not_received')");
+$conn->query("UPDATE haleeb_bilty SET delivery_status='received' WHERE LOWER(REPLACE(delivery_status, ' ', '_'))='received'");
+$conn->query("UPDATE haleeb_bilty SET delivery_status='not_received' WHERE LOWER(REPLACE(delivery_status, ' ', '_'))='not_received'");
 $conn->query("UPDATE bilty SET freight_payment_type='to_pay' WHERE freight_payment_type IS NULL OR freight_payment_type=''");
 $conn->query("UPDATE haleeb_bilty SET freight_payment_type='to_pay' WHERE freight_payment_type IS NULL OR freight_payment_type=''");
 $conn->query("UPDATE bilty SET freight_payment_type='to_pay' WHERE freight_payment_type NOT IN ('to_pay','paid')");

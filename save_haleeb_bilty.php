@@ -58,10 +58,18 @@ function stop_tender_amount_local($vehicleType, $stopType){
     return isset($outCity[$bucket]) ? (float)$outCity[$bucket] : 0.0;
 }
 
-function insert_haleeb_bilty_row_local($conn, $d, $v, $vt, $dn, $tn, $party, $addedByUserId, $l, $stops, $f, $commission, $freightPaymentType, $t, $p){
-    $stmt = $conn->prepare("INSERT INTO haleeb_bilty(date, vehicle, vehicle_type, delivery_note, token_no, party, added_by_user_id, location, stops, freight, commission, freight_payment_type, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+function normalize_delivery_status_local($raw){
+    $status = strtolower(trim((string)$raw));
+    $status = str_replace(['-', ' '], '_', $status);
+    if($status === 'received') return 'received';
+    if($status === 'not_received') return 'not_received';
+    return 'not_received';
+}
+
+function insert_haleeb_bilty_row_local($conn, $d, $v, $vt, $driverPhoneNo, $deliveryStatus, $dn, $tn, $party, $addedByUserId, $l, $stops, $f, $commission, $freightPaymentType, $t, $p){
+    $stmt = $conn->prepare("INSERT INTO haleeb_bilty(date, vehicle, vehicle_type, driver_phone_no, delivery_status, delivery_note, token_no, party, added_by_user_id, location, stops, freight, commission, freight_payment_type, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
     if(!$stmt) return [false, 0];
-    $stmt->bind_param("ssssssissddsdd", $d, $v, $vt, $dn, $tn, $party, $addedByUserId, $l, $stops, $f, $commission, $freightPaymentType, $t, $p);
+    $stmt->bind_param("ssssssssissddsdd", $d, $v, $vt, $driverPhoneNo, $deliveryStatus, $dn, $tn, $party, $addedByUserId, $l, $stops, $f, $commission, $freightPaymentType, $t, $p);
     $ok = $stmt->execute();
     $newId = (int)$stmt->insert_id;
     $stmt->close();
@@ -71,7 +79,9 @@ function insert_haleeb_bilty_row_local($conn, $d, $v, $vt, $dn, $tn, $party, $ad
 $d = isset($_POST['date']) ? trim((string)$_POST['date']) : date('Y-m-d');
 $v = isset($_POST['vehicle']) ? trim((string)$_POST['vehicle']) : '';
 $vt = isset($_POST['vehicle_type']) ? trim((string)$_POST['vehicle_type']) : '';
+$driverPhoneNo = isset($_POST['driver_phone_no']) ? trim((string)$_POST['driver_phone_no']) : '';
 $dn = isset($_POST['delivery_note']) ? trim((string)$_POST['delivery_note']) : '';
+$deliveryStatus = normalize_delivery_status_local(isset($_POST['delivery_status']) ? $_POST['delivery_status'] : 'not_received');
 $tn = isset($_POST['token_no']) ? trim((string)$_POST['token_no']) : '';
 $party = isset($_POST['party']) ? trim((string)$_POST['party']) : '';
 $l = isset($_POST['location']) ? trim((string)$_POST['location']) : '';
@@ -105,9 +115,9 @@ $outCityCount = count($outStops);
 $stops = 'SC:' . max(0, $sameCityCount) . '|OC:' . max(0, $outCityCount);
 $t = isset($_POST['tender']) ? max(0, round((float)$_POST['tender'], 3)) : 0.0;
 $f = isset($_POST['freight']) ? max(0, round((float)$_POST['freight'], 3)) : 0.0;
-$commission = isset($_POST['commission']) ? max(0, round((float)$_POST['commission'], 3)) : 0.0;
+$commission = 0.0;
 $freightPaymentType = 'paid';
-$totalFreight = max(0, $f - $commission);
+$totalFreight = max(0, $f);
 
 $p = $t - $totalFreight;
 $addedByUserId = $currentUserId > 0 ? $currentUserId : null;
@@ -117,7 +127,7 @@ $stopRowsCreated = 0;
 
 $conn->begin_transaction();
 try{
-    $insertMain = insert_haleeb_bilty_row_local($conn, $d, $v, $vt, $dn, $tn, $party, $addedByUserId, $l, $stops, $f, $commission, $freightPaymentType, $t, $p);
+    $insertMain = insert_haleeb_bilty_row_local($conn, $d, $v, $vt, $driverPhoneNo, $deliveryStatus, $dn, $tn, $party, $addedByUserId, $l, $stops, $f, $commission, $freightPaymentType, $t, $p);
     $ok = (bool)$insertMain[0];
     $newId = (int)$insertMain[1];
     if(!$ok || $newId <= 0){
@@ -138,7 +148,7 @@ try{
         $stopProfit = $stopTender;
         $stopStops = 'SC:1|OC:0';
 
-        $insertStop = insert_haleeb_bilty_row_local($conn, $d, $v, $vt, $stopDn, $tn, $stopParty, $addedByUserId, $stopLocation, $stopStops, $stopFreight, $stopCommission, $freightPaymentType, $stopTender, $stopProfit);
+        $insertStop = insert_haleeb_bilty_row_local($conn, $d, $v, $vt, $driverPhoneNo, $deliveryStatus, $stopDn, $tn, $stopParty, $addedByUserId, $stopLocation, $stopStops, $stopFreight, $stopCommission, $freightPaymentType, $stopTender, $stopProfit);
         $okStop = (bool)$insertStop[0];
         $stopId = (int)$insertStop[1];
         if(!$okStop || $stopId <= 0){
@@ -161,7 +171,7 @@ try{
         $stopProfit = $stopTender;
         $stopStops = 'SC:0|OC:1';
 
-        $insertStop = insert_haleeb_bilty_row_local($conn, $d, $v, $vt, $stopDn, $tn, $stopParty, $addedByUserId, $stopLocation, $stopStops, $stopFreight, $stopCommission, $freightPaymentType, $stopTender, $stopProfit);
+        $insertStop = insert_haleeb_bilty_row_local($conn, $d, $v, $vt, $driverPhoneNo, $deliveryStatus, $stopDn, $tn, $stopParty, $addedByUserId, $stopLocation, $stopStops, $stopFreight, $stopCommission, $freightPaymentType, $stopTender, $stopProfit);
         $okStop = (bool)$insertStop[0];
         $stopId = (int)$insertStop[1];
         if(!$okStop || $stopId <= 0){
@@ -180,10 +190,11 @@ try{
         [
             'token_no' => $tn,
             'vehicle' => $v,
+            'driver_phone_no' => $driverPhoneNo,
+            'delivery_status' => $deliveryStatus,
             'party' => $party,
             'added_by_user_id' => $addedByUserId,
             'freight' => $f,
-            'commission' => $commission,
             'freight_payment_type' => $freightPaymentType,
             'tender' => $t,
             'stop_rows_created' => $stopRowsCreated
