@@ -28,6 +28,8 @@ if($flashError === 'invalid_amounts'){
     $formErrorMessage = 'Tender aur Freight dono 0 se baray hone chahiye.';
 } elseif($flashError === 'tender_fetch_failed'){
     $formErrorMessage = 'Internet ki wajah se tender rate fetch nahi ho paya. SR again likhain.';
+} elseif($flashError === 'received_details_required'){
+    $formErrorMessage = 'Received status ke liye Token No aur Delivery Note required hain.';
 } elseif($flashError === 'save_failed'){
     $formErrorMessage = 'Haleeb bilty save nahi ho saki. Dobara try karein.';
 }
@@ -302,14 +304,15 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
             <option value="not_received" <?php echo $formValues['delivery_status'] !== 'received' ? 'selected' : ''; ?>>Not Received</option>
             <option value="received" <?php echo $formValues['delivery_status'] === 'received' ? 'selected' : ''; ?>>Received</option>
           </select>
+          <div class="field-meta" id="received_status_help"></div>
         </div>
         <div class="field">
           <label for="token_no">Token No</label>
-          <input id="token_no" name="token_no" placeholder="Token number" value="<?php echo htmlspecialchars($formValues['token_no']); ?>" required>
+          <input id="token_no" name="token_no" placeholder="Token number" value="<?php echo htmlspecialchars($formValues['token_no']); ?>">
         </div>
         <div class="field">
           <label for="delivery_note">Delivery Note</label>
-          <input id="delivery_note" name="delivery_note" placeholder="Delivery note number" value="<?php echo htmlspecialchars($formValues['delivery_note']); ?>" required>
+          <input id="delivery_note" name="delivery_note" placeholder="Delivery note number" value="<?php echo htmlspecialchars($formValues['delivery_note']); ?>">
         </div>
         <div class="field span-2">
           <label>Stops</label>
@@ -375,6 +378,9 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
   var tenderHelp = document.getElementById('tender_help');
   var tenderManualInput = document.getElementById('tender_manual_mode');
   var deliveryStatusInput = document.getElementById('delivery_status');
+  var receivedStatusHelp = document.getElementById('received_status_help');
+  var tokenNoInput = document.getElementById('token_no');
+  var deliveryNoteInput = document.getElementById('delivery_note');
   var addSameStopBtn = document.getElementById('add_same_stop');
   var addOutStopBtn = document.getElementById('add_out_stop');
   var sameStopList = document.getElementById('same_stop_list');
@@ -420,6 +426,12 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
     if(!tenderHelp) return;
     tenderHelp.textContent = text || '';
     tenderHelp.className = 'field-meta' + (type ? ' ' + type : '');
+  }
+
+  function setReceivedHelp(text, type){
+    if(!receivedStatusHelp) return;
+    receivedStatusHelp.textContent = text || '';
+    receivedStatusHelp.className = 'field-meta' + (type ? ' ' + type : '');
   }
 
   function normalizeAlphaNum(v){
@@ -509,6 +521,36 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
     }
     deliveryStatusInput.classList.add('is-not-received');
     deliveryStatusInput.classList.remove('is-received');
+  }
+
+  function validateReceivedDetails(focusMissing){
+    if(!deliveryStatusInput){
+      return true;
+    }
+    var isReceived = String(deliveryStatusInput.value) === 'received';
+    if(tokenNoInput) tokenNoInput.required = isReceived;
+    if(deliveryNoteInput) deliveryNoteInput.required = isReceived;
+    if(!isReceived){
+      setReceivedHelp('', '');
+      return true;
+    }
+
+    var tokenMissing = tokenNoInput && String(tokenNoInput.value || '').trim() === '';
+    var noteMissing = deliveryNoteInput && String(deliveryNoteInput.value || '').trim() === '';
+    if(!tokenMissing && !noteMissing){
+      setReceivedHelp('Received status selected.', 'ok');
+      return true;
+    }
+
+    var msg = 'Received status ke liye Token No aur Delivery Note required hain.';
+    if(tokenMissing && !noteMissing) msg = 'Received status ke liye Token No required hai.';
+    if(!tokenMissing && noteMissing) msg = 'Received status ke liye Delivery Note required hai.';
+    setReceivedHelp(msg, 'err');
+    if(focusMissing){
+      if(tokenMissing && tokenNoInput) tokenNoInput.focus();
+      else if(noteMissing && deliveryNoteInput) deliveryNoteInput.focus();
+    }
+    return false;
   }
 
   function makeStopField(placeholder, value, onInput){
@@ -646,7 +688,38 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
   vehicleTypeInput.addEventListener('change', onTenderSourceChanged);
   vehicleTypeInput.addEventListener('blur', function(){ lookupTenderWithRetry(5, false); });
   if(deliveryStatusInput){
-    deliveryStatusInput.addEventListener('change', syncDeliveryStatusTag);
+    deliveryStatusInput.addEventListener('change', function(){
+      syncDeliveryStatusTag();
+      if(String(deliveryStatusInput.value) !== 'received'){
+        validateReceivedDetails(false);
+        return;
+      }
+      if(validateReceivedDetails(false)){
+        return;
+      }
+      var shouldFillNow = window.confirm('Received status set karne ke liye Token No aur Delivery Note fill karna zaroori hai. Fill now?');
+      if(shouldFillNow){
+        validateReceivedDetails(true);
+        return;
+      }
+      deliveryStatusInput.value = 'not_received';
+      syncDeliveryStatusTag();
+      validateReceivedDetails(false);
+    });
+  }
+  if(tokenNoInput){
+    tokenNoInput.addEventListener('input', function(){
+      if(deliveryStatusInput && String(deliveryStatusInput.value) === 'received'){
+        validateReceivedDetails(false);
+      }
+    });
+  }
+  if(deliveryNoteInput){
+    deliveryNoteInput.addEventListener('input', function(){
+      if(deliveryStatusInput && String(deliveryStatusInput.value) === 'received'){
+        validateReceivedDetails(false);
+      }
+    });
   }
   if(tenderInput){
     tenderInput.addEventListener('input', function(){
@@ -668,6 +741,10 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
       if(stopsError){
         stopsError.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
+      return;
+    }
+    if(!validateReceivedDetails(true)){
+      e.preventDefault();
       return;
     }
     syncStopPayload();
@@ -701,6 +778,7 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
     lookupTenderWithRetry(5, false);
   }
   syncDeliveryStatusTag();
+  validateReceivedDetails(false);
 })();
 </script>
 <?php if($centerNoticeType !== '' && $centerNoticeMessage !== ''): ?>

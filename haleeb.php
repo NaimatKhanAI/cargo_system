@@ -18,9 +18,12 @@ function normalize_delivery_status_token_local($raw){
     return 'not_received';
 }
 
-if(isset($_GET['set_delivery_status'])){
-    $statusBiltyId = isset($_GET['set_delivery_status']) ? (int)$_GET['set_delivery_status'] : 0;
-    $nextDeliveryStatus = normalize_delivery_status_token_local(isset($_GET['status']) ? (string)$_GET['status'] : '');
+$hasStatusChangeRequest = isset($_POST['set_delivery_status']) || isset($_GET['set_delivery_status']);
+if($hasStatusChangeRequest){
+    $statusBiltyId = isset($_POST['set_delivery_status']) ? (int)$_POST['set_delivery_status'] : (isset($_GET['set_delivery_status']) ? (int)$_GET['set_delivery_status'] : 0);
+    $nextDeliveryStatus = normalize_delivery_status_token_local(isset($_POST['status']) ? (string)$_POST['status'] : (isset($_GET['status']) ? (string)$_GET['status'] : ''));
+    $providedTokenNo = isset($_POST['token_no']) ? trim((string)$_POST['token_no']) : (isset($_GET['token_no']) ? trim((string)$_GET['token_no']) : '');
+    $providedDeliveryNote = isset($_POST['delivery_note']) ? trim((string)$_POST['delivery_note']) : (isset($_GET['delivery_note']) ? trim((string)$_GET['delivery_note']) : '');
     if($statusBiltyId <= 0){
         header("location:haleeb.php?status_change=error");
         exit();
@@ -42,6 +45,19 @@ if(isset($_GET['set_delivery_status'])){
         exit();
     }
 
+    $statusTokenNo = trim((string)($statusRow['token_no'] ?? ''));
+    $statusDeliveryNote = trim((string)($statusRow['delivery_note'] ?? ''));
+    if($statusTokenNo === '' && $providedTokenNo !== ''){
+        $statusTokenNo = $providedTokenNo;
+    }
+    if($statusDeliveryNote === '' && $providedDeliveryNote !== ''){
+        $statusDeliveryNote = $providedDeliveryNote;
+    }
+    if($nextDeliveryStatus === 'received' && ($statusTokenNo === '' || $statusDeliveryNote === '')){
+        header("location:haleeb.php?status_change=missing_details");
+        exit();
+    }
+
     if(!$canDirectModify){
         $payload = [
             'date' => (string)($statusRow['date'] ?? date('Y-m-d')),
@@ -49,8 +65,8 @@ if(isset($_GET['set_delivery_status'])){
             'vehicle_type' => (string)($statusRow['vehicle_type'] ?? ''),
             'driver_phone_no' => (string)($statusRow['driver_phone_no'] ?? ''),
             'delivery_status' => $nextDeliveryStatus,
-            'delivery_note' => (string)($statusRow['delivery_note'] ?? ''),
-            'token_no' => (string)($statusRow['token_no'] ?? ''),
+            'delivery_note' => $statusDeliveryNote,
+            'token_no' => $statusTokenNo,
             'party' => (string)($statusRow['party'] ?? ''),
             'location' => (string)($statusRow['location'] ?? ''),
             'stops' => (string)($statusRow['stops'] ?? ''),
@@ -67,8 +83,8 @@ if(isset($_GET['set_delivery_status'])){
         exit();
     }
 
-    $updateStatusStmt = $conn->prepare("UPDATE haleeb_bilty SET delivery_status=? WHERE id=? LIMIT 1");
-    $updateStatusStmt->bind_param("si", $nextDeliveryStatus, $statusBiltyId);
+    $updateStatusStmt = $conn->prepare("UPDATE haleeb_bilty SET delivery_status=?, token_no=?, delivery_note=? WHERE id=? LIMIT 1");
+    $updateStatusStmt->bind_param("sssi", $nextDeliveryStatus, $statusTokenNo, $statusDeliveryNote, $statusBiltyId);
     $okStatus = $updateStatusStmt->execute();
     $affectedStatus = $updateStatusStmt->affected_rows;
     $updateStatusStmt->close();
@@ -161,6 +177,7 @@ if(isset($_GET['status_change'])){
     if($_GET['status_change'] === 'success') $status_change_message = "Delivery status updated successfully.";
     elseif($_GET['status_change'] === 'requested') $status_change_message = "Delivery status change request sent for approval.";
     elseif($_GET['status_change'] === 'nochange') $status_change_message = "Delivery status is already set.";
+    elseif($_GET['status_change'] === 'missing_details'){ $status_change_message = "Received status ke liye Token No aur Delivery Note required hain."; $status_change_error = true; }
     elseif($_GET['status_change'] === 'error'){ $status_change_message = "Delivery status update failed. Please try again."; $status_change_error = true; }
 }
 $clear_message = "";
@@ -447,6 +464,17 @@ while($result && $row = $result->fetch_assoc()){
   }
   .status-modal-title { font-size: 16px; font-weight: 800; margin-bottom: 8px; }
   .status-modal-text { font-size: 13px; color: var(--muted); line-height: 1.45; margin-bottom: 14px; }
+  .status-modal-fields { display: grid; gap: 8px; margin-bottom: 12px; }
+  .status-modal-fields[hidden] { display: none; }
+  .status-modal-fields label {
+    font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); font-weight: 700;
+  }
+  .status-modal-fields input {
+    width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    padding: 9px 10px; font-family: var(--font); font-size: 13px;
+  }
+  .status-modal-fields input:focus { outline: none; border-color: var(--accent); }
+  .status-modal-hint { font-size: 11px; color: #fca5a5; min-height: 14px; }
   .status-modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
   .analytics-wrap {
     background: var(--surface); border: 1px solid var(--border); margin-bottom: 20px;
@@ -794,6 +822,8 @@ while($result && $row = $result->fetch_assoc()){
               data-current-status="<?php echo htmlspecialchars($deliveryStatusRaw); ?>"
               data-next-status="<?php echo htmlspecialchars($deliveryStatusNext); ?>"
               data-next-label="<?php echo htmlspecialchars($deliveryStatusNextLabel); ?>"
+              data-token-no="<?php echo htmlspecialchars((string)($row['token_no'] ?? '')); ?>"
+              data-delivery-note="<?php echo htmlspecialchars((string)($row['delivery_note'] ?? '')); ?>"
               title="Click to change status">
               <?php echo htmlspecialchars($deliveryStatusLabel); ?>
             </button>
@@ -830,6 +860,13 @@ while($result && $row = $result->fetch_assoc()){
   <div class="status-modal-card" role="dialog" aria-modal="true" aria-labelledby="status_change_title">
     <div class="status-modal-title" id="status_change_title">Change Delivery Status</div>
     <div class="status-modal-text" id="status_change_text">Do you want to change delivery status?</div>
+    <div class="status-modal-fields" id="status_change_fields" hidden>
+      <label for="status_change_token">Token No</label>
+      <input type="text" id="status_change_token" placeholder="Token number">
+      <label for="status_change_note">Delivery Note</label>
+      <input type="text" id="status_change_note" placeholder="Delivery note">
+      <div class="status-modal-hint" id="status_change_hint"></div>
+    </div>
     <div class="status-modal-actions">
       <button class="btn-ghost" type="button" id="status_change_cancel">Cancel</button>
       <button class="nav-btn primary" type="button" id="status_change_confirm">Yes, Change</button>
@@ -850,22 +887,79 @@ while($result && $row = $result->fetch_assoc()){
 (function(){
   var modal = document.getElementById('status_change_modal');
   var text = document.getElementById('status_change_text');
+  var fieldsWrap = document.getElementById('status_change_fields');
+  var tokenInput = document.getElementById('status_change_token');
+  var noteInput = document.getElementById('status_change_note');
+  var hint = document.getElementById('status_change_hint');
   var cancelBtn = document.getElementById('status_change_cancel');
   var confirmBtn = document.getElementById('status_change_confirm');
   var pending = null;
-  if(!modal || !text || !cancelBtn || !confirmBtn) return;
+  if(!modal || !text || !cancelBtn || !confirmBtn || !fieldsWrap || !tokenInput || !noteInput || !hint) return;
+
+  function trimValue(v){
+    return String(v || '').trim();
+  }
+
+  function setHint(msg){
+    hint.textContent = msg || '';
+  }
+
+  function setFieldsVisible(show){
+    fieldsWrap.hidden = !show;
+    if(!show){
+      setHint('');
+    }
+  }
 
   function closeModal(){
     modal.classList.remove('open');
     modal.setAttribute('aria-hidden', 'true');
+    setFieldsVisible(false);
+    tokenInput.value = '';
+    noteInput.value = '';
     pending = null;
   }
 
   function openModal(payload){
     pending = payload;
-    text.textContent = 'Do you want to change delivery status from ' + payload.currentLabel + ' to ' + payload.nextLabel + '?';
+    if(payload.nextStatus === 'received'){
+      text.textContent = 'Do you want to change delivery status from ' + payload.currentLabel + ' to ' + payload.nextLabel + '? Token No and Delivery Note are required.';
+      setFieldsVisible(true);
+      tokenInput.value = trimValue(payload.tokenNo);
+      noteInput.value = trimValue(payload.deliveryNote);
+      setHint('');
+    } else {
+      text.textContent = 'Do you want to change delivery status from ' + payload.currentLabel + ' to ' + payload.nextLabel + '?';
+      setFieldsVisible(false);
+      tokenInput.value = '';
+      noteInput.value = '';
+    }
     modal.classList.add('open');
     modal.setAttribute('aria-hidden', 'false');
+  }
+
+  function submitStatusChange(payload, tokenNo, deliveryNote){
+    var form = document.createElement('form');
+    form.method = 'post';
+    form.action = 'haleeb.php';
+
+    function append(name, value){
+      var input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = name;
+      input.value = value;
+      form.appendChild(input);
+    }
+
+    append('set_delivery_status', String(payload.id));
+    append('status', String(payload.nextStatus));
+    if(String(payload.nextStatus) === 'received'){
+      append('token_no', tokenNo);
+      append('delivery_note', deliveryNote);
+    }
+
+    document.body.appendChild(form);
+    form.submit();
   }
 
   var toggles = Array.prototype.slice.call(document.querySelectorAll('.status-toggle[data-status-id]'));
@@ -875,16 +969,33 @@ while($result && $row = $result->fetch_assoc()){
       var currentStatus = String(btn.getAttribute('data-current-status') || 'not_received');
       var nextStatus = String(btn.getAttribute('data-next-status') || 'received');
       var nextLabel = String(btn.getAttribute('data-next-label') || (nextStatus === 'received' ? 'Received' : 'Not Received'));
+      var tokenNo = String(btn.getAttribute('data-token-no') || '');
+      var deliveryNote = String(btn.getAttribute('data-delivery-note') || '');
       if(!Number.isFinite(id) || id <= 0) return;
       var currentLabel = currentStatus === 'received' ? 'Received' : 'Not Received';
-      openModal({ id: id, nextStatus: nextStatus, currentLabel: currentLabel, nextLabel: nextLabel });
+      openModal({ id: id, nextStatus: nextStatus, currentLabel: currentLabel, nextLabel: nextLabel, tokenNo: tokenNo, deliveryNote: deliveryNote });
     });
   });
 
   confirmBtn.addEventListener('click', function(){
     if(!pending || !pending.id) return;
-    window.location.href = 'haleeb.php?set_delivery_status=' + encodeURIComponent(String(pending.id)) + '&status=' + encodeURIComponent(String(pending.nextStatus));
+    if(String(pending.nextStatus) === 'received'){
+      var tokenNo = trimValue(tokenInput.value);
+      var deliveryNote = trimValue(noteInput.value);
+      if(tokenNo === '' || deliveryNote === ''){
+        setHint('Received status ke liye Token No aur Delivery Note required hain.');
+        if(tokenNo === '') tokenInput.focus();
+        else noteInput.focus();
+        return;
+      }
+      submitStatusChange(pending, tokenNo, deliveryNote);
+      return;
+    }
+    submitStatusChange(pending, '', '');
   });
+
+  tokenInput.addEventListener('input', function(){ setHint(''); });
+  noteInput.addEventListener('input', function(){ setHint(''); });
 
   cancelBtn.addEventListener('click', closeModal);
   modal.addEventListener('click', function(e){

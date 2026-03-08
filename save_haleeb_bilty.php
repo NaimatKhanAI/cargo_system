@@ -176,6 +176,27 @@ $outCityCount = count($outStops);
 $stops = 'SC:' . max(0, $sameCityCount) . '|OC:' . max(0, $outCityCount);
 $postedTenderManualMode = (isset($_POST['tender_manual_mode']) && trim((string)$_POST['tender_manual_mode']) === '1') ? '1' : '0';
 $isManualTender = auth_is_super_admin() && $postedTenderManualMode === '1';
+
+if($deliveryStatus === 'received' && ($tn === '' || $dn === '')){
+    $_SESSION['add_haleeb_error'] = 'received_details_required';
+    $_SESSION['add_haleeb_old'] = [
+        'date' => isset($_POST['date']) ? (string)$_POST['date'] : $d,
+        'vehicle' => isset($_POST['vehicle']) ? (string)$_POST['vehicle'] : $v,
+        'vehicle_type' => isset($_POST['vehicle_type']) ? (string)$_POST['vehicle_type'] : $vt,
+        'driver_phone_no' => isset($_POST['driver_phone_no']) ? (string)$_POST['driver_phone_no'] : $driverPhoneNo,
+        'party' => isset($_POST['party']) ? (string)$_POST['party'] : $party,
+        'location' => isset($_POST['location']) ? (string)$_POST['location'] : $l,
+        'delivery_status' => isset($_POST['delivery_status']) ? (string)$_POST['delivery_status'] : $deliveryStatus,
+        'token_no' => isset($_POST['token_no']) ? (string)$_POST['token_no'] : $tn,
+        'delivery_note' => isset($_POST['delivery_note']) ? (string)$_POST['delivery_note'] : $dn,
+        'tender' => isset($_POST['tender']) ? (string)$_POST['tender'] : '0',
+        'tender_manual_mode' => $postedTenderManualMode,
+        'freight' => isset($_POST['freight']) ? (string)$_POST['freight'] : '0'
+    ];
+    header("location:add_haleeb_bilty.php");
+    exit();
+}
+
 $submittedTender = isset($_POST['tender']) ? max(0, round((float)$_POST['tender'], 3)) : 0.0;
 $t = $submittedTender;
 if(!$isManualTender && $t <= 0){
