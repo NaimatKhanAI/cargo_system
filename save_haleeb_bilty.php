@@ -71,10 +71,32 @@ function normalize_lookup_token_local($v){
     $v = preg_replace('/\s+/', ' ', $v);
     return $v;
 }
+function normalize_rate_list_name_local($v){
+    $name = trim((string)$v);
+    return $name === '' ? 'Base List' : $name;
+}
 function latest_haleeb_rate_list_name_local($conn){
     $row = $conn->query("SELECT COALESCE(NULLIF(rate_list_name,''), 'Base List') AS list_name FROM haleeb_image_processed_rates ORDER BY id DESC LIMIT 1")->fetch_assoc();
     $name = trim((string)($row['list_name'] ?? 'Base List'));
     return $name === '' ? 'Base List' : $name;
+}
+function resolve_haleeb_rate_list_name_local($conn, $preferred){
+    $preferredName = normalize_rate_list_name_local($preferred);
+    $latestName = latest_haleeb_rate_list_name_local($conn);
+    $lists = [];
+    $lookup = [];
+    $res = $conn->query("SELECT COALESCE(NULLIF(rate_list_name,''), 'Base List') AS list_name FROM haleeb_image_processed_rates GROUP BY COALESCE(NULLIF(rate_list_name,''), 'Base List') ORDER BY CASE WHEN COALESCE(NULLIF(rate_list_name,''), 'Base List')='Base List' THEN 0 ELSE 1 END, MAX(id) DESC");
+    while($res && $row = $res->fetch_assoc()){
+        $name = normalize_rate_list_name_local($row['list_name'] ?? 'Base List');
+        $key = strtolower($name);
+        if(isset($lookup[$key])) continue;
+        $lookup[$key] = $name;
+        $lists[] = $name;
+    }
+    if(isset($lookup[strtolower($preferredName)])) return $lookup[strtolower($preferredName)];
+    if(isset($lookup[strtolower($latestName)])) return $lookup[strtolower($latestName)];
+    if(count($lists) > 0) return $lists[0];
+    return 'Base List';
 }
 
 function parse_rate_number_local($raw){
@@ -88,12 +110,12 @@ function parse_rate_number_local($raw){
     return $num;
 }
 
-function resolve_haleeb_tender_rate_local($conn, $location, $vehicleType){
+function resolve_haleeb_tender_rate_local($conn, $location, $vehicleType, $preferredRateListName = ''){
     $location = trim((string)$location);
     if($location === '') return null;
     $vehicleTypeKey = normalize_lookup_token_local($vehicleType);
     if($vehicleTypeKey === '') return null;
-    $currentRateListName = latest_haleeb_rate_list_name_local($conn);
+    $currentRateListName = resolve_haleeb_rate_list_name_local($conn, $preferredRateListName);
 
     $vehicleTypeLookup = [];
     $vtRes = $conn->query("SELECT column_key, column_label FROM haleeb_rate_list_columns WHERE is_deleted=0 AND column_key LIKE 'custom_%' ORDER BY display_order ASC, id ASC");
@@ -152,6 +174,7 @@ $deliveryStatus = normalize_delivery_status_local(isset($_POST['delivery_status'
 $tn = isset($_POST['token_no']) ? trim((string)$_POST['token_no']) : '';
 $party = isset($_POST['party']) ? trim((string)$_POST['party']) : '';
 $l = isset($_POST['location']) ? trim((string)$_POST['location']) : '';
+$postedRateListName = normalize_rate_list_name_local(isset($_POST['rate_list_name']) ? (string)$_POST['rate_list_name'] : '');
 $postedSameCityCount = isset($_POST['same_city_count']) ? (int)$_POST['same_city_count'] : 0;
 $postedOutCityCount = isset($_POST['out_city_count']) ? (int)$_POST['out_city_count'] : 0;
 
@@ -197,6 +220,7 @@ if($deliveryStatus === 'received' && ($tn === '' || $dn === '')){
         'delivery_note' => isset($_POST['delivery_note']) ? (string)$_POST['delivery_note'] : $dn,
         'tender' => isset($_POST['tender']) ? (string)$_POST['tender'] : '0',
         'tender_manual_mode' => $postedTenderManualMode,
+        'rate_list_name' => $postedRateListName,
         'freight' => isset($_POST['freight']) ? (string)$_POST['freight'] : '0'
     ];
     header("location:add_haleeb_bilty.php");
@@ -206,7 +230,7 @@ if($deliveryStatus === 'received' && ($tn === '' || $dn === '')){
 $submittedTender = isset($_POST['tender']) ? max(0, round((float)$_POST['tender'], 3)) : 0.0;
 $t = $submittedTender;
 if(!$isManualTender && $t <= 0){
-    $resolvedTender = resolve_haleeb_tender_rate_local($conn, $l, $vt);
+    $resolvedTender = resolve_haleeb_tender_rate_local($conn, $l, $vt, $postedRateListName);
     if($resolvedTender !== null && $resolvedTender > 0){
         $t = $resolvedTender;
     }
@@ -230,6 +254,7 @@ if($f <= 0 || $t <= 0){
         'delivery_note' => isset($_POST['delivery_note']) ? (string)$_POST['delivery_note'] : $dn,
         'tender' => isset($_POST['tender']) ? (string)$_POST['tender'] : (string)$submittedTender,
         'tender_manual_mode' => $postedTenderManualMode,
+        'rate_list_name' => $postedRateListName,
         'freight' => isset($_POST['freight']) ? (string)$_POST['freight'] : (string)$f
     ];
     header("location:add_haleeb_bilty.php");
@@ -345,6 +370,7 @@ $_SESSION['add_haleeb_old'] = [
     'delivery_note' => isset($_POST['delivery_note']) ? (string)$_POST['delivery_note'] : $dn,
     'tender' => isset($_POST['tender']) ? (string)$_POST['tender'] : (string)$submittedTender,
     'tender_manual_mode' => $postedTenderManualMode,
+    'rate_list_name' => $postedRateListName,
     'freight' => isset($_POST['freight']) ? (string)$_POST['freight'] : (string)$f
 ];
 header("location:add_haleeb_bilty.php");

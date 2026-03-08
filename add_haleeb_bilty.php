@@ -65,6 +65,7 @@ $formValues = [
     'delivery_note' => isset($flashOld['delivery_note']) ? trim((string)$flashOld['delivery_note']) : '',
     'tender' => isset($flashOld['tender']) ? trim((string)$flashOld['tender']) : '0',
     'tender_manual_mode' => isset($flashOld['tender_manual_mode']) ? trim((string)$flashOld['tender_manual_mode']) : '0',
+    'rate_list_name' => isset($flashOld['rate_list_name']) ? trim((string)$flashOld['rate_list_name']) : '',
     'freight' => isset($flashOld['freight']) ? trim((string)$flashOld['freight']) : '',
 ];
 if(!in_array($formValues['delivery_status'], ['received', 'not_received'], true)){
@@ -76,29 +77,36 @@ function normalize_lookup_token($v){
     $v = preg_replace('/\s+/', ' ', $v);
     return $v;
 }
+function normalize_rate_list_name_local($v){
+    $name = trim((string)$v);
+    return $name === '' ? 'Base List' : $name;
+}
 function latest_haleeb_rate_list_name_local($conn){
     $row = $conn->query("SELECT COALESCE(NULLIF(rate_list_name,''), 'Base List') AS list_name FROM haleeb_image_processed_rates ORDER BY id DESC LIMIT 1")->fetch_assoc();
     $name = trim((string)($row['list_name'] ?? 'Base List'));
     return $name === '' ? 'Base List' : $name;
 }
 
-$currentRateListName = latest_haleeb_rate_list_name_local($conn);
-
-$locationOptions = [];
-$locationSeen = [];
-$locStmt = $conn->prepare("SELECT DISTINCT custom_to FROM haleeb_image_processed_rates WHERE COALESCE(NULLIF(rate_list_name,''), 'Base List')=? AND custom_to IS NOT NULL AND custom_to <> '' ORDER BY custom_to ASC");
-$locStmt->bind_param("s", $currentRateListName);
-$locStmt->execute();
-$locRes = $locStmt->get_result();
-while($locRes && $row = $locRes->fetch_assoc()){
-    $location = trim((string)$row['custom_to']);
-    if($location === '') continue;
-    $locKey = normalize_lookup_token($location);
-    if(isset($locationSeen[$locKey])) continue;
-    $locationSeen[$locKey] = true;
-    $locationOptions[] = $location;
+$rateListNames = [];
+$rateListLookup = [];
+$listRes = $conn->query("SELECT COALESCE(NULLIF(rate_list_name,''), 'Base List') AS list_name FROM haleeb_image_processed_rates GROUP BY COALESCE(NULLIF(rate_list_name,''), 'Base List') ORDER BY CASE WHEN COALESCE(NULLIF(rate_list_name,''), 'Base List')='Base List' THEN 0 ELSE 1 END, MAX(id) DESC");
+while($listRes && $row = $listRes->fetch_assoc()){
+    $listName = normalize_rate_list_name_local($row['list_name'] ?? 'Base List');
+    $key = strtolower($listName);
+    if(isset($rateListLookup[$key])) continue;
+    $rateListLookup[$key] = $listName;
+    $rateListNames[] = $listName;
 }
-$locStmt->close();
+if(count($rateListNames) === 0){
+    $rateListNames[] = 'Base List';
+    $rateListLookup['base list'] = 'Base List';
+}
+$latestRateListName = latest_haleeb_rate_list_name_local($conn);
+$selectedRateListName = normalize_rate_list_name_local($formValues['rate_list_name']);
+if(!isset($rateListLookup[strtolower($selectedRateListName)])){
+    $selectedRateListName = isset($rateListLookup[strtolower($latestRateListName)]) ? $rateListLookup[strtolower($latestRateListName)] : $rateListNames[0];
+}
+$formValues['rate_list_name'] = $selectedRateListName;
 
 $vehicleTypeOptions = [];
 $vehicleTypeLookup = [];
@@ -122,18 +130,33 @@ while($vtRes && $row = $vtRes->fetch_assoc()){
     $vehicleColumns[] = ['column_key' => $columnKey];
 }
 
-$rateLookup = [];
+$locationOptionsByList = [];
+$locationSeenByList = [];
+$rateLookupByList = [];
 if(count($vehicleColumns) > 0){
-  $rateStmt = $conn->prepare("SELECT id, custom_to, custom_mazda, custom_14ft, custom_20ft, custom_40ft_22t, custom_40ft_28t, custom_40ft_32t, extra_data FROM haleeb_image_processed_rates WHERE COALESCE(NULLIF(rate_list_name,''), 'Base List')=? ORDER BY id DESC");
-  $rateStmt->bind_param("s", $currentRateListName);
+  $rateStmt = $conn->prepare("SELECT id, COALESCE(NULLIF(rate_list_name,''), 'Base List') AS rate_list_name, custom_to, custom_mazda, custom_14ft, custom_20ft, custom_40ft_22t, custom_40ft_28t, custom_40ft_32t, extra_data FROM haleeb_image_processed_rates ORDER BY COALESCE(NULLIF(rate_list_name,''), 'Base List') ASC, id DESC");
   $rateStmt->execute();
   $rateRes = $rateStmt->get_result();
   while($rateRes && $rateRow = $rateRes->fetch_assoc()){
+    $listName = normalize_rate_list_name_local($rateRow['rate_list_name'] ?? 'Base List');
+    $listKey = strtolower($listName);
+    if(!isset($rateListLookup[$listKey])){
+      $rateListLookup[$listKey] = $listName;
+      $rateListNames[] = $listName;
+    }
+    if(!isset($locationOptionsByList[$listName])) $locationOptionsByList[$listName] = [];
+    if(!isset($locationSeenByList[$listName])) $locationSeenByList[$listName] = [];
+    if(!isset($rateLookupByList[$listName])) $rateLookupByList[$listName] = [];
+
     $location = trim((string)$rateRow['custom_to']);
     if($location === '') continue;
 
     $locKey = normalize_lookup_token($location);
-    if(isset($rateLookup[$locKey])) continue;
+    if(isset($rateLookupByList[$listName][$locKey])) continue;
+    if(!isset($locationSeenByList[$listName][$locKey])){
+      $locationSeenByList[$listName][$locKey] = true;
+      $locationOptionsByList[$listName][] = $location;
+    }
 
     $extra = [];
     if(isset($rateRow['extra_data']) && $rateRow['extra_data'] !== ''){
@@ -153,15 +176,28 @@ if(count($vehicleColumns) > 0){
       $ratesForLocation[$key] = trim($value);
     }
 
-    $rateLookup[$locKey] = $ratesForLocation;
+    $rateLookupByList[$listName][$locKey] = $ratesForLocation;
   }
   $rateStmt->close();
 }
+$locationOptions = isset($locationOptionsByList[$selectedRateListName]) ? $locationOptionsByList[$selectedRateListName] : [];
+$rateLookup = isset($rateLookupByList[$selectedRateListName]) ? $rateLookupByList[$selectedRateListName] : [];
+$locationOptionsByList['Base List'] = isset($locationOptionsByList['Base List']) ? $locationOptionsByList['Base List'] : [];
+$rateLookupByList['Base List'] = isset($rateLookupByList['Base List']) ? $rateLookupByList['Base List'] : [];
+$rateListNames = array_values(array_unique(array_map('normalize_rate_list_name_local', $rateListNames)));
 
 $jsonVehicleTypeLookup = json_encode($vehicleTypeLookup, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 if($jsonVehicleTypeLookup === false) $jsonVehicleTypeLookup = '{}';
 $jsonRateLookup = json_encode($rateLookup, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 if($jsonRateLookup === false) $jsonRateLookup = '{}';
+$jsonRateLookupByList = json_encode($rateLookupByList, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+if($jsonRateLookupByList === false) $jsonRateLookupByList = '{}';
+$jsonLocationOptionsByList = json_encode($locationOptionsByList, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+if($jsonLocationOptionsByList === false) $jsonLocationOptionsByList = '{}';
+$jsonRateListNames = json_encode($rateListNames, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+if($jsonRateListNames === false) $jsonRateListNames = '[]';
+$jsonSelectedRateListName = json_encode($selectedRateListName, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+if($jsonSelectedRateListName === false) $jsonSelectedRateListName = '"Base List"';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -185,8 +221,11 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
   .topbar-logo { display: flex; align-items: center; gap: 12px; }
   .badge { background: var(--accent); color: #0e0f11; font-size: 10px; font-weight: 800; padding: 3px 8px; letter-spacing: 1.5px; text-transform: uppercase; }
   .topbar h1 { font-size: 18px; font-weight: 800; letter-spacing: -0.5px; }
+  .topbar-right { display: flex; align-items: center; gap: 8px; }
   .nav-btn { padding: 8px 16px; background: transparent; color: var(--muted); border: 1px solid var(--border); cursor: pointer; text-decoration: none; font-family: var(--font); font-size: 13px; font-weight: 600; transition: all 0.15s; }
   .nav-btn:hover { background: var(--surface2); color: var(--text); border-color: var(--muted); }
+  .settings-btn { width: 38px; height: 38px; background: var(--surface2); border: 1px solid var(--border); color: var(--muted); cursor: pointer; font-size: 17px; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
+  .settings-btn:hover { border-color: var(--accent); color: var(--accent); }
 
   .main { display: flex; align-items: flex-start; justify-content: center; padding: 40px 24px; }
   .form-card { background: var(--surface); border: 1px solid var(--border); padding: 32px; width: min(860px, 100%); position: relative; overflow: hidden; }
@@ -254,6 +293,24 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
   .form-footer { margin-top: 28px; display: flex; justify-content: flex-end; }
   .submit-btn { padding: 13px 36px; background: var(--accent); color: #0e0f11; border: none; cursor: pointer; font-family: var(--font); font-size: 14px; font-weight: 800; transition: background 0.15s; }
   .submit-btn:hover { background: #3b82f6; color: #fff; }
+  .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center; padding: 16px; z-index: 400; }
+  .modal.show { display: flex; }
+  .modal-box { width: min(460px, 100%); background: var(--surface); border: 1px solid var(--border); padding: 18px; }
+  .modal-title { font-size: 12px; text-transform: uppercase; letter-spacing: 2px; color: var(--muted); margin-bottom: 8px; font-weight: 700; }
+  .modal-desc { font-size: 13px; color: var(--text); margin-bottom: 14px; line-height: 1.45; }
+  .modal-grid { display: grid; gap: 10px; }
+  .modal-grid label { font-size: 10px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); }
+  .modal-grid select { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 10px 12px; font-family: var(--font); font-size: 13px; }
+  .modal-grid select:focus { outline: none; border-color: var(--accent); }
+  .modal-actions { margin-top: 14px; display: flex; justify-content: flex-end; gap: 8px; }
+  .btn-cancel, .btn-save { border: 1px solid var(--border); background: var(--surface2); color: var(--text); padding: 8px 14px; cursor: pointer; font-family: var(--font); font-size: 12px; }
+  .btn-save { background: var(--accent); color: #0e0f11; border-color: var(--accent); font-weight: 700; }
+  .btn-save:hover { background: #3b82f6; color: #fff; }
+  .btn-cancel:hover { border-color: var(--muted); }
+  .modal-note { margin-top: 8px; font-size: 12px; color: var(--muted); font-family: var(--mono); min-height: 16px; }
+  .modal-note.ok { color: var(--green); }
+  .modal-note.err { color: var(--red); }
+  .modal-note.info { color: #93c5fd; }
 
   @media(max-width: 640px) {
     .main { padding: 20px 14px; }
@@ -271,7 +328,10 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
     <span class="badge">Haleeb</span>
     <h1>Add Haleeb Bilty</h1>
   </div>
-  <a class="nav-btn" href="haleeb.php">Back</a>
+  <div class="topbar-right">
+    <button class="settings-btn" id="open_rate_list_settings" type="button" title="Rate list settings">&#9881;</button>
+    <a class="nav-btn" href="haleeb.php">Back</a>
+  </div>
 </div>
 
 <?php if($centerNoticeType !== '' && $centerNoticeMessage !== ''): ?>
@@ -312,6 +372,12 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
         <div class="field">
           <label for="location">Location</label>
           <input id="location" name="location" placeholder="Location" list="location_list" value="<?php echo htmlspecialchars($formValues['location']); ?>" required>
+        </div>
+        <div class="field">
+          <label for="rate_list_display">Rate List</label>
+          <input id="rate_list_display" type="text" value="<?php echo htmlspecialchars($formValues['rate_list_name']); ?>" readonly>
+          <input id="rate_list_name" type="hidden" name="rate_list_name" value="<?php echo htmlspecialchars($formValues['rate_list_name']); ?>">
+          <div class="field-meta" id="rate_list_help">Tender selected rate list se fetch hoga.</div>
         </div>
         <div class="field">
           <label for="delivery_status">Delivery Status</label>
@@ -385,6 +451,21 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
     </datalist>
   </div>
 </div>
+<div class="modal" id="rate_list_modal">
+  <div class="modal-box">
+    <div class="modal-title">Rate List Setting</div>
+    <div class="modal-desc">Yahan se woh rate list select karein jis se Haleeb tender auto-fetch hoga.</div>
+    <div class="modal-grid">
+      <label for="modal_rate_list_select">Rate List</label>
+      <select id="modal_rate_list_select"></select>
+      <div class="modal-note info" id="modal_rate_list_note"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" type="button" id="close_rate_list_settings">Cancel</button>
+      <button class="btn-save" type="button" id="save_rate_list_settings">Apply</button>
+    </div>
+  </div>
+</div>
 <script>
 (function(){
   var locationInput = document.getElementById('location');
@@ -405,6 +486,15 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
   var sameStopsJsonInput = document.getElementById('same_stops_json');
   var outStopsJsonInput = document.getElementById('out_stops_json');
   var stopsError = document.getElementById('stops_error');
+  var rateListModal = document.getElementById('rate_list_modal');
+  var openRateListBtn = document.getElementById('open_rate_list_settings');
+  var closeRateListBtn = document.getElementById('close_rate_list_settings');
+  var saveRateListBtn = document.getElementById('save_rate_list_settings');
+  var modalRateListSelect = document.getElementById('modal_rate_list_select');
+  var modalRateListNote = document.getElementById('modal_rate_list_note');
+  var rateListHiddenInput = document.getElementById('rate_list_name');
+  var rateListDisplayInput = document.getElementById('rate_list_display');
+  var rateListHelp = document.getElementById('rate_list_help');
   var form = document.querySelector('form[action="save_haleeb_bilty.php"]');
   if(!locationInput || !vehicleTypeInput || !tenderInput || !addSameStopBtn || !addOutStopBtn || !sameStopList || !outStopList || !sameCityCountInput || !outCityCountInput || !sameStopsJsonInput || !outStopsJsonInput || !form) return;
 
@@ -412,7 +502,11 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
   var canManualTender = isSuperAdmin && String(tenderInput.type || '').toLowerCase() !== 'hidden';
   var manualTenderOverride = tenderManualInput && String(tenderManualInput.value || '0') === '1';
   var submitRetryInProgress = false;
+  var availableRateLists = <?php echo $jsonRateListNames; ?>;
+  var selectedRateListName = <?php echo $jsonSelectedRateListName; ?>;
   var vehicleTypeLookup = <?php echo $jsonVehicleTypeLookup; ?>;
+  var rateLookupByList = <?php echo $jsonRateLookupByList; ?>;
+  var locationOptionsByList = <?php echo $jsonLocationOptionsByList; ?>;
   var rateLookup = <?php echo $jsonRateLookup; ?>;
   var sameStops = [];
   var outStops = [];
@@ -441,6 +535,84 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
     if(!tenderHelp) return;
     tenderHelp.textContent = text || '';
     tenderHelp.className = 'field-meta' + (type ? ' ' + type : '');
+  }
+  function setRateListNote(text, type){
+    if(!modalRateListNote) return;
+    modalRateListNote.textContent = text || '';
+    modalRateListNote.className = 'modal-note' + (type ? ' ' + type : '');
+  }
+  function setRateListHelp(text, type){
+    if(!rateListHelp) return;
+    rateListHelp.textContent = text || '';
+    rateListHelp.className = 'field-meta' + (type ? ' ' + type : '');
+  }
+  function resolveValidRateListName(inputName){
+    var raw = String(inputName || '').trim();
+    if(raw === '' && rateListHiddenInput) raw = String(rateListHiddenInput.value || '').trim();
+    if(raw === '' && selectedRateListName) raw = String(selectedRateListName || '').trim();
+    if(raw !== ''){
+      var rawLower = raw.toLowerCase();
+      for(var i = 0; i < availableRateLists.length; i += 1){
+        var candidate = String(availableRateLists[i] || '');
+        if(candidate.toLowerCase() === rawLower) return candidate;
+      }
+    }
+    if(availableRateLists.length > 0) return String(availableRateLists[0] || 'Base List');
+    return 'Base List';
+  }
+  function rebuildLocationDatalist(listName){
+    var datalist = document.getElementById('location_list');
+    if(!datalist) return;
+    var key = resolveValidRateListName(listName);
+    var options = locationOptionsByList[key];
+    if(!Array.isArray(options)) options = [];
+    datalist.innerHTML = '';
+    for(var i = 0; i < options.length; i += 1){
+      var val = String(options[i] || '').trim();
+      if(val === '') continue;
+      var opt = document.createElement('option');
+      opt.value = val;
+      datalist.appendChild(opt);
+    }
+  }
+  function setActiveRateList(listName, silent){
+    var resolved = resolveValidRateListName(listName);
+    selectedRateListName = resolved;
+    if(rateListHiddenInput) rateListHiddenInput.value = resolved;
+    if(rateListDisplayInput) rateListDisplayInput.value = resolved;
+    if(modalRateListSelect) modalRateListSelect.value = resolved;
+    rebuildLocationDatalist(resolved);
+
+    var lookup = rateLookupByList[resolved];
+    rateLookup = (lookup && typeof lookup === 'object') ? lookup : {};
+    if(!silent){
+      manualTenderOverride = false;
+      syncManualTenderState();
+      if(tenderInput) tenderInput.value = '';
+      setRateListHelp('Rate list changed. Tender new list se fetch hoga.', 'info');
+      lookupTenderWithRetry(5, false);
+    } else {
+      setRateListHelp('Tender selected rate list se fetch hoga.', '');
+    }
+  }
+  function openRateListModal(){
+    if(!rateListModal || !modalRateListSelect) return;
+    modalRateListSelect.innerHTML = '';
+    for(var i = 0; i < availableRateLists.length; i += 1){
+      var listName = String(availableRateLists[i] || '').trim();
+      if(listName === '') continue;
+      var opt = document.createElement('option');
+      opt.value = listName;
+      opt.textContent = listName;
+      modalRateListSelect.appendChild(opt);
+    }
+    modalRateListSelect.value = resolveValidRateListName(selectedRateListName);
+    setRateListNote('Selected list se tender auto-fetch hoga.', 'info');
+    rateListModal.classList.add('show');
+  }
+  function closeRateListModal(){
+    if(!rateListModal) return;
+    rateListModal.classList.remove('show');
   }
 
   function setReceivedHelp(text, type){
@@ -688,6 +860,31 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
 
   addSameStopBtn.addEventListener('click', function(){ addStop('same'); });
   addOutStopBtn.addEventListener('click', function(){ addStop('out'); });
+  if(openRateListBtn){
+    openRateListBtn.addEventListener('click', function(){
+      openRateListModal();
+    });
+  }
+  if(closeRateListBtn){
+    closeRateListBtn.addEventListener('click', function(){
+      closeRateListModal();
+    });
+  }
+  if(saveRateListBtn){
+    saveRateListBtn.addEventListener('click', function(){
+      var selected = modalRateListSelect ? modalRateListSelect.value : selectedRateListName;
+      setActiveRateList(selected, false);
+      setRateListNote('Rate list apply ho gayi.', 'ok');
+      setTimeout(function(){ closeRateListModal(); }, 180);
+    });
+  }
+  if(rateListModal){
+    rateListModal.addEventListener('click', function(e){
+      if(e.target === rateListModal){
+        closeRateListModal();
+      }
+    });
+  }
 
   function onTenderSourceChanged(){
     if(tenderInput) tenderInput.value = '';
@@ -787,6 +984,7 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
   });
 
   renderStops();
+  setActiveRateList(selectedRateListName, true);
   if(manualTenderOverride && canManualTender){
     setTenderHelp('Manual tender set by super admin. Continue.', 'ok');
   } else {
