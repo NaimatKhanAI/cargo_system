@@ -26,6 +26,8 @@ if(isset($_SESSION['add_haleeb_old']) && is_array($_SESSION['add_haleeb_old'])){
 $formErrorMessage = '';
 if($flashError === 'invalid_amounts'){
     $formErrorMessage = 'Tender aur Freight dono 0 se baray hone chahiye.';
+} elseif($flashError === 'tender_fetch_failed'){
+    $formErrorMessage = 'Internet ki wajah se tender rate fetch nahi ho paya. SR again likhain.';
 } elseif($flashError === 'save_failed'){
     $formErrorMessage = 'Haleeb bilty save nahi ho saki. Dobara try karein.';
 }
@@ -60,6 +62,7 @@ $formValues = [
     'token_no' => isset($flashOld['token_no']) ? trim((string)$flashOld['token_no']) : '',
     'delivery_note' => isset($flashOld['delivery_note']) ? trim((string)$flashOld['delivery_note']) : '',
     'tender' => isset($flashOld['tender']) ? trim((string)$flashOld['tender']) : '0',
+    'tender_manual_mode' => isset($flashOld['tender_manual_mode']) ? trim((string)$flashOld['tender_manual_mode']) : '0',
     'freight' => isset($flashOld['freight']) ? trim((string)$flashOld['freight']) : '',
 ];
 if(!in_array($formValues['delivery_status'], ['received', 'not_received'], true)){
@@ -226,6 +229,10 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
   .stop-remove:hover { background: rgba(239,68,68,0.2); color: #fecaca; }
   .stop-empty { font-size: 11px; color: var(--muted); }
   .stops-error { margin-top: 8px; font-size: 11px; color: #fca5a5; min-height: 16px; }
+  .field-meta { margin-top: 5px; font-size: 11px; font-family: var(--mono); color: var(--muted); }
+  .field-meta.ok { color: var(--green); }
+  .field-meta.err { color: var(--red); }
+  .field-meta.info { color: #93c5fd; }
 
   .form-footer { margin-top: 28px; display: flex; justify-content: flex-end; }
   .submit-btn { padding: 13px 36px; background: var(--accent); color: #0e0f11; border: none; cursor: pointer; font-family: var(--font); font-size: 14px; font-weight: 800; transition: background 0.15s; }
@@ -332,9 +339,12 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
           <div class="field">
             <label for="tender">Tender</label>
             <input id="tender" type="number" name="tender" placeholder="0" value="<?php echo htmlspecialchars($formValues['tender']); ?>" min="0.001" step="any" required>
+            <input id="tender_manual_mode" type="hidden" name="tender_manual_mode" value="<?php echo htmlspecialchars($formValues['tender_manual_mode']); ?>">
+            <div class="field-meta" id="tender_help"></div>
           </div>
         <?php else: ?>
           <input id="tender" type="hidden" name="tender" value="<?php echo htmlspecialchars($formValues['tender']); ?>">
+          <input id="tender_manual_mode" type="hidden" name="tender_manual_mode" value="0">
         <?php endif; ?>
         <div class="field">
           <label for="freight">Freight</label>
@@ -362,6 +372,8 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
   var locationInput = document.getElementById('location');
   var vehicleTypeInput = document.getElementById('vehicle_type');
   var tenderInput = document.getElementById('tender');
+  var tenderHelp = document.getElementById('tender_help');
+  var tenderManualInput = document.getElementById('tender_manual_mode');
   var deliveryStatusInput = document.getElementById('delivery_status');
   var addSameStopBtn = document.getElementById('add_same_stop');
   var addOutStopBtn = document.getElementById('add_out_stop');
@@ -375,6 +387,10 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
   var form = document.querySelector('form[action="save_haleeb_bilty.php"]');
   if(!locationInput || !vehicleTypeInput || !tenderInput || !addSameStopBtn || !addOutStopBtn || !sameStopList || !outStopList || !sameCityCountInput || !outCityCountInput || !sameStopsJsonInput || !outStopsJsonInput || !form) return;
 
+  var isSuperAdmin = <?php echo $isSuperAdmin ? 'true' : 'false'; ?>;
+  var canManualTender = isSuperAdmin && String(tenderInput.type || '').toLowerCase() !== 'hidden';
+  var manualTenderOverride = tenderManualInput && String(tenderManualInput.value || '0') === '1';
+  var submitRetryInProgress = false;
   var vehicleTypeLookup = <?php echo $jsonVehicleTypeLookup; ?>;
   var rateLookup = <?php echo $jsonRateLookup; ?>;
   var sameStops = [];
@@ -394,6 +410,16 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
 
   function roundMoney(v){
     return Math.round(v * 1000) / 1000;
+  }
+
+  function syncManualTenderState(){
+    if(tenderManualInput) tenderManualInput.value = manualTenderOverride ? '1' : '0';
+  }
+
+  function setTenderHelp(text, type){
+    if(!tenderHelp) return;
+    tenderHelp.textContent = text || '';
+    tenderHelp.className = 'field-meta' + (type ? ' ' + type : '');
   }
 
   function normalizeAlphaNum(v){
@@ -421,10 +447,57 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
     return parseRateNumber(row[vehicleKey]);
   }
 
-  function tryAutoTender(){
+  function tryAutoTender(force){
+    if(manualTenderOverride && !force){
+      setTenderHelp('Manual tender set by super admin. Continue.', 'ok');
+      return true;
+    }
     var baseTender = getBaseTenderFromRateList();
-    if(baseTender === null) return;
+    if(baseTender === null || !(baseTender > 0)){
+      if(force){
+        setTenderHelp('Internet ki wajah se tender rate fetch nahi ho paya. SR again likhain.', 'err');
+      }
+      return false;
+    }
     tenderInput.value = String(roundMoney(baseTender));
+    manualTenderOverride = false;
+    syncManualTenderState();
+    setTenderHelp('Tender fetched successfully. Continue.', 'ok');
+    return true;
+  }
+
+  function parseNumeric(v){
+    if(v === null || typeof v === 'undefined') return null;
+    var n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function lookupTenderWithRetry(maxRetries, force){
+    var retries = Number(maxRetries || 1);
+    if(!Number.isFinite(retries) || retries < 1) retries = 1;
+    var isForce = !!force;
+    return new Promise(function(resolve){
+      function attemptFetch(attemptNo){
+        if(attemptNo > 1){
+          setTenderHelp('Checking rate... attempt ' + attemptNo + '/' + retries, 'info');
+        }
+        var ok = tryAutoTender(isForce);
+        var currentTender = parseNumeric(tenderInput.value);
+        if(ok && currentTender !== null && currentTender > 0){
+          resolve(true);
+          return;
+        }
+        if(attemptNo < retries){
+          setTimeout(function(){ attemptFetch(attemptNo + 1); }, isForce ? 500 : 320);
+          return;
+        }
+        if(isForce){
+          setTenderHelp('Internet ki wajah se tender rate fetch nahi ho paya. SR again likhain.', 'err');
+        }
+        resolve(false);
+      }
+      attemptFetch(1);
+    });
   }
 
   function syncDeliveryStatusTag(){
@@ -559,15 +632,36 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
   addSameStopBtn.addEventListener('click', function(){ addStop('same'); });
   addOutStopBtn.addEventListener('click', function(){ addStop('out'); });
 
-  locationInput.addEventListener('change', tryAutoTender);
-  locationInput.addEventListener('blur', tryAutoTender);
-  vehicleTypeInput.addEventListener('change', tryAutoTender);
-  vehicleTypeInput.addEventListener('blur', tryAutoTender);
+  function onTenderSourceChanged(){
+    if(tenderInput) tenderInput.value = '';
+    manualTenderOverride = false;
+    syncManualTenderState();
+    lookupTenderWithRetry(4, false);
+  }
+
+  locationInput.addEventListener('input', onTenderSourceChanged);
+  locationInput.addEventListener('change', onTenderSourceChanged);
+  locationInput.addEventListener('blur', function(){ lookupTenderWithRetry(5, false); });
+  vehicleTypeInput.addEventListener('input', onTenderSourceChanged);
+  vehicleTypeInput.addEventListener('change', onTenderSourceChanged);
+  vehicleTypeInput.addEventListener('blur', function(){ lookupTenderWithRetry(5, false); });
   if(deliveryStatusInput){
     deliveryStatusInput.addEventListener('change', syncDeliveryStatusTag);
   }
+  if(tenderInput){
+    tenderInput.addEventListener('input', function(){
+      if(!canManualTender) return;
+      manualTenderOverride = true;
+      syncManualTenderState();
+      setTenderHelp('Manual tender set by super admin. Continue.', 'ok');
+    });
+  }
 
   form.addEventListener('submit', function(e){
+    if(submitRetryInProgress){
+      submitRetryInProgress = false;
+      return;
+    }
     clearStopsError();
     if(!validateStopRows(sameStops, 'Same City') || !validateStopRows(outStops, 'Out City')){
       e.preventDefault();
@@ -577,10 +671,35 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
       return;
     }
     syncStopPayload();
+    var tenderNow = parseNumeric(tenderInput ? tenderInput.value : '');
+    if(manualTenderOverride && tenderNow !== null && tenderNow > 0){
+      setTenderHelp('Manual tender set by super admin. Saving...', 'ok');
+      return;
+    }
+    if(tenderNow !== null && tenderNow > 0){
+      setTenderHelp('Tender fetched successfully. Saving...', 'ok');
+      return;
+    }
+    e.preventDefault();
+    lookupTenderWithRetry(10, true).then(function(ok){
+      var freshTender = parseNumeric(tenderInput ? tenderInput.value : '');
+      if(ok && freshTender !== null && freshTender > 0){
+        setTenderHelp('Tender fetched successfully. Saving...', 'ok');
+        submitRetryInProgress = true;
+        if(form.requestSubmit){ form.requestSubmit(); }
+        else { form.submit(); }
+        return;
+      }
+      setTenderHelp('Internet ki wajah se tender rate fetch nahi ho paya. SR again likhain.', 'err');
+    });
   });
 
   renderStops();
-  tryAutoTender();
+  if(manualTenderOverride && canManualTender){
+    setTenderHelp('Manual tender set by super admin. Continue.', 'ok');
+  } else {
+    lookupTenderWithRetry(5, false);
+  }
   syncDeliveryStatusTag();
 })();
 </script>

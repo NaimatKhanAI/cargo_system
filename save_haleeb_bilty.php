@@ -66,6 +66,67 @@ function normalize_delivery_status_local($raw){
     return 'not_received';
 }
 
+function normalize_lookup_token_local($v){
+    $v = strtolower(trim((string)$v));
+    $v = preg_replace('/\s+/', ' ', $v);
+    return $v;
+}
+
+function parse_rate_number_local($raw){
+    $cleaned = str_replace(',', '', (string)$raw);
+    $cleaned = preg_replace('/\s+/', '', $cleaned);
+    $cleaned = trim((string)$cleaned);
+    if($cleaned === '') return null;
+    if(!is_numeric($cleaned)) return null;
+    $num = (float)$cleaned;
+    if(!is_finite($num)) return null;
+    return $num;
+}
+
+function resolve_haleeb_tender_rate_local($conn, $location, $vehicleType){
+    $location = trim((string)$location);
+    if($location === '') return null;
+    $vehicleTypeKey = normalize_lookup_token_local($vehicleType);
+    if($vehicleTypeKey === '') return null;
+
+    $vehicleTypeLookup = [];
+    $vtRes = $conn->query("SELECT column_key, column_label FROM haleeb_rate_list_columns WHERE is_deleted=0 AND column_key LIKE 'custom_%' ORDER BY display_order ASC, id ASC");
+    while($vtRes && $row = $vtRes->fetch_assoc()){
+        $columnKey = (string)$row['column_key'];
+        if($columnKey === '') continue;
+        $columnLabel = trim((string)$row['column_label']);
+        if($columnLabel === '') $columnLabel = $columnKey;
+        $vehicleTypeLookup[normalize_lookup_token_local($columnLabel)] = $columnKey;
+        $vehicleTypeLookup[normalize_lookup_token_local($columnKey)] = $columnKey;
+    }
+    $targetColumn = isset($vehicleTypeLookup[$vehicleTypeKey]) ? (string)$vehicleTypeLookup[$vehicleTypeKey] : '';
+    if($targetColumn === '') return null;
+
+    $rateStmt = $conn->prepare("SELECT custom_mazda, custom_14ft, custom_20ft, custom_40ft_22t, custom_40ft_28t, custom_40ft_32t, extra_data FROM haleeb_image_processed_rates WHERE custom_to=? ORDER BY id DESC LIMIT 1");
+    if(!$rateStmt) return null;
+    $rateStmt->bind_param("s", $location);
+    $rateStmt->execute();
+    $rateRow = $rateStmt->get_result()->fetch_assoc();
+    $rateStmt->close();
+    if(!$rateRow) return null;
+
+    $rateValue = '';
+    if(array_key_exists($targetColumn, $rateRow)){
+        $rateValue = (string)$rateRow[$targetColumn];
+    }
+    if(trim($rateValue) === '' && isset($rateRow['extra_data']) && $rateRow['extra_data'] !== ''){
+        $extra = json_decode((string)$rateRow['extra_data'], true);
+        if(is_array($extra) && array_key_exists($targetColumn, $extra)){
+            $rateValue = (string)$extra[$targetColumn];
+        }
+    }
+    $parsedRate = parse_rate_number_local($rateValue);
+    if($parsedRate === null || $parsedRate <= 0){
+        return null;
+    }
+    return round($parsedRate, 3);
+}
+
 function insert_haleeb_bilty_row_local($conn, $d, $v, $vt, $driverPhoneNo, $deliveryStatus, $dn, $tn, $party, $addedByUserId, $l, $stops, $f, $commission, $freightPaymentType, $t, $p){
     $stmt = $conn->prepare("INSERT INTO haleeb_bilty(date, vehicle, vehicle_type, driver_phone_no, delivery_status, delivery_note, token_no, party, added_by_user_id, location, stops, freight, commission, freight_payment_type, tender, profit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
     if(!$stmt) return [false, 0];
@@ -113,14 +174,23 @@ if(count($outStops) === 0 && $postedOutCityCount > 0){
 $sameCityCount = count($sameStops);
 $outCityCount = count($outStops);
 $stops = 'SC:' . max(0, $sameCityCount) . '|OC:' . max(0, $outCityCount);
-$t = isset($_POST['tender']) ? max(0, round((float)$_POST['tender'], 3)) : 0.0;
+$postedTenderManualMode = (isset($_POST['tender_manual_mode']) && trim((string)$_POST['tender_manual_mode']) === '1') ? '1' : '0';
+$isManualTender = auth_is_super_admin() && $postedTenderManualMode === '1';
+$submittedTender = isset($_POST['tender']) ? max(0, round((float)$_POST['tender'], 3)) : 0.0;
+$t = $submittedTender;
+if(!$isManualTender && $t <= 0){
+    $resolvedTender = resolve_haleeb_tender_rate_local($conn, $l, $vt);
+    if($resolvedTender !== null && $resolvedTender > 0){
+        $t = $resolvedTender;
+    }
+}
 $f = isset($_POST['freight']) ? max(0, round((float)$_POST['freight'], 3)) : 0.0;
 $commission = 0.0;
 $freightPaymentType = 'paid';
 $totalFreight = max(0, $f);
 
 if($f <= 0 || $t <= 0){
-    $_SESSION['add_haleeb_error'] = 'invalid_amounts';
+    $_SESSION['add_haleeb_error'] = ($t <= 0 && !$isManualTender) ? 'tender_fetch_failed' : 'invalid_amounts';
     $_SESSION['add_haleeb_old'] = [
         'date' => isset($_POST['date']) ? (string)$_POST['date'] : $d,
         'vehicle' => isset($_POST['vehicle']) ? (string)$_POST['vehicle'] : $v,
@@ -131,7 +201,8 @@ if($f <= 0 || $t <= 0){
         'delivery_status' => isset($_POST['delivery_status']) ? (string)$_POST['delivery_status'] : $deliveryStatus,
         'token_no' => isset($_POST['token_no']) ? (string)$_POST['token_no'] : $tn,
         'delivery_note' => isset($_POST['delivery_note']) ? (string)$_POST['delivery_note'] : $dn,
-        'tender' => isset($_POST['tender']) ? (string)$_POST['tender'] : (string)$t,
+        'tender' => isset($_POST['tender']) ? (string)$_POST['tender'] : (string)$submittedTender,
+        'tender_manual_mode' => $postedTenderManualMode,
         'freight' => isset($_POST['freight']) ? (string)$_POST['freight'] : (string)$f
     ];
     header("location:add_haleeb_bilty.php");
@@ -245,7 +316,8 @@ $_SESSION['add_haleeb_old'] = [
     'delivery_status' => isset($_POST['delivery_status']) ? (string)$_POST['delivery_status'] : $deliveryStatus,
     'token_no' => isset($_POST['token_no']) ? (string)$_POST['token_no'] : $tn,
     'delivery_note' => isset($_POST['delivery_note']) ? (string)$_POST['delivery_note'] : $dn,
-    'tender' => isset($_POST['tender']) ? (string)$_POST['tender'] : (string)$t,
+    'tender' => isset($_POST['tender']) ? (string)$_POST['tender'] : (string)$submittedTender,
+    'tender_manual_mode' => $postedTenderManualMode,
     'freight' => isset($_POST['freight']) ? (string)$_POST['freight'] : (string)$f
 ];
 header("location:add_haleeb_bilty.php");

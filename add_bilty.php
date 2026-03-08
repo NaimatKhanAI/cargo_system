@@ -197,6 +197,8 @@ if($flashError === 'duplicate_bilty_same_date'){
     if($dupNo !== '' && $dupDate !== ''){
         $formErrorMessage .= ' Bilty No: ' . $dupNo . ' | Date: ' . $dupDate;
     }
+} elseif($flashError === 'tender_fetch_failed'){
+    $formErrorMessage = 'Internet ki wajah se tender rate fetch nahi ho paya. SR dobara likhein.';
 } elseif($flashError === 'invalid_amounts'){
     $formErrorMessage = 'Tender aur Freight dono 0 se baray hone chahiye.';
 } elseif($flashError === 'save_failed'){
@@ -235,6 +237,7 @@ $formValues = [
     'freight_payment_type' => isset($flashOld['freight_payment_type']) ? strtolower(trim((string)$flashOld['freight_payment_type'])) : 'to_pay',
     'tender' => isset($flashOld['tender']) ? trim((string)$flashOld['tender']) : '0',
     'tender_raw' => isset($flashOld['tender_raw']) ? trim((string)$flashOld['tender_raw']) : '',
+    'tender_manual_mode' => isset($flashOld['tender_manual_mode']) ? trim((string)$flashOld['tender_manual_mode']) : '0',
 ];
 if(!in_array($formValues['freight_payment_type'], ['to_pay', 'paid'], true)){
     $formValues['freight_payment_type'] = 'to_pay';
@@ -431,11 +434,13 @@ if(!in_array($formValues['freight_payment_type'], ['to_pay', 'paid'], true)){
             <label for="tender">Tender</label>
             <input id="tender" type="number" name="tender" placeholder="0" min="0.001" step="any" value="<?php echo htmlspecialchars($formValues['tender']); ?>" required>
             <input id="tender_raw" type="hidden" name="tender_raw" value="<?php echo htmlspecialchars($formValues['tender_raw']); ?>">
+            <input id="tender_manual_mode" type="hidden" name="tender_manual_mode" value="<?php echo htmlspecialchars($formValues['tender_manual_mode']); ?>">
             <div class="field-meta" id="tender_discount_note"></div>
           </div>
         <?php else: ?>
           <input id="tender" type="hidden" name="tender" value="<?php echo htmlspecialchars($formValues['tender']); ?>">
           <input id="tender_raw" type="hidden" name="tender_raw" value="<?php echo htmlspecialchars($formValues['tender_raw']); ?>">
+          <input id="tender_manual_mode" type="hidden" name="tender_manual_mode" value="0">
         <?php endif; ?>
       </div>
       <div class="form-footer">
@@ -489,17 +494,26 @@ if(!in_array($formValues['freight_payment_type'], ['to_pay', 'paid'], true)){
   var tenderRawInput = document.getElementById('tender_raw');
   var bagsInput = document.getElementById('bags');
   var tenderDiscountNote = document.getElementById('tender_discount_note');
+  var tenderManualInput = document.getElementById('tender_manual_mode');
   var tenderHelp = document.getElementById('tender_help');
   var tenderColumnLabelInput = document.getElementById('tender_column_label');
   var portionSelect = document.getElementById('feed_portion');
   var form = document.querySelector('form[action="save_bilty.php"]');
   var reqId = 0, timer = null;
   var applyingTenderRule = false;
+  var submitRetryInProgress = false;
+  var tenderFetchedSuccessfully = false;
+  var manualTenderOverride = tenderManualInput && String(tenderManualInput.value || '0') === '1';
 
   var isSuperAdmin = <?php echo $isSuperAdmin ? 'true' : 'false'; ?>;
   var portionLabels = <?php echo json_encode($feedPortionOptions, JSON_UNESCAPED_UNICODE); ?>;
   var portionColumnMap = <?php echo json_encode($portionColumnMap, JSON_UNESCAPED_UNICODE); ?>;
   var defaultPortion = <?php echo json_encode($selectedFeedPortion, JSON_UNESCAPED_UNICODE); ?>;
+  var canManualTender = isSuperAdmin && tenderInput && String(tenderInput.type || '').toLowerCase() !== 'hidden';
+
+  function syncManualTenderState(){
+    if(tenderManualInput) tenderManualInput.value = manualTenderOverride ? '1' : '0';
+  }
 
   function getSelectedPortion(){
     if(portionSelect && portionSelect.value){ return portionSelect.value; }
@@ -526,48 +540,100 @@ if(!in_array($formValues['freight_payment_type'], ['to_pay', 'paid'], true)){
     setHelp('Tender column for ' + portionName + ': ' + columnLabel, '');
   }
 
-  function lookupTender(){
+  function lookupTender(maxRetries, force){
     var sr = (srInput && srInput.value ? srInput.value : '').trim();
     if(sr === ''){
       refreshPortionTenderInfo();
-      return;
+      return Promise.resolve(false);
     }
 
     reqId++;
     var cur = reqId;
-    setHelp('Checking rate...', 'info');
-
     var portion = getSelectedPortion();
-    fetch('add_bilty.php?lookup_tender=1&portion=' + encodeURIComponent(portion) + '&sr_no=' + encodeURIComponent(sr), { headers: { 'Accept': 'application/json' } })
-      .then(function(r){ return r.json(); })
-      .then(function(data){
-        if(cur !== reqId) return;
-        if(data && data.ok){
-          if(tenderRawInput) tenderRawInput.value = String(data.rate);
-          applyTenderBagRule();
-          setHelp('Auto fill: ' + (data.value_column_label || data.column_label || 'selected') + ' (' + (data.feed_portion_label || '') + ')', 'ok');
-        } else {
-          setHelp((data && data.message) ? data.message : 'Rate not found', 'err');
-        }
-      })
-      .catch(function(){
-        if(cur !== reqId) return;
-        setHelp('Cannot get rate.', 'err');
-      });
+    var retries = Number(maxRetries || 1);
+    if(!Number.isFinite(retries) || retries < 1) retries = 1;
+    var isForce = !!force;
+    if(manualTenderOverride && !isForce){
+      setHelp('Manual tender set by super admin. Continue.', 'ok');
+      return Promise.resolve(true);
+    }
+
+    return new Promise(function(resolve){
+      function attemptFetch(attemptNo){
+        if(cur !== reqId){ resolve(false); return; }
+        setHelp('Checking rate... attempt ' + attemptNo + '/' + retries, 'info');
+
+        fetch('add_bilty.php?lookup_tender=1&portion=' + encodeURIComponent(portion) + '&sr_no=' + encodeURIComponent(sr), { headers: { 'Accept': 'application/json' } })
+          .then(function(r){ return r.json(); })
+          .then(function(data){
+            if(cur !== reqId){ resolve(false); return; }
+            if(data && data.ok){
+              var rateValue = Number(data.rate || 0);
+              if(Number.isFinite(rateValue) && rateValue > 0){
+                if(tenderRawInput) tenderRawInput.value = String(rateValue);
+                tenderFetchedSuccessfully = true;
+                manualTenderOverride = false;
+                syncManualTenderState();
+                applyTenderBagRule(true);
+                setHelp('Tender fetched successfully. Continue.', 'ok');
+                resolve(true);
+                return;
+              }
+            }
+
+            var message = (data && data.message) ? String(data.message) : '';
+            var isRateMissing = message.toLowerCase().indexOf('not found') !== -1 || message.toLowerCase().indexOf('sr') !== -1;
+            if(isRateMissing){
+              tenderFetchedSuccessfully = false;
+              setHelp('Tender rate fetch nahi ho paya. SR dobara check karein.', 'err');
+              resolve(false);
+              return;
+            }
+
+            if(attemptNo < retries){
+              setTimeout(function(){ attemptFetch(attemptNo + 1); }, isForce ? 700 : 450);
+              return;
+            }
+            tenderFetchedSuccessfully = false;
+            setHelp('Internet ki wajah se tender rate fetch nahi ho paya. SR again likhain.', 'err');
+            resolve(false);
+          })
+          .catch(function(){
+            if(cur !== reqId){ resolve(false); return; }
+            if(attemptNo < retries){
+              setTimeout(function(){ attemptFetch(attemptNo + 1); }, isForce ? 700 : 450);
+              return;
+            }
+            tenderFetchedSuccessfully = false;
+            setHelp('Internet ki wajah se tender rate fetch nahi ho paya. SR again likhain.', 'err');
+            resolve(false);
+          });
+      }
+
+      attemptFetch(1);
+    });
   }
 
   if(srInput){
     srInput.addEventListener('input', function(){
       if(timer) clearTimeout(timer);
-      timer = setTimeout(lookupTender, 250);
+      if(tenderRawInput) tenderRawInput.value = '';
+      if(tenderInput) tenderInput.value = '';
+      tenderFetchedSuccessfully = false;
+      manualTenderOverride = false;
+      syncManualTenderState();
+      setDiscountNote('', '');
+      timer = setTimeout(function(){ lookupTender(3, false); }, 280);
     });
-    srInput.addEventListener('blur', lookupTender);
+    srInput.addEventListener('blur', function(){ lookupTender(4, false); });
   }
 
   if(portionSelect){
     portionSelect.addEventListener('change', function(){
       refreshPortionTenderInfo();
-      lookupTender();
+      manualTenderOverride = false;
+      syncManualTenderState();
+      lookupTender(4, false);
     });
   }
 
@@ -587,8 +653,12 @@ if(!in_array($formValues['freight_payment_type'], ['to_pay', 'paid'], true)){
     tenderDiscountNote.className = 'field-meta' + (cls ? ' ' + cls : '');
   }
 
-  function applyTenderBagRule(){
+  function applyTenderBagRule(forceCalc){
     if(!tenderInput || !tenderRawInput) return;
+    if(manualTenderOverride && !forceCalc){
+      setDiscountNote('Manual tender set by super admin', 'ok');
+      return;
+    }
     var baseTender = parseNumeric(tenderRawInput.value);
     if(baseTender === null){
       setDiscountNote('', '');
@@ -604,7 +674,11 @@ if(!in_array($formValues['freight_payment_type'], ['to_pay', 'paid'], true)){
       finalTender = finalTender * 0.90;
       setDiscountNote('Bags > 300: tender adjusted by -10%', 'ok');
     } else {
-      setDiscountNote('', '');
+      if(tenderFetchedSuccessfully){
+        setDiscountNote('Tender fetched successfully', 'ok');
+      } else {
+        setDiscountNote('', '');
+      }
     }
 
     applyingTenderRule = true;
@@ -615,6 +689,11 @@ if(!in_array($formValues['freight_payment_type'], ['to_pay', 'paid'], true)){
   if(tenderInput){
     tenderInput.addEventListener('input', function(){
       if(applyingTenderRule) return;
+      if(canManualTender){
+        manualTenderOverride = true;
+        tenderFetchedSuccessfully = false;
+        syncManualTenderState();
+      }
       if(tenderRawInput) tenderRawInput.value = tenderInput.value;
       applyTenderBagRule();
     });
@@ -626,11 +705,36 @@ if(!in_array($formValues['freight_payment_type'], ['to_pay', 'paid'], true)){
   }
 
   if(form){
-    form.addEventListener('submit', function(){
+    form.addEventListener('submit', function(e){
+      if(submitRetryInProgress){
+        submitRetryInProgress = false;
+        return;
+      }
       if(tenderRawInput && String(tenderRawInput.value || '').trim() === '' && tenderInput){
         tenderRawInput.value = tenderInput.value;
       }
       applyTenderBagRule();
+      var tenderNow = parseNumeric(tenderInput ? tenderInput.value : '');
+      if(manualTenderOverride && tenderNow !== null && tenderNow > 0){
+        setHelp('Manual tender set by super admin. Saving...', 'ok');
+        return;
+      }
+      if(tenderNow !== null && tenderNow > 0){
+        return;
+      }
+
+      e.preventDefault();
+      lookupTender(10, true).then(function(ok){
+        var freshTender = parseNumeric(tenderInput ? tenderInput.value : '');
+        if(ok && freshTender !== null && freshTender > 0){
+          setHelp('Tender fetched successfully. Saving...', 'ok');
+          submitRetryInProgress = true;
+          if(form.requestSubmit){ form.requestSubmit(); }
+          else { form.submit(); }
+          return;
+        }
+        setHelp('Internet ki wajah se tender rate fetch nahi ho paya. SR again likhain.', 'err');
+      });
     });
   }
 
@@ -695,6 +799,10 @@ if(!in_array($formValues['freight_payment_type'], ['to_pay', 'paid'], true)){
   }
   refreshPortionTenderInfo();
   applyTenderBagRule();
+  var tenderOnLoad = parseNumeric(tenderInput ? tenderInput.value : '');
+  if(srInput && String(srInput.value || '').trim() !== '' && (tenderOnLoad === null || tenderOnLoad <= 0)){
+    lookupTender(5, false);
+  }
 })();
 </script>
 <?php if($centerNoticeType !== '' && $centerNoticeMessage !== ''): ?>
