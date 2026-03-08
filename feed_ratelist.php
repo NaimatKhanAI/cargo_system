@@ -43,11 +43,12 @@ function normalize_digits_local($v){ $v = (string)$v; $map = ['٠'=>'0','١'=>'1
 function canonical_sr_local($v){ $v = normalize_digits_local((string)$v); $v = strtolower(trim($v)); return preg_replace('/[^a-z0-9]/u', '', $v); }
 function detect_sr_column_key_local($columns){ foreach($columns as $c){ if(isset($c['column_key']) && $c['column_key'] === 'sr_no') return 'sr_no'; } foreach($columns as $c){ $lbl = isset($c['column_label']) ? normalize_header_local($c['column_label']) : ''; if(in_array($lbl, ['sr','sr no','serial','serial no','serial number'], true)) return (string)$c['column_key']; } return ''; }
 function sr_exists_local($conn, $srKey, $srValue, $excludeId = 0){ $srCanon = canonical_sr_local($srValue); if($srCanon === '' || $srKey === '') return false; $res = $conn->query("SELECT id, sr_no, extra_data FROM image_processed_rates"); while($res && $row = $res->fetch_assoc()){ $id = (int)$row['id']; if($excludeId > 0 && $id === $excludeId) continue; $candidate = ''; if($srKey === 'sr_no') $candidate = isset($row['sr_no']) ? (string)$row['sr_no'] : ''; else { $extra = json_decode((string)$row['extra_data'], true); if(is_array($extra) && isset($extra[$srKey])) $candidate = (string)$extra[$srKey]; } if(canonical_sr_local($candidate) === $srCanon) return true; } return false; }
+function is_valid_ymd_date_local($value){ $v = trim((string)$value); if(!preg_match('/^\d{4}-\d{2}-\d{2}$/', $v)) return false; $dt = DateTime::createFromFormat('Y-m-d', $v); return $dt && $dt->format('Y-m-d') === $v; }
 
-$msg = ''; $err = ''; $editingId = 0; $openAddRow = false; $openRateChange = false; $rateChangeSource = ''; $rateChangeMode = 'increment'; $rateChangePercent = ''; $rateChangeLabel = ''; $rateChangePetrolOld = ''; $rateChangePetrolNew = '';
+$msg = ''; $err = ''; $editingId = 0; $openAddRow = false; $openRateChange = false; $openTenderUpdate = false; $rateChangeSource = ''; $rateChangeMode = 'increment'; $rateChangePercent = ''; $rateChangeLabel = ''; $rateChangePetrolOld = ''; $rateChangePetrolNew = ''; $tenderUpdateDateFrom = ''; $tenderUpdateDateTo = ''; $tenderUpdateSource = ''; $tenderUpdateMode = 'increment'; $tenderUpdatePercent = '';
 
 if(!$canDirectModify){
-  $blockedPostActions = ['add_column', 'apply_rate_change', 'save_columns', 'delete_column', 'delete_rate', 'update_rate', 'add_rate'];
+  $blockedPostActions = ['add_column', 'apply_rate_change', 'apply_bilty_tender_update', 'save_columns', 'delete_column', 'delete_rate', 'update_rate', 'add_rate'];
   foreach($blockedPostActions as $blockedKey){
     if(isset($_POST[$blockedKey])){
       $err = 'Only super admin can modify rate list.';
@@ -58,6 +59,9 @@ if(!$canDirectModify){
     $err = 'Only super admin can clear rate list.';
     unset($_GET['delete_all']);
   }
+}
+if(isset($_GET['open']) && $_GET['open'] === 'tender_update'){
+  $openTenderUpdate = true;
 }
 
 if(isset($_GET['delete_all']) && $_GET['delete_all'] === '1'){ $conn->query("DELETE FROM image_processed_rates"); $msg = 'Rate list cleared.'; }
@@ -155,6 +159,133 @@ if(isset($_POST['apply_rate_change'])){
       $openRateChange = false;
       $rateChangeSource = ''; $rateChangeMode = 'increment'; $rateChangePercent = ''; $rateChangeLabel = ''; $rateChangePetrolOld = ''; $rateChangePetrolNew = '';
     }
+  }
+}
+if(isset($_POST['apply_bilty_tender_update'])){
+  $openTenderUpdate = true;
+  $tenderUpdateDateFrom = isset($_POST['tu_date_from']) ? trim((string)$_POST['tu_date_from']) : '';
+  $tenderUpdateDateTo = isset($_POST['tu_date_to']) ? trim((string)$_POST['tu_date_to']) : '';
+  $tenderUpdateSource = isset($_POST['tu_source_column']) ? trim((string)$_POST['tu_source_column']) : '';
+  $tenderUpdateMode = isset($_POST['tu_mode']) ? trim((string)$_POST['tu_mode']) : 'increment';
+  $tenderUpdatePercent = isset($_POST['tu_percent']) ? trim((string)$_POST['tu_percent']) : '';
+
+  $allCols = load_columns($conn);
+  $activeCols = array_values(array_filter($allCols, function($c){ return (int)$c['is_deleted'] === 0; }));
+  $activeKeys = array_map(function($c){ return (string)$c['column_key']; }, $activeCols);
+  $sourceLabel = '';
+  foreach($activeCols as $col){
+    if((string)$col['column_key'] === $tenderUpdateSource){
+      $sourceLabel = (string)$col['column_label'];
+      break;
+    }
+  }
+
+  if(!is_valid_ymd_date_local($tenderUpdateDateFrom) || !is_valid_ymd_date_local($tenderUpdateDateTo)){
+    $err = 'Tender Update: valid From and To dates are required.';
+  } elseif($tenderUpdateDateFrom > $tenderUpdateDateTo){
+    $err = 'Tender Update: From date must be less than or equal to To date.';
+  } elseif($tenderUpdateSource === '' || !in_array($tenderUpdateSource, $activeKeys, true)){
+    $err = 'Tender Update: select a valid base column.';
+  } elseif($tenderUpdatePercent === '' || !is_numeric($tenderUpdatePercent)){
+    $err = 'Tender Update: enter a valid percent value.';
+  } else {
+    $percent = abs((float)$tenderUpdatePercent);
+    $factor = ($tenderUpdateMode === 'decrement') ? (1 - ($percent / 100)) : (1 + ($percent / 100));
+    if($factor < 0) $factor = 0;
+
+    $srLookupKey = detect_sr_column_key_local($activeCols);
+    if($srLookupKey === '') $srLookupKey = 'sr_no';
+
+    $rateBySr = [];
+    $rateRows = $conn->query("SELECT id, sr_no, station_english, station_urdu, rate1, rate2, extra_data FROM image_processed_rates ORDER BY id DESC");
+    while($rateRows && $rateRow = $rateRows->fetch_assoc()){
+      $candidateSr = '';
+      if(array_key_exists($srLookupKey, $rateRow)){
+        $candidateSr = (string)$rateRow[$srLookupKey];
+      } else {
+        $extraSr = [];
+        if(isset($rateRow['extra_data']) && $rateRow['extra_data'] !== ''){
+          $decodedSr = json_decode((string)$rateRow['extra_data'], true);
+          if(is_array($decodedSr)) $extraSr = $decodedSr;
+        }
+        if(isset($extraSr[$srLookupKey])) $candidateSr = (string)$extraSr[$srLookupKey];
+      }
+      if($candidateSr === '' && isset($rateRow['sr_no'])) $candidateSr = (string)$rateRow['sr_no'];
+      $srCanon = canonical_sr_local($candidateSr);
+      if($srCanon === '' || isset($rateBySr[$srCanon])) continue;
+      $rateBySr[$srCanon] = $rateRow;
+    }
+
+    $biltyStmt = $conn->prepare("SELECT id, sr_no, bags, freight, commission FROM bilty WHERE date >= ? AND date <= ? ORDER BY id ASC");
+    $biltyStmt->bind_param("ss", $tenderUpdateDateFrom, $tenderUpdateDateTo);
+    $biltyStmt->execute();
+    $biltyRes = $biltyStmt->get_result();
+
+    $updateStmt = $conn->prepare("UPDATE bilty SET tender=?, profit=? WHERE id=?");
+    $updatedCount = 0;
+    $totalRows = 0;
+    $missingBiltySr = 0;
+    $missingRateSr = 0;
+    $invalidRateValue = 0;
+    $nonPositiveTender = 0;
+
+    while($biltyRes && $b = $biltyRes->fetch_assoc()){
+      $totalRows++;
+      $biltySr = trim((string)($b['sr_no'] ?? ''));
+      $biltySrCanon = canonical_sr_local($biltySr);
+      if($biltySrCanon === ''){
+        $missingBiltySr++;
+        continue;
+      }
+      if(!isset($rateBySr[$biltySrCanon])){
+        $missingRateSr++;
+        continue;
+      }
+
+      $rateRow = $rateBySr[$biltySrCanon];
+      $sourceRaw = '';
+      if(array_key_exists($tenderUpdateSource, $rateRow)){
+        $sourceRaw = (string)$rateRow[$tenderUpdateSource];
+      } else {
+        $extra = [];
+        if(isset($rateRow['extra_data']) && $rateRow['extra_data'] !== ''){
+          $decoded = json_decode((string)$rateRow['extra_data'], true);
+          if(is_array($decoded)) $extra = $decoded;
+        }
+        if(isset($extra[$tenderUpdateSource])) $sourceRaw = (string)$extra[$tenderUpdateSource];
+      }
+
+      $sourceNumber = parse_rate_numeric_local($sourceRaw);
+      if($sourceNumber === null){
+        $invalidRateValue++;
+        continue;
+      }
+
+      $baseTender = $sourceNumber * $factor;
+      $bags = max(0, (int)($b['bags'] ?? 0));
+      $scaledTender = ($bags > 0) ? (($baseTender / 200) * $bags) : 0.0;
+      $finalTender = ($bags > 300) ? ($scaledTender * 0.90) : $scaledTender;
+      $finalTender = round($finalTender, 3);
+      if($finalTender <= 0){
+        $nonPositiveTender++;
+        continue;
+      }
+
+      $freight = isset($b['freight']) ? (float)$b['freight'] : 0.0;
+      $commission = isset($b['commission']) ? (float)$b['commission'] : 0.0;
+      $totalCost = max(0, $freight - $commission);
+      $profit = round($finalTender - $totalCost, 3);
+      $biltyId = (int)$b['id'];
+
+      $updateStmt->bind_param("ddi", $finalTender, $profit, $biltyId);
+      if($updateStmt->execute()) $updatedCount++;
+    }
+
+    $updateStmt->close();
+    $biltyStmt->close();
+    $labelText = $sourceLabel !== '' ? $sourceLabel : $tenderUpdateSource;
+    $modeText = $tenderUpdateMode === 'decrement' ? 'decrease' : 'increase';
+    $msg = "Feed tender update complete ({$tenderUpdateDateFrom} to {$tenderUpdateDateTo}, {$modeText} {$percent}%, base: {$labelText}). Updated: {$updatedCount}/{$totalRows}, missing bilty SR: {$missingBiltySr}, SR not found in rate list: {$missingRateSr}, source rate missing/non-numeric: {$invalidRateValue}, non-positive tender skipped: {$nonPositiveTender}.";
   }
 }
 if(isset($_POST['save_columns'])){ $cols = load_columns($conn); foreach($cols as $c){ $key = $c['column_key']; $labelField = 'label_' . $key; $hideField = 'hide_' . $key; $newLabel = isset($_POST[$labelField]) ? trim($_POST[$labelField]) : $c['column_label']; $isHidden = isset($_POST[$hideField]) ? 1 : 0; if($newLabel === '') $newLabel = $c['column_label']; $upd = $conn->prepare("UPDATE rate_list_columns SET column_label=?, is_hidden=? WHERE column_key=?"); $upd->bind_param("sis", $newLabel, $isHidden, $key); $upd->execute(); $upd->close(); } $msg = 'Column settings updated.'; }
@@ -294,6 +425,7 @@ $rows = $conn->query("SELECT id, source_file, source_image_path, sr_no, station_
           <button class="menu-item" type="button" id="menu_import_btn">Import</button>
         </form>
         <button class="menu-item" type="button" id="menu_rate_change_btn">Rate Change</button>
+        <button class="menu-item" type="button" id="menu_tender_update_btn">Tender Update</button>
         <a class="menu-item" href="export_rate_list.php">Export</a>
         <a class="menu-item danger" href="feed_ratelist.php?delete_all=1" onclick="return confirm('Delete entire rate list?')">Clear List</a>
       </div>
@@ -377,6 +509,39 @@ $rows = $conn->query("SELECT id, source_file, source_image_path, sr_no, station_
           <input type="number" step="any" min="0" id="rc_percent" name="rc_percent" placeholder="Percent e.g. 2" value="<?php echo htmlspecialchars($rateChangePercent); ?>" required>
           <input type="text" name="rc_new_column_label" placeholder="New column name e.g. AA" value="<?php echo htmlspecialchars($rateChangeLabel); ?>" required>
           <button class="nav-btn primary" type="submit" name="apply_rate_change">Apply</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- FEED TENDER UPDATE -->
+  <div class="panel">
+    <div class="panel-head" id="tu_head">
+      <span class="panel-title">Feed Tender Update</span>
+      <span class="panel-toggle <?php echo $openTenderUpdate ? 'open' : ''; ?>" id="tu_toggle">+</span>
+    </div>
+    <div class="panel-body <?php echo $openTenderUpdate ? 'open' : ''; ?>" id="tu_body">
+      <form method="post">
+        <div class="add-col-row" style="flex-wrap:wrap;">
+          <input type="date" name="tu_date_from" value="<?php echo htmlspecialchars($tenderUpdateDateFrom); ?>" required>
+          <input type="date" name="tu_date_to" value="<?php echo htmlspecialchars($tenderUpdateDateTo); ?>" required>
+          <select name="tu_source_column" required>
+            <option value="">Select base column</option>
+            <?php foreach($displayColumns as $c): ?>
+              <option value="<?php echo htmlspecialchars($c['column_key']); ?>" <?php echo $tenderUpdateSource === $c['column_key'] ? 'selected' : ''; ?>>
+                <?php echo htmlspecialchars($c['column_label'] . ' (' . $c['column_key'] . ')'); ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+          <select name="tu_mode" required>
+            <option value="increment" <?php echo $tenderUpdateMode === 'increment' ? 'selected' : ''; ?>>Increase</option>
+            <option value="decrement" <?php echo $tenderUpdateMode === 'decrement' ? 'selected' : ''; ?>>Decrease</option>
+          </select>
+          <input type="number" step="any" min="0" name="tu_percent" placeholder="Percent e.g. 5" value="<?php echo htmlspecialchars($tenderUpdatePercent); ?>" required>
+          <button class="nav-btn primary" type="submit" name="apply_bilty_tender_update" onclick="return confirm('Update Feed bilties tender for selected date range?')">Update Tenders</button>
+        </div>
+        <div style="font-size:12px;color:var(--muted);">
+          Applies to Feed bilties only. Tender formula remains: `(base rate +/- %) / 200 * bags`, and for `bags > 300` an additional `-10%` is applied.
         </div>
       </form>
     </div>
@@ -495,12 +660,14 @@ $rows = $conn->query("SELECT id, source_file, source_image_path, sr_no, station_
   }
   initToggle('col_head', 'col_toggle', 'col_body');
   initToggle('rc_head', 'rc_toggle', 'rc_body');
+  initToggle('tu_head', 'tu_toggle', 'tu_body');
   initToggle('add_head', 'add_toggle', 'add_body');
 
   var menuToggle = document.getElementById('menu_toggle');
   var menuDropdown = document.getElementById('menu_dropdown');
   var importBtn = document.getElementById('menu_import_btn');
   var rateChangeBtn = document.getElementById('menu_rate_change_btn');
+  var tenderUpdateBtn = document.getElementById('menu_tender_update_btn');
   var importFile = document.getElementById('menu_import_file');
   var importForm = document.getElementById('menu_import_form');
 
@@ -550,6 +717,20 @@ $rows = $conn->query("SELECT id, source_file, source_image_path, sr_no, station_
     rateChangeBtn.addEventListener('click', function(){
       var body = document.getElementById('rc_body');
       var toggle = document.getElementById('rc_toggle');
+      if(body){
+        body.classList.add('open');
+        if(toggle) toggle.classList.add('open');
+      }
+      if(menuDropdown){
+        menuDropdown.classList.remove('open');
+        if(menuToggle) menuToggle.setAttribute('aria-expanded', 'false');
+      }
+    });
+  }
+  if(tenderUpdateBtn){
+    tenderUpdateBtn.addEventListener('click', function(){
+      var body = document.getElementById('tu_body');
+      var toggle = document.getElementById('tu_toggle');
       if(body){
         body.classList.add('open');
         if(toggle) toggle.classList.add('open');

@@ -21,16 +21,20 @@ function load_columns($conn){
     while($r = $res->fetch_assoc()) $cols[] = $r;
     return $cols;
 }
+function normalize_lookup_token_local($v){ $v = strtolower(trim((string)$v)); $v = preg_replace('/\s+/', ' ', $v); return $v; }
 function normalize_header_local($v){ $v = strtolower(trim((string)$v)); $v = preg_replace('/\s+/', ' ', $v); $v = str_replace(['.','(',')'], '', $v); return $v; }
 function normalize_digits_local($v){ $v = (string)$v; $map = ['٠'=>'0','١'=>'1','٢'=>'2','٣'=>'3','٤'=>'4','٥'=>'5','٦'=>'6','٧'=>'7','٨'=>'8','٩'=>'9','۰'=>'0','۱'=>'1','۲'=>'2','۳'=>'3','۴'=>'4','۵'=>'5','۶'=>'6','۷'=>'7','۸'=>'8','۹'=>'9']; return strtr($v, $map); }
 function canonical_sr_local($v){ $v = normalize_digits_local((string)$v); $v = strtolower(trim($v)); return preg_replace('/[^a-z0-9]/u', '', $v); }
 function detect_sr_column_key_local($columns){ foreach($columns as $c){ if(isset($c['column_key']) && $c['column_key'] === 'sr_no') return 'sr_no'; } foreach($columns as $c){ $lbl = isset($c['column_label']) ? normalize_header_local($c['column_label']) : ''; if(in_array($lbl, ['sr','sr no','serial','serial no','serial number'], true)) return (string)$c['column_key']; } return ''; }
 function sr_exists_local($conn, $srKey, $srValue, $excludeId = 0){ $srCanon = canonical_sr_local($srValue); if($srCanon === '' || $srKey === '') return false; $res = $conn->query("SELECT id, sr_no, extra_data FROM haleeb_image_processed_rates"); while($res && $row = $res->fetch_assoc()){ $id = (int)$row['id']; if($excludeId > 0 && $id === $excludeId) continue; $candidate = ''; if($srKey === 'sr_no') $candidate = isset($row['sr_no']) ? (string)$row['sr_no'] : ''; else { $extra = json_decode((string)$row['extra_data'], true); if(is_array($extra) && isset($extra[$srKey])) $candidate = (string)$extra[$srKey]; } if(canonical_sr_local($candidate) === $srCanon) return true; } return false; }
 
-$msg = ''; $err = ''; $editingId = 0; $openAddRow = false;
+function parse_rate_numeric_local($value){ $value = trim((string)$value); if($value === '') return null; $clean = str_replace([',', ' '], '', $value); $clean = preg_replace('/[^0-9.\-]/', '', $clean); if($clean === '' || $clean === '-' || $clean === '.' || $clean === '-.') return null; if(!is_numeric($clean)) return null; return (float)$clean; }
+function is_valid_ymd_date_local($value){ $v = trim((string)$value); if(!preg_match('/^\d{4}-\d{2}-\d{2}$/', $v)) return false; $dt = DateTime::createFromFormat('Y-m-d', $v); return $dt && $dt->format('Y-m-d') === $v; }
+
+$msg = ''; $err = ''; $editingId = 0; $openAddRow = false; $openTenderSync = false; $tenderSyncDateFrom = ''; $tenderSyncDateTo = '';
 
 if(!$canDirectModify){
-  $blockedPostActions = ['add_column', 'save_columns', 'delete_column', 'delete_rate', 'update_rate', 'add_rate'];
+  $blockedPostActions = ['add_column', 'apply_haleeb_tender_sync', 'save_columns', 'delete_column', 'delete_rate', 'update_rate', 'add_rate'];
   foreach($blockedPostActions as $blockedKey){
     if(isset($_POST[$blockedKey])){
       $err = 'Only super admin can modify rate list.';
@@ -42,9 +46,115 @@ if(!$canDirectModify){
     unset($_GET['delete_all']);
   }
 }
+if(isset($_GET['open']) && $_GET['open'] === 'tender_sync'){
+  $openTenderSync = true;
+}
 
 if(isset($_GET['delete_all']) && $_GET['delete_all'] === '1'){ $conn->query("DELETE FROM haleeb_image_processed_rates"); $msg = 'Rate list cleared.'; }
 if(isset($_GET['import'])){ if($_GET['import'] === 'success'){ $ins = isset($_GET['ins']) ? (int)$_GET['ins'] : 0; $skip = isset($_GET['skip']) ? (int)$_GET['skip'] : 0; $msg = "Import completed. Inserted: $ins, Skipped: $skip"; } elseif($_GET['import'] === 'error'){ $reason = isset($_GET['reason']) ? trim((string)$_GET['reason']) : ''; $err = $reason === 'no_columns' ? 'Import failed. No active Rate List columns found.' : 'Import failed. Please upload a valid CSV file.'; } }
+
+if(isset($_POST['apply_haleeb_tender_sync'])){
+  $openTenderSync = true;
+  $tenderSyncDateFrom = isset($_POST['ts_date_from']) ? trim((string)$_POST['ts_date_from']) : '';
+  $tenderSyncDateTo = isset($_POST['ts_date_to']) ? trim((string)$_POST['ts_date_to']) : '';
+
+  if(!is_valid_ymd_date_local($tenderSyncDateFrom) || !is_valid_ymd_date_local($tenderSyncDateTo)){
+    $err = 'Tender Sync: valid From and To dates are required.';
+  } elseif($tenderSyncDateFrom > $tenderSyncDateTo){
+    $err = 'Tender Sync: From date must be less than or equal to To date.';
+  } else {
+    $vehicleTypeLookup = [];
+    $vehicleKeys = [];
+    $vtRes = $conn->query("SELECT column_key, column_label FROM haleeb_rate_list_columns WHERE is_deleted=0 AND column_key LIKE 'custom_%' ORDER BY display_order ASC, id ASC");
+    while($vtRes && $row = $vtRes->fetch_assoc()){
+      $columnKey = (string)$row['column_key'];
+      if($columnKey === '') continue;
+      $columnLabel = trim((string)$row['column_label']);
+      if($columnLabel === '') $columnLabel = $columnKey;
+      $vehicleTypeLookup[normalize_lookup_token_local($columnLabel)] = $columnKey;
+      $vehicleTypeLookup[normalize_lookup_token_local($columnKey)] = $columnKey;
+      $vehicleKeys[$columnKey] = true;
+    }
+
+    $rateLookup = [];
+    $rateRes = $conn->query("SELECT custom_to, custom_mazda, custom_14ft, custom_20ft, custom_40ft_22t, custom_40ft_28t, custom_40ft_32t, extra_data FROM haleeb_image_processed_rates ORDER BY id DESC");
+    while($rateRes && $rateRow = $rateRes->fetch_assoc()){
+      $location = trim((string)($rateRow['custom_to'] ?? ''));
+      if($location === '') continue;
+      $locKey = normalize_lookup_token_local($location);
+      if(isset($rateLookup[$locKey])) continue;
+
+      $extra = [];
+      if(isset($rateRow['extra_data']) && $rateRow['extra_data'] !== ''){
+        $decoded = json_decode((string)$rateRow['extra_data'], true);
+        if(is_array($decoded)) $extra = $decoded;
+      }
+
+      $values = [];
+      foreach($vehicleKeys as $key => $_unused){
+        $raw = '';
+        if(array_key_exists($key, $rateRow)) $raw = (string)$rateRow[$key];
+        elseif(isset($extra[$key])) $raw = (string)$extra[$key];
+        $values[$key] = $raw;
+      }
+      $rateLookup[$locKey] = $values;
+    }
+
+    $updatedCount = 0;
+    $totalRows = 0;
+    $missingLocation = 0;
+    $missingVehicleType = 0;
+    $missingRate = 0;
+    $invalidRate = 0;
+
+    $fetchStmt = $conn->prepare("SELECT id, location, vehicle_type, freight, commission FROM haleeb_bilty WHERE date >= ? AND date <= ? ORDER BY id ASC");
+    $fetchStmt->bind_param("ss", $tenderSyncDateFrom, $tenderSyncDateTo);
+    $fetchStmt->execute();
+    $rowsRes = $fetchStmt->get_result();
+
+    $updateStmt = $conn->prepare("UPDATE haleeb_bilty SET tender=?, profit=? WHERE id=?");
+    while($rowsRes && $b = $rowsRes->fetch_assoc()){
+      $totalRows++;
+      $locationKey = normalize_lookup_token_local((string)($b['location'] ?? ''));
+      if($locationKey === '' || !isset($rateLookup[$locationKey])){
+        $missingLocation++;
+        continue;
+      }
+
+      $vehicleTypeKey = normalize_lookup_token_local((string)($b['vehicle_type'] ?? ''));
+      $vehicleColumn = isset($vehicleTypeLookup[$vehicleTypeKey]) ? (string)$vehicleTypeLookup[$vehicleTypeKey] : '';
+      if($vehicleColumn === ''){
+        $missingVehicleType++;
+        continue;
+      }
+
+      $rateRaw = isset($rateLookup[$locationKey][$vehicleColumn]) ? (string)$rateLookup[$locationKey][$vehicleColumn] : '';
+      if(trim($rateRaw) === ''){
+        $missingRate++;
+        continue;
+      }
+
+      $resolvedTender = parse_rate_numeric_local($rateRaw);
+      if($resolvedTender === null || $resolvedTender <= 0){
+        $invalidRate++;
+        continue;
+      }
+
+      $resolvedTender = round($resolvedTender, 3);
+      $freight = isset($b['freight']) ? (float)$b['freight'] : 0.0;
+      $commission = isset($b['commission']) ? (float)$b['commission'] : 0.0;
+      $totalCost = max(0, $freight - $commission);
+      $profit = round($resolvedTender - $totalCost, 3);
+      $rowId = (int)$b['id'];
+      $updateStmt->bind_param("ddi", $resolvedTender, $profit, $rowId);
+      if($updateStmt->execute()) $updatedCount++;
+    }
+    $updateStmt->close();
+    $fetchStmt->close();
+
+    $msg = "Haleeb tender sync complete ({$tenderSyncDateFrom} to {$tenderSyncDateTo}). Updated: {$updatedCount}/{$totalRows}, missing location in rate list: {$missingLocation}, unknown vehicle type: {$missingVehicleType}, rate missing: {$missingRate}, invalid/non-positive rate: {$invalidRate}.";
+  }
+}
 
 if(isset($_POST['add_column'])){ $label = isset($_POST['new_column_label']) ? trim($_POST['new_column_label']) : ''; if($label === ''){ $err = 'Column name required.'; } else { $baseKey = slugify_label_to_key($label); $key = $baseKey; $suffix = 1; while(true){ $chk = $conn->prepare("SELECT id FROM haleeb_rate_list_columns WHERE column_key=? LIMIT 1"); $chk->bind_param("s", $key); $chk->execute(); $exists = $chk->get_result()->num_rows > 0; $chk->close(); if(!$exists) break; $suffix++; $key = $baseKey . '_' . $suffix; } $maxOrderRes = $conn->query("SELECT COALESCE(MAX(display_order),0) AS m FROM haleeb_rate_list_columns")->fetch_assoc(); $nextOrder = ((int)$maxOrderRes['m']) + 1; $ins = $conn->prepare("INSERT INTO haleeb_rate_list_columns(column_key, column_label, is_hidden, is_deleted, display_order, is_base) VALUES(?, ?, 0, 0, ?, 0)"); $ins->bind_param("ssi", $key, $label, $nextOrder); $ins->execute(); $ins->close(); $msg = 'New column added.'; } }
 if(isset($_POST['save_columns'])){ $cols = load_columns($conn); foreach($cols as $c){ $key = $c['column_key']; $labelField = 'label_' . $key; $hideField = 'hide_' . $key; $newLabel = isset($_POST[$labelField]) ? trim($_POST[$labelField]) : $c['column_label']; $isHidden = isset($_POST[$hideField]) ? 1 : 0; if($newLabel === '') $newLabel = $c['column_label']; $upd = $conn->prepare("UPDATE haleeb_rate_list_columns SET column_label=?, is_hidden=? WHERE column_key=?"); $upd->bind_param("sis", $newLabel, $isHidden, $key); $upd->execute(); $upd->close(); } $msg = 'Column settings updated.'; }
@@ -181,6 +291,7 @@ $rows = $conn->query("SELECT id, source_file, source_image_path, sr_no, station_
           <input class="menu-import-input" id="menu_import_file" type="file" name="csv_file" accept=".csv" required>
           <button class="menu-item" type="button" id="menu_import_btn">Import</button>
         </form>
+        <button class="menu-item" type="button" id="menu_tender_sync_btn">Tender Sync</button>
         <a class="menu-item" href="export_haleeb_ratelist.php">Export</a>
         <a class="menu-item danger" href="haleeb_ratelist.php?delete_all=1" onclick="return confirm('Delete entire rate list?')">Clear List</a>
       </div>
@@ -234,6 +345,26 @@ $rows = $conn->query("SELECT id, source_file, source_image_path, sr_no, station_
         </div>
         <input type="hidden" id="delete_col_key" name="column_key" value="">
         <button class="nav-btn primary" type="submit" name="save_columns">Save Columns</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- HALEEB TENDER SYNC -->
+  <div class="panel">
+    <div class="panel-head" id="ts_head">
+      <span class="panel-title">Haleeb Tender Sync</span>
+      <span class="panel-toggle <?php echo $openTenderSync ? 'open' : ''; ?>" id="ts_toggle">+</span>
+    </div>
+    <div class="panel-body <?php echo $openTenderSync ? 'open' : ''; ?>" id="ts_body">
+      <form method="post">
+        <div class="add-col-row" style="flex-wrap:wrap;">
+          <input type="date" name="ts_date_from" value="<?php echo htmlspecialchars($tenderSyncDateFrom); ?>" required>
+          <input type="date" name="ts_date_to" value="<?php echo htmlspecialchars($tenderSyncDateTo); ?>" required>
+          <button class="nav-btn primary" type="submit" name="apply_haleeb_tender_sync" onclick="return confirm('Selected date range ki Haleeb bilties ka tender current rate list se update karna hai?')">Sync Tenders</button>
+        </div>
+        <div style="font-size:12px;color:var(--muted);">
+          Selected date range ki Haleeb bilties ke tender, current Haleeb rate list ke location + vehicle type match ke mutabiq update honge.
+        </div>
       </form>
     </div>
   </div>
@@ -350,11 +481,13 @@ $rows = $conn->query("SELECT id, source_file, source_image_path, sr_no, station_
     });
   }
   initToggle('col_head', 'col_toggle', 'col_body');
+  initToggle('ts_head', 'ts_toggle', 'ts_body');
   initToggle('add_head', 'add_toggle', 'add_body');
 
   var menuToggle = document.getElementById('menu_toggle');
   var menuDropdown = document.getElementById('menu_dropdown');
   var importBtn = document.getElementById('menu_import_btn');
+  var tenderSyncBtn = document.getElementById('menu_tender_sync_btn');
   var importFile = document.getElementById('menu_import_file');
   var importForm = document.getElementById('menu_import_form');
 
@@ -377,6 +510,20 @@ $rows = $conn->query("SELECT id, source_file, source_image_path, sr_no, station_
     importBtn.addEventListener('click', function(){ importFile.click(); });
     importFile.addEventListener('change', function(){
       if(importFile.files && importFile.files.length > 0) importForm.submit();
+    });
+  }
+  if(tenderSyncBtn){
+    tenderSyncBtn.addEventListener('click', function(){
+      var body = document.getElementById('ts_body');
+      var toggle = document.getElementById('ts_toggle');
+      if(body){
+        body.classList.add('open');
+        if(toggle) toggle.classList.add('open');
+      }
+      if(menuDropdown){
+        menuDropdown.classList.remove('open');
+        if(menuToggle) menuToggle.setAttribute('aria-expanded', 'false');
+      }
     });
   }
 })();

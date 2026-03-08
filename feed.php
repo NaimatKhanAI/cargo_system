@@ -572,6 +572,7 @@ while($result && $row = $result->fetch_assoc()){
         <?php if($canDirectModify): ?>
           <div class="menu-sep"></div>
           <a class="nav-btn" href="feed_ratelist.php">Rate List</a>
+          <a class="nav-btn" href="feed_ratelist.php?open=tender_update">Tender Update</a>
           <a class="nav-btn" href="export_bilty.php">Export CSV</a>
           <?php if($canDirectModify): ?>
             <a class="nav-btn danger" href="feed.php?delete_all=1" onclick="return confirm('Delete all Feed bilties?')">Delete All Bilties</a>
