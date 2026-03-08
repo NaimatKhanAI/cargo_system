@@ -182,7 +182,7 @@ while($result && $row = $result->fetch_assoc()){
         }
 
         if($pendingAction === 'haleeb_update'){
-            $overlayFields = ['date', 'vehicle', 'vehicle_type', 'delivery_note', 'token_no', 'party', 'location', 'stops', 'freight', 'commission', 'tender'];
+            $overlayFields = ['date', 'vehicle', 'vehicle_type', 'driver_phone_no', 'delivery_status', 'delivery_note', 'token_no', 'party', 'location', 'stops', 'freight', 'commission', 'tender'];
             foreach($overlayFields as $field){
                 if(array_key_exists($field, $pendingPayload)){
                     $row[$field] = $pendingPayload[$field];
@@ -329,6 +329,8 @@ while($result && $row = $result->fetch_assoc()){
 
   .action-cell { display: flex; gap: 4px; justify-content: center; }
   .act-btn { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; text-decoration: none; font-size: 13px; border: 1px solid transparent; transition: all 0.15s; cursor: pointer; }
+  .act-view { background: rgba(59,130,246,0.15); color: #60a5fa; border-color: rgba(59,130,246,0.25); }
+  .act-view:hover { background: rgba(59,130,246,0.25); }
   .act-pay { background: rgba(34,197,94,0.15); color: var(--green); border-color: rgba(34,197,94,0.25); }
   .act-pay:hover { background: rgba(34,197,94,0.25); }
   .act-confirm { background: rgba(16,185,129,0.15); color: #10b981; border-color: rgba(16,185,129,0.25); }
@@ -337,7 +339,7 @@ while($result && $row = $result->fetch_assoc()){
   .act-edit:hover { background: rgba(96,165,250,0.25); }
   .act-pdf { background: rgba(168,85,247,0.15); color: #c084fc; border-color: rgba(168,85,247,0.25); }
   .act-pdf:hover { background: rgba(168,85,247,0.25); }
-  .th-action { text-align: center; width: 140px; }
+  .th-action { text-align: center; width: 170px; }
   .paytype-badge {
     display: inline-block; padding: 3px 9px; font-size: 10px; font-weight: 700;
     letter-spacing: 1px; text-transform: uppercase; border: 1px solid transparent;
@@ -625,21 +627,16 @@ while($result && $row = $result->fetch_assoc()){
       <thead>
         <tr>
           <th>Date</th>
-          <th>Added By</th>
           <th>Vehicle</th>
           <th>Type</th>
-          <th>Delivery Note</th>
-          <th>Token No.</th>
+          <th>Phone No</th>
           <th>Party</th>
           <th>Location</th>
-          <th>Stops</th>
-          <?php if($isSuperAdmin): ?><th>Tender</th><?php endif; ?>
-          <th>Freight</th>
-          <th>Commission</th>
-          <th>Status</th>
+          <th>Token No</th>
+          <th>Delivery Note</th>
           <th>Remaining</th>
-          <?php if($isSuperAdmin): ?><th>Profit</th><?php endif; ?>
           <th class="th-action">Actions</th>
+          <?php if($isSuperAdmin): ?><th>Tender</th><th>Profit</th><?php endif; ?>
         </tr>
       </thead>
       <tbody id="haleeb_records_tbody">
@@ -649,7 +646,8 @@ while($result && $row = $result->fetch_assoc()){
           $commission = (float)($row['commission'] ?? 0);
           $totalCost = (float)($row['total_cost'] ?? max(((float)($row['freight'] ?? 0)) - $commission, 0));
           $addedByName = isset($row['added_by_name']) && trim((string)$row['added_by_name']) !== '' ? (string)$row['added_by_name'] : '-';
-          $driverStatus = $remaining <= 0.0001 ? 'Confirmed' : 'Pending';
+          $driverPhoneNo = trim((string)($row['driver_phone_no'] ?? ''));
+          $detailHref = 'bilty_detail.php?type=haleeb&id=' . (int)$row['id'] . '&src=haleeb';
           $stopsRaw = isset($row['stops']) ? (string)$row['stops'] : '';
           $sameStops = 0;
           $outStops = 0;
@@ -675,41 +673,32 @@ while($result && $row = $result->fetch_assoc()){
             data-remaining="<?php echo $remaining; ?>"
             data-profit="<?php echo $profit; ?>">
           <td><?php echo htmlspecialchars($row['date']); ?></td>
-          <td><?php echo htmlspecialchars($addedByName); ?></td>
           <td><?php echo htmlspecialchars($row['vehicle']); ?></td>
           <td><span class="vtype-badge"><?php echo htmlspecialchars($row['vehicle_type']); ?></span></td>
-          <td><?php echo htmlspecialchars($row['delivery_note']); ?></td>
-          <td><?php echo htmlspecialchars($row['token_no']); ?></td>
+          <td><?php echo htmlspecialchars($driverPhoneNo !== '' ? $driverPhoneNo : '-'); ?></td>
           <td><?php echo htmlspecialchars($row['party']); ?></td>
           <td><?php echo htmlspecialchars($row['location']); ?></td>
-          <td><?php echo htmlspecialchars($stopsRaw); ?></td>
-          <?php if($isSuperAdmin): ?>
-            <td>Rs <?php echo number_format((float)$row['tender'], 2); ?></td>
-          <?php endif; ?>
-          <td>Rs <?php echo number_format((float)$row['freight'], 2); ?></td>
-          <td>Rs <?php echo number_format($commission, 2); ?></td>
-          <td>
-            <span class="rem-badge <?php echo $remaining <= 0.0001 ? 'rem-zero' : 'rem-pending'; ?>">
-              <?php echo htmlspecialchars($driverStatus); ?>
-            </span>
-          </td>
+          <td><?php echo htmlspecialchars($row['token_no']); ?></td>
+          <td><?php echo htmlspecialchars($row['delivery_note']); ?></td>
           <td>
             <span class="rem-badge <?php echo $remaining <= 0 ? 'rem-zero' : 'rem-pending'; ?>">
               Rs <?php echo number_format($remaining, 2); ?>
             </span>
           </td>
-          <?php if($isSuperAdmin): ?>
-            <td class="td-profit <?php echo $profit < 0 ? 'neg' : ''; ?>">
-              Rs <?php echo number_format($profit, 2); ?>
-            </td>
-          <?php endif; ?>
           <td>
             <div class="action-cell">
+              <a class="act-btn act-view" href="<?php echo htmlspecialchars($detailHref); ?>" title="View Details">&#128065;</a>
               <a class="act-btn act-pay" href="pay_now_haleeb.php?id=<?php echo $row['id']; ?>" title="Pay">&#8377;</a>
               <a class="act-btn act-edit" href="edit_haleeb_bilty.php?id=<?php echo $row['id']; ?>" title="Edit">&#9998;</a>
               <a class="act-btn act-pdf" href="haleeb_pdf.php?id=<?php echo $row['id']; ?>" target="_blank" title="PDF">&#128196;</a>
             </div>
           </td>
+          <?php if($isSuperAdmin): ?>
+            <td>Rs <?php echo number_format((float)$row['tender'], 2); ?></td>
+            <td class="td-profit <?php echo $profit < 0 ? 'neg' : ''; ?>">
+              Rs <?php echo number_format($profit, 2); ?>
+            </td>
+          <?php endif; ?>
         </tr>
         <?php endforeach; ?>
       </tbody>

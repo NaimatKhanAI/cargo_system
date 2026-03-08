@@ -171,6 +171,8 @@ elseif($src === 'haleeb' && auth_has_module_access('haleeb')) $backHref = 'halee
         <tr><td class="label">Token No</td><td><?php echo htmlspecialchars((string)($row['token_no'] ?? '')); ?></td></tr>
         <tr><td class="label">Vehicle</td><td><?php echo htmlspecialchars((string)($row['vehicle'] ?? '')); ?></td></tr>
         <tr><td class="label">Vehicle Type</td><td><?php echo htmlspecialchars((string)($row['vehicle_type'] ?? '')); ?></td></tr>
+        <tr><td class="label">Driver Phone No</td><td><?php echo htmlspecialchars(trim((string)($row['driver_phone_no'] ?? '')) !== '' ? (string)$row['driver_phone_no'] : '-'); ?></td></tr>
+        <tr><td class="label">Delivery Status</td><td><?php echo htmlspecialchars(ucwords(str_replace('_', ' ', (string)($row['delivery_status'] ?? 'not_received')))); ?></td></tr>
         <tr><td class="label">Delivery Note</td><td><?php echo htmlspecialchars((string)($row['delivery_note'] ?? '')); ?></td></tr>
         <tr><td class="label">Party</td><td><?php echo htmlspecialchars((string)($row['party'] ?? '')); ?></td></tr>
         <tr><td class="label">Location</td><td><?php echo htmlspecialchars((string)($row['location'] ?? '')); ?></td></tr>
