@@ -6,6 +6,63 @@ auth_require_login($conn);
 auth_require_module_access('haleeb');
 $isSuperAdmin = auth_is_super_admin();
 $today = date('Y-m-d');
+$flashSuccess = '';
+$flashError = '';
+$flashOld = [];
+$resultFlag = isset($_GET['r']) ? strtolower(trim((string)$_GET['r'])) : '';
+if(isset($_SESSION['add_haleeb_success'])){
+    $flashSuccess = trim((string)$_SESSION['add_haleeb_success']);
+    unset($_SESSION['add_haleeb_success']);
+}
+if(isset($_SESSION['add_haleeb_error'])){
+    $flashError = (string)$_SESSION['add_haleeb_error'];
+    unset($_SESSION['add_haleeb_error']);
+}
+if(isset($_SESSION['add_haleeb_old']) && is_array($_SESSION['add_haleeb_old'])){
+    $flashOld = $_SESSION['add_haleeb_old'];
+    unset($_SESSION['add_haleeb_old']);
+}
+
+$formErrorMessage = '';
+if($flashError === 'save_failed'){
+    $formErrorMessage = 'Haleeb bilty save nahi ho saki. Dobara try karein.';
+}
+$centerNoticeType = '';
+$centerNoticeTitle = '';
+$centerNoticeMessage = '';
+if($flashSuccess !== ''){
+    $centerNoticeType = 'success';
+    $centerNoticeTitle = 'Saved';
+    $centerNoticeMessage = $flashSuccess;
+} elseif($formErrorMessage !== ''){
+    $centerNoticeType = 'error';
+    $centerNoticeTitle = 'Error';
+    $centerNoticeMessage = $formErrorMessage;
+} elseif($resultFlag === 'success'){
+    $centerNoticeType = 'success';
+    $centerNoticeTitle = 'Saved';
+    $centerNoticeMessage = 'Haleeb bilty save ho gai.';
+} elseif($resultFlag === 'error'){
+    $centerNoticeType = 'error';
+    $centerNoticeTitle = 'Error';
+    $centerNoticeMessage = 'Request complete nahi ho saki.';
+}
+$formValues = [
+    'date' => isset($flashOld['date']) && trim((string)$flashOld['date']) !== '' ? trim((string)$flashOld['date']) : $today,
+    'vehicle' => isset($flashOld['vehicle']) ? trim((string)$flashOld['vehicle']) : '',
+    'vehicle_type' => isset($flashOld['vehicle_type']) ? trim((string)$flashOld['vehicle_type']) : '',
+    'driver_phone_no' => isset($flashOld['driver_phone_no']) ? trim((string)$flashOld['driver_phone_no']) : '',
+    'party' => isset($flashOld['party']) ? trim((string)$flashOld['party']) : '',
+    'location' => isset($flashOld['location']) ? trim((string)$flashOld['location']) : '',
+    'delivery_status' => isset($flashOld['delivery_status']) ? strtolower(trim((string)$flashOld['delivery_status'])) : 'not_received',
+    'token_no' => isset($flashOld['token_no']) ? trim((string)$flashOld['token_no']) : '',
+    'delivery_note' => isset($flashOld['delivery_note']) ? trim((string)$flashOld['delivery_note']) : '',
+    'tender' => isset($flashOld['tender']) ? trim((string)$flashOld['tender']) : '0',
+    'freight' => isset($flashOld['freight']) ? trim((string)$flashOld['freight']) : '',
+];
+if(!in_array($formValues['delivery_status'], ['received', 'not_received'], true)){
+    $formValues['delivery_status'] = 'not_received';
+}
 
 function normalize_lookup_token($v){
     $v = strtolower(trim((string)$v));
@@ -114,6 +171,19 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
   .form-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--accent); }
 
   .form-title { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 28px; }
+  .status-notice { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: none; align-items: center; justify-content: center; padding: 18px; z-index: 500; }
+  .status-notice.show { display: flex; }
+  .status-card { width: min(360px, 100%); background: var(--surface); border: 1px solid var(--border); padding: 18px 16px 16px; text-align: center; box-shadow: 0 12px 32px rgba(0,0,0,0.35); }
+  .status-icon { width: 64px; height: 64px; border-radius: 50%; margin: 0 auto 12px; position: relative; }
+  .status-icon::before, .status-icon::after { content: ''; position: absolute; background: #fff; border-radius: 2px; }
+  .status-notice.success .status-icon { background: var(--green); }
+  .status-notice.success .status-icon::before { width: 10px; height: 4px; transform: rotate(45deg); left: 16px; top: 34px; }
+  .status-notice.success .status-icon::after { width: 24px; height: 4px; transform: rotate(-45deg); left: 23px; top: 29px; }
+  .status-notice.error .status-icon { background: var(--red); }
+  .status-notice.error .status-icon::before { width: 30px; height: 4px; transform: rotate(45deg); left: 17px; top: 30px; }
+  .status-notice.error .status-icon::after { width: 30px; height: 4px; transform: rotate(-45deg); left: 17px; top: 30px; }
+  .status-title { font-size: 18px; font-weight: 800; margin-bottom: 6px; }
+  .status-text { font-size: 13px; color: var(--text); line-height: 1.45; word-break: break-word; }
 
   .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px 20px; }
   .field.span-2 { grid-column: 1 / -1; }
@@ -178,6 +248,16 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
   <a class="nav-btn" href="haleeb.php">Back</a>
 </div>
 
+<?php if($centerNoticeType !== '' && $centerNoticeMessage !== ''): ?>
+<div class="status-notice <?php echo htmlspecialchars($centerNoticeType); ?>" id="status_notice">
+  <div class="status-card">
+    <div class="status-icon" aria-hidden="true"></div>
+    <div class="status-title"><?php echo htmlspecialchars($centerNoticeTitle); ?></div>
+    <div class="status-text"><?php echo htmlspecialchars($centerNoticeMessage); ?></div>
+  </div>
+</div>
+<?php endif; ?>
+
 <div class="main">
   <div class="form-card">
     <div class="form-title">Add Haleeb Bilty</div>
@@ -185,42 +265,42 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
       <div class="grid">
         <div class="field">
           <label for="date">Date</label>
-          <input id="date" type="date" name="date" value="<?php echo $today; ?>" required>
+          <input id="date" type="date" name="date" value="<?php echo htmlspecialchars($formValues['date']); ?>" required>
         </div>
         <div class="field">
           <label for="vehicle">Vehicle</label>
-          <input id="vehicle" name="vehicle" placeholder="Vehicle number" required>
+          <input id="vehicle" name="vehicle" placeholder="Vehicle number" value="<?php echo htmlspecialchars($formValues['vehicle']); ?>" required>
         </div>
         <div class="field">
           <label for="vehicle_type">Vehicle Type</label>
-          <input id="vehicle_type" name="vehicle_type" placeholder="Truck" list="vehicle_type_list" required>
+          <input id="vehicle_type" name="vehicle_type" placeholder="Truck" list="vehicle_type_list" value="<?php echo htmlspecialchars($formValues['vehicle_type']); ?>" required>
         </div>
         <div class="field">
           <label for="driver_phone_no">Driver Phone No</label>
-          <input id="driver_phone_no" name="driver_phone_no" placeholder="03xx-xxxxxxx" inputmode="tel">
+          <input id="driver_phone_no" name="driver_phone_no" placeholder="03xx-xxxxxxx" value="<?php echo htmlspecialchars($formValues['driver_phone_no']); ?>" inputmode="tel">
         </div>
         <div class="field">
           <label for="party">Party</label>
-          <input id="party" name="party" placeholder="Party name">
+          <input id="party" name="party" placeholder="Party name" value="<?php echo htmlspecialchars($formValues['party']); ?>">
         </div>
         <div class="field">
           <label for="location">Location</label>
-          <input id="location" name="location" placeholder="Location" list="location_list" required>
+          <input id="location" name="location" placeholder="Location" list="location_list" value="<?php echo htmlspecialchars($formValues['location']); ?>" required>
         </div>
         <div class="field">
           <label for="delivery_status">Delivery Status</label>
-          <select id="delivery_status" name="delivery_status" class="status-tag is-not-received" required>
-            <option value="not_received" selected>Not Received</option>
-            <option value="received">Received</option>
+          <select id="delivery_status" name="delivery_status" class="status-tag <?php echo $formValues['delivery_status'] === 'received' ? 'is-received' : 'is-not-received'; ?>" required>
+            <option value="not_received" <?php echo $formValues['delivery_status'] !== 'received' ? 'selected' : ''; ?>>Not Received</option>
+            <option value="received" <?php echo $formValues['delivery_status'] === 'received' ? 'selected' : ''; ?>>Received</option>
           </select>
         </div>
         <div class="field">
           <label for="token_no">Token No</label>
-          <input id="token_no" name="token_no" placeholder="Token number" required>
+          <input id="token_no" name="token_no" placeholder="Token number" value="<?php echo htmlspecialchars($formValues['token_no']); ?>" required>
         </div>
         <div class="field">
           <label for="delivery_note">Delivery Note</label>
-          <input id="delivery_note" name="delivery_note" placeholder="Delivery note number" required>
+          <input id="delivery_note" name="delivery_note" placeholder="Delivery note number" value="<?php echo htmlspecialchars($formValues['delivery_note']); ?>" required>
         </div>
         <div class="field span-2">
           <label>Stops</label>
@@ -249,14 +329,14 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
         <?php if($isSuperAdmin): ?>
           <div class="field">
             <label for="tender">Tender</label>
-            <input id="tender" type="number" name="tender" placeholder="0" min="0" step="any" required>
+            <input id="tender" type="number" name="tender" placeholder="0" value="<?php echo htmlspecialchars($formValues['tender']); ?>" min="0" step="any" required>
           </div>
         <?php else: ?>
-          <input id="tender" type="hidden" name="tender" value="0">
+          <input id="tender" type="hidden" name="tender" value="<?php echo htmlspecialchars($formValues['tender']); ?>">
         <?php endif; ?>
         <div class="field">
           <label for="freight">Freight</label>
-          <input id="freight" type="number" name="freight" placeholder="0" min="0" step="any" required>
+          <input id="freight" type="number" name="freight" placeholder="0" value="<?php echo htmlspecialchars($formValues['freight']); ?>" min="0" step="any" required>
         </div>
       </div>
       <div class="form-footer">
@@ -502,6 +582,24 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
   syncDeliveryStatusTag();
 })();
 </script>
+<?php if($centerNoticeType !== '' && $centerNoticeMessage !== ''): ?>
+<script>
+window.addEventListener('DOMContentLoaded', function(){
+  var notice = document.getElementById('status_notice');
+  if(!notice) return;
+  notice.classList.add('show');
+
+  var hideTimer = setTimeout(function(){
+    notice.classList.remove('show');
+  }, 2200);
+
+  notice.addEventListener('click', function(){
+    clearTimeout(hideTimer);
+    notice.classList.remove('show');
+  });
+});
+</script>
+<?php endif; ?>
 </body>
 </html>
 

@@ -208,5 +208,27 @@ try{
     $newId = 0;
 }
 
-header("location:haleeb.php");
+if($ok){
+    $savedRef = $tn !== '' ? $tn : ('#' . $newId);
+    $_SESSION['add_haleeb_success'] = 'Haleeb bilty ' . $savedRef . ' save ho gai.';
+    header("location:add_haleeb_bilty.php");
+    exit();
+}
+
+$_SESSION['add_haleeb_error'] = 'save_failed';
+$_SESSION['add_haleeb_old'] = [
+    'date' => isset($_POST['date']) ? (string)$_POST['date'] : $d,
+    'vehicle' => isset($_POST['vehicle']) ? (string)$_POST['vehicle'] : $v,
+    'vehicle_type' => isset($_POST['vehicle_type']) ? (string)$_POST['vehicle_type'] : $vt,
+    'driver_phone_no' => isset($_POST['driver_phone_no']) ? (string)$_POST['driver_phone_no'] : $driverPhoneNo,
+    'party' => isset($_POST['party']) ? (string)$_POST['party'] : $party,
+    'location' => isset($_POST['location']) ? (string)$_POST['location'] : $l,
+    'delivery_status' => isset($_POST['delivery_status']) ? (string)$_POST['delivery_status'] : $deliveryStatus,
+    'token_no' => isset($_POST['token_no']) ? (string)$_POST['token_no'] : $tn,
+    'delivery_note' => isset($_POST['delivery_note']) ? (string)$_POST['delivery_note'] : $dn,
+    'tender' => isset($_POST['tender']) ? (string)$_POST['tender'] : (string)$t,
+    'freight' => isset($_POST['freight']) ? (string)$_POST['freight'] : (string)$f
+];
+header("location:add_haleeb_bilty.php");
+exit();
 ?>
