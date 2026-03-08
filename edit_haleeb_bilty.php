@@ -21,6 +21,11 @@ function normalize_lookup_token($v){
     $v = preg_replace('/\s+/', ' ', $v);
     return $v;
 }
+function latest_haleeb_rate_list_name_local($conn){
+    $row = $conn->query("SELECT COALESCE(NULLIF(rate_list_name,''), 'Base List') AS list_name FROM haleeb_image_processed_rates ORDER BY id DESC LIMIT 1")->fetch_assoc();
+    $name = trim((string)($row['list_name'] ?? 'Base List'));
+    return $name === '' ? 'Base List' : $name;
+}
 
 function parse_stops_counts($raw){
     $same = 0;
@@ -193,9 +198,13 @@ $initialOutCityStops = $parsedStops['out_city'];
 $jsonStopsInitial = json_encode(['same_city' => $initialSameCityStops, 'out_city' => $initialOutCityStops], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 if($jsonStopsInitial === false) $jsonStopsInitial = '{"same_city":0,"out_city":0}';
 
+$currentRateListName = latest_haleeb_rate_list_name_local($conn);
 $locationOptions = [];
 $locationSeen = [];
-$locRes = $conn->query("SELECT DISTINCT custom_to FROM haleeb_image_processed_rates WHERE custom_to IS NOT NULL AND custom_to <> '' ORDER BY custom_to ASC");
+$locStmt = $conn->prepare("SELECT DISTINCT custom_to FROM haleeb_image_processed_rates WHERE COALESCE(NULLIF(rate_list_name,''), 'Base List')=? AND custom_to IS NOT NULL AND custom_to <> '' ORDER BY custom_to ASC");
+$locStmt->bind_param("s", $currentRateListName);
+$locStmt->execute();
+$locRes = $locStmt->get_result();
 while($locRes && $lrow = $locRes->fetch_assoc()){
     $location = trim((string)$lrow['custom_to']);
     if($location === '') continue;
@@ -204,6 +213,7 @@ while($locRes && $lrow = $locRes->fetch_assoc()){
     $locationSeen[$locKey] = true;
     $locationOptions[] = $location;
 }
+$locStmt->close();
 
 $vehicleTypeOptions = [];
 $vehicleTypeLookup = [];
@@ -229,7 +239,10 @@ while($vtRes && $vrow = $vtRes->fetch_assoc()){
 
 $rateLookup = [];
 if(count($vehicleColumns) > 0){
-  $rateRes = $conn->query("SELECT id, custom_to, custom_mazda, custom_14ft, custom_20ft, custom_40ft_22t, custom_40ft_28t, custom_40ft_32t, extra_data FROM haleeb_image_processed_rates ORDER BY id DESC");
+  $rateStmt = $conn->prepare("SELECT id, custom_to, custom_mazda, custom_14ft, custom_20ft, custom_40ft_22t, custom_40ft_28t, custom_40ft_32t, extra_data FROM haleeb_image_processed_rates WHERE COALESCE(NULLIF(rate_list_name,''), 'Base List')=? ORDER BY id DESC");
+  $rateStmt->bind_param("s", $currentRateListName);
+  $rateStmt->execute();
+  $rateRes = $rateStmt->get_result();
   while($rateRes && $rateRow = $rateRes->fetch_assoc()){
     $location = trim((string)$rateRow['custom_to']);
     if($location === '') continue;
@@ -257,6 +270,7 @@ if(count($vehicleColumns) > 0){
 
     $rateLookup[$locKey] = $ratesForLocation;
   }
+  $rateStmt->close();
 }
 
 $jsonVehicleTypeLookup = json_encode($vehicleTypeLookup, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

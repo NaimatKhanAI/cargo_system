@@ -71,6 +71,11 @@ function normalize_lookup_token_local($v){
     $v = preg_replace('/\s+/', ' ', $v);
     return $v;
 }
+function latest_haleeb_rate_list_name_local($conn){
+    $row = $conn->query("SELECT COALESCE(NULLIF(rate_list_name,''), 'Base List') AS list_name FROM haleeb_image_processed_rates ORDER BY id DESC LIMIT 1")->fetch_assoc();
+    $name = trim((string)($row['list_name'] ?? 'Base List'));
+    return $name === '' ? 'Base List' : $name;
+}
 
 function parse_rate_number_local($raw){
     $cleaned = str_replace(',', '', (string)$raw);
@@ -88,6 +93,7 @@ function resolve_haleeb_tender_rate_local($conn, $location, $vehicleType){
     if($location === '') return null;
     $vehicleTypeKey = normalize_lookup_token_local($vehicleType);
     if($vehicleTypeKey === '') return null;
+    $currentRateListName = latest_haleeb_rate_list_name_local($conn);
 
     $vehicleTypeLookup = [];
     $vtRes = $conn->query("SELECT column_key, column_label FROM haleeb_rate_list_columns WHERE is_deleted=0 AND column_key LIKE 'custom_%' ORDER BY display_order ASC, id ASC");
@@ -102,9 +108,9 @@ function resolve_haleeb_tender_rate_local($conn, $location, $vehicleType){
     $targetColumn = isset($vehicleTypeLookup[$vehicleTypeKey]) ? (string)$vehicleTypeLookup[$vehicleTypeKey] : '';
     if($targetColumn === '') return null;
 
-    $rateStmt = $conn->prepare("SELECT custom_mazda, custom_14ft, custom_20ft, custom_40ft_22t, custom_40ft_28t, custom_40ft_32t, extra_data FROM haleeb_image_processed_rates WHERE custom_to=? ORDER BY id DESC LIMIT 1");
+    $rateStmt = $conn->prepare("SELECT custom_mazda, custom_14ft, custom_20ft, custom_40ft_22t, custom_40ft_28t, custom_40ft_32t, extra_data FROM haleeb_image_processed_rates WHERE COALESCE(NULLIF(rate_list_name,''), 'Base List')=? AND custom_to=? ORDER BY id DESC LIMIT 1");
     if(!$rateStmt) return null;
-    $rateStmt->bind_param("s", $location);
+    $rateStmt->bind_param("ss", $currentRateListName, $location);
     $rateStmt->execute();
     $rateRow = $rateStmt->get_result()->fetch_assoc();
     $rateStmt->close();

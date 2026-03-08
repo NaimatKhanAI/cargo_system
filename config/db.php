@@ -342,6 +342,7 @@ $conn->query("CREATE TABLE IF NOT EXISTS haleeb_image_processed_rates(
 id INT AUTO_INCREMENT PRIMARY KEY,
 source_file VARCHAR(255),
 source_image_path VARCHAR(255),
+rate_list_name VARCHAR(255) DEFAULT 'Base List',
 sr_no VARCHAR(50),
 station_english VARCHAR(255),
 station_urdu VARCHAR(255),
@@ -355,6 +356,12 @@ $haleebSourceImgColCheck = $conn->query("SHOW COLUMNS FROM haleeb_image_processe
 if($haleebSourceImgColCheck && $haleebSourceImgColCheck->num_rows === 0){
 $conn->query("ALTER TABLE haleeb_image_processed_rates ADD source_image_path VARCHAR(255) AFTER source_file");
 }
+
+$haleebListNameColCheck = $conn->query("SHOW COLUMNS FROM haleeb_image_processed_rates LIKE 'rate_list_name'");
+if($haleebListNameColCheck && $haleebListNameColCheck->num_rows === 0){
+$conn->query("ALTER TABLE haleeb_image_processed_rates ADD rate_list_name VARCHAR(255) DEFAULT 'Base List' AFTER source_image_path");
+}
+$conn->query("UPDATE haleeb_image_processed_rates SET rate_list_name='Base List' WHERE rate_list_name IS NULL OR TRIM(rate_list_name)=''");
 
 $haleebExtraDataColCheck = $conn->query("SHOW COLUMNS FROM haleeb_image_processed_rates LIKE 'extra_data'");
 if($haleebExtraDataColCheck && $haleebExtraDataColCheck->num_rows === 0){
