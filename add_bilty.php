@@ -197,6 +197,8 @@ if($flashError === 'duplicate_bilty_same_date'){
     if($dupNo !== '' && $dupDate !== ''){
         $formErrorMessage .= ' Bilty No: ' . $dupNo . ' | Date: ' . $dupDate;
     }
+} elseif($flashError === 'invalid_amounts'){
+    $formErrorMessage = 'Tender aur Freight dono 0 se baray hone chahiye.';
 } elseif($flashError === 'save_failed'){
     $formErrorMessage = 'Bilty save nahi ho saki. Dobara try karein.';
 }
@@ -414,7 +416,7 @@ if(!in_array($formValues['freight_payment_type'], ['to_pay', 'paid'], true)){
         </div>
         <div class="field">
           <label for="freight">Freight</label>
-          <input id="freight" type="number" name="freight" placeholder="0" min="0" step="any" value="<?php echo htmlspecialchars($formValues['freight']); ?>" required>
+          <input id="freight" type="number" name="freight" placeholder="0" min="0.001" step="any" value="<?php echo htmlspecialchars($formValues['freight']); ?>" required>
         </div>
         <div class="field">
           <label for="sr_no">SR No</label>
@@ -427,7 +429,7 @@ if(!in_array($formValues['freight_payment_type'], ['to_pay', 'paid'], true)){
         <?php if($isSuperAdmin): ?>
           <div class="field">
             <label for="tender">Tender</label>
-            <input id="tender" type="number" name="tender" placeholder="0" min="0" step="any" value="<?php echo htmlspecialchars($formValues['tender']); ?>" required>
+            <input id="tender" type="number" name="tender" placeholder="0" min="0.001" step="any" value="<?php echo htmlspecialchars($formValues['tender']); ?>" required>
             <input id="tender_raw" type="hidden" name="tender_raw" value="<?php echo htmlspecialchars($formValues['tender_raw']); ?>">
             <div class="field-meta" id="tender_discount_note"></div>
           </div>

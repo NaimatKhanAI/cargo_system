@@ -71,6 +71,31 @@ $scaledTender = ($bags > 0) ? (($baseTender / $baseBags) * $bags) : 0.0;
 $t = ($bags > 300) ? round($scaledTender * 0.90, 3) : round($scaledTender, 3);
 $totalFreight = max(0, $f - $commission);
 
+if($f <= 0 || $t <= 0){
+    $_SESSION['add_bilty_error'] = 'invalid_amounts';
+    $_SESSION['add_bilty_old'] = [
+        'sr_no' => $sr,
+        'date' => $d,
+        'vehicle' => $v,
+        'bilty' => $b,
+        'party' => $party,
+        'location' => $l,
+        'bags' => isset($_POST['bags']) ? (string)$_POST['bags'] : '0',
+        'freight' => isset($_POST['freight']) ? (string)$_POST['freight'] : '0',
+        'commission' => isset($_POST['commission']) ? (string)$_POST['commission'] : '0',
+        'freight_payment_type' => $freightPaymentType,
+        'tender' => isset($_POST['tender']) ? (string)$_POST['tender'] : '0',
+        'tender_raw' => isset($_POST['tender_raw']) ? (string)$_POST['tender_raw'] : '',
+        'feed_portion' => $feedPortion
+    ];
+    $redirectInvalid = "add_bilty.php";
+    if(auth_is_super_admin() && $feedPortion !== ''){
+        $redirectInvalid .= "?portion=" . rawurlencode($feedPortion);
+    }
+    header("location:" . $redirectInvalid);
+    exit();
+}
+
 $p = $t - $totalFreight;
 $addedByUserId = $currentUserId > 0 ? $currentUserId : null;
 

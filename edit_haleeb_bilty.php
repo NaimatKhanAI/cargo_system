@@ -11,6 +11,10 @@ if($id <= 0){ header("location:haleeb.php"); exit(); }
 $isSuperAdmin = auth_is_super_admin();
 $linkedRequestId = isset($_GET['request_id']) ? (int)$_GET['request_id'] : 0;
 $linkedRequest = null;
+$editErrorMessage = '';
+if(isset($_GET['err']) && $_GET['err'] === 'invalid_amounts'){
+    $editErrorMessage = 'Tender aur Freight dono 0 se baray hone chahiye.';
+}
 
 function normalize_lookup_token($v){
     $v = strtolower(trim((string)$v));
@@ -79,6 +83,15 @@ if(isset($_POST['update'])){
     $commission = 0.0;
     $freightPaymentType = 'paid';
     $totalFreight = max(0, $f);
+    if($f <= 0 || $t <= 0){
+        $redirectInvalid = "edit_haleeb_bilty.php?id=" . (int)$id;
+        if($linkedRequestId > 0){
+            $redirectInvalid .= "&request_id=" . (int)$linkedRequestId;
+        }
+        $redirectInvalid .= "&err=invalid_amounts";
+        header("location:" . $redirectInvalid);
+        exit();
+    }
     if(!auth_can_direct_modify('haleeb')){
         $payload = [
             'date' => $d,
@@ -351,6 +364,9 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
   <div class="form-card">
     <div class="form-title">Edit Haleeb Bilty</div>
     <div class="form-sub">Token: <?php echo htmlspecialchars($row['token_no']); ?> &nbsp;·&nbsp; ID: <?php echo $id; ?></div>
+    <?php if($editErrorMessage !== ''): ?>
+      <div class="form-sub" style="color:#fca5a5;"><?php echo htmlspecialchars($editErrorMessage); ?></div>
+    <?php endif; ?>
     <?php if($linkedRequest): ?>
       <div class="form-sub">Pending Request: #<?php echo (int)$linkedRequest['id']; ?> (values prefilled)</div>
     <?php endif; ?>
@@ -420,14 +436,14 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
         <?php if($isSuperAdmin): ?>
           <div class="field">
             <label for="tender">Tender</label>
-            <input id="tender" type="number" name="tender" value="<?php echo htmlspecialchars($row['tender']); ?>" min="0" step="any" required>
+            <input id="tender" type="number" name="tender" value="<?php echo htmlspecialchars($row['tender']); ?>" min="0.001" step="any" required>
           </div>
         <?php else: ?>
           <input id="tender" type="hidden" name="tender" value="<?php echo htmlspecialchars($row['tender']); ?>">
         <?php endif; ?>
         <div class="field">
           <label for="freight">Freight</label>
-          <input id="freight" type="number" name="freight" value="<?php echo htmlspecialchars($row['freight']); ?>" min="0" step="any" required>
+          <input id="freight" type="number" name="freight" value="<?php echo htmlspecialchars($row['freight']); ?>" min="0.001" step="any" required>
         </div>
         <input id="commission" type="hidden" name="commission" value="0">
       </div>
@@ -619,4 +635,5 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
 </script>
 </body>
 </html>
+
 

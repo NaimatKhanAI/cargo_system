@@ -13,6 +13,10 @@ $isSuperAdmin = auth_is_super_admin();
 $userFeedPortion = auth_get_feed_portion();
 $linkedRequestId = isset($_GET['request_id']) ? (int)$_GET['request_id'] : 0;
 $linkedRequest = null;
+$editErrorMessage = '';
+if(isset($_GET['err']) && $_GET['err'] === 'invalid_amounts'){
+    $editErrorMessage = 'Tender aur Freight dono 0 se baray hone chahiye.';
+}
 
 if($isSuperAdmin){
     $rowStmt = $conn->prepare("SELECT * FROM bilty WHERE id=? LIMIT 1");
@@ -80,6 +84,15 @@ if(isset($_POST['update'])){
     $scaledTender = ($bags > 0) ? (($baseTender / $baseBags) * $bags) : 0.0;
     $t = ($bags > 300) ? round($scaledTender * 0.90, 3) : round($scaledTender, 3);
     $totalFreight = max(0, $f - $commission);
+    if($f <= 0 || $t <= 0){
+        $redirectInvalid = "edit.php?id=" . (int)$id;
+        if($linkedRequestId > 0){
+            $redirectInvalid .= "&request_id=" . (int)$linkedRequestId;
+        }
+        $redirectInvalid .= "&err=invalid_amounts";
+        header("location:" . $redirectInvalid);
+        exit();
+    }
     if(!auth_can_direct_modify('feed')){
         $payload = [
             'sr_no' => $sr,
@@ -242,6 +255,9 @@ if(isset($_POST['update'])){
     <div class="form-title">Edit Bilty</div>
     <div class="form-sub">Bilty: <?php echo htmlspecialchars($row['bilty_no']); ?> &nbsp;·&nbsp; ID: <?php echo $id; ?></div>
     <div class="form-sub">Feed Section: <?php echo htmlspecialchars($editFeedPortionLabel); ?></div>
+    <?php if($editErrorMessage !== ''): ?>
+      <div class="form-sub" style="color:#fca5a5;"><?php echo htmlspecialchars($editErrorMessage); ?></div>
+    <?php endif; ?>
     <?php if($linkedRequest): ?>
       <div class="form-sub">Pending Request: #<?php echo (int)$linkedRequest['id']; ?> (values prefilled)</div>
     <?php endif; ?>
@@ -279,7 +295,7 @@ if(isset($_POST['update'])){
         </div>
         <div class="field">
           <label for="freight">Freight</label>
-          <input id="freight" type="number" name="freight" value="<?php echo htmlspecialchars($row['freight']); ?>" min="0" step="any" required>
+          <input id="freight" type="number" name="freight" value="<?php echo htmlspecialchars($row['freight']); ?>" min="0.001" step="any" required>
         </div>
         <div class="field">
           <label for="commission">Commission</label>
@@ -300,7 +316,7 @@ if(isset($_POST['update'])){
         <?php if($isSuperAdmin): ?>
           <div class="field">
             <label for="tender">Tender</label>
-            <input id="tender" type="number" name="tender" value="<?php echo htmlspecialchars($row['tender']); ?>" min="0" step="any" required>
+            <input id="tender" type="number" name="tender" value="<?php echo htmlspecialchars($row['tender']); ?>" min="0.001" step="any" required>
             <input id="tender_raw" type="hidden" name="tender_raw" value="">
             <div class="field-meta" id="tender_discount_note"></div>
           </div>

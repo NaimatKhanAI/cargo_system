@@ -24,7 +24,9 @@ if(isset($_SESSION['add_haleeb_old']) && is_array($_SESSION['add_haleeb_old'])){
 }
 
 $formErrorMessage = '';
-if($flashError === 'save_failed'){
+if($flashError === 'invalid_amounts'){
+    $formErrorMessage = 'Tender aur Freight dono 0 se baray hone chahiye.';
+} elseif($flashError === 'save_failed'){
     $formErrorMessage = 'Haleeb bilty save nahi ho saki. Dobara try karein.';
 }
 $centerNoticeType = '';
@@ -329,14 +331,14 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
         <?php if($isSuperAdmin): ?>
           <div class="field">
             <label for="tender">Tender</label>
-            <input id="tender" type="number" name="tender" placeholder="0" value="<?php echo htmlspecialchars($formValues['tender']); ?>" min="0" step="any" required>
+            <input id="tender" type="number" name="tender" placeholder="0" value="<?php echo htmlspecialchars($formValues['tender']); ?>" min="0.001" step="any" required>
           </div>
         <?php else: ?>
           <input id="tender" type="hidden" name="tender" value="<?php echo htmlspecialchars($formValues['tender']); ?>">
         <?php endif; ?>
         <div class="field">
           <label for="freight">Freight</label>
-          <input id="freight" type="number" name="freight" placeholder="0" value="<?php echo htmlspecialchars($formValues['freight']); ?>" min="0" step="any" required>
+          <input id="freight" type="number" name="freight" placeholder="0" value="<?php echo htmlspecialchars($formValues['freight']); ?>" min="0.001" step="any" required>
         </div>
       </div>
       <div class="form-footer">

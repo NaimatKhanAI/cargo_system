@@ -407,6 +407,10 @@ function apply_change_request_local($conn, $requestRow, &$error){
         $f = isset($payload['freight']) ? max(0, round((float)$payload['freight'], 3)) : 0.0;
         $commission = isset($payload['commission']) ? max(0, round((float)$payload['commission'], 3)) : 0.0;
         $t = isset($payload['tender']) ? max(0, round((float)$payload['tender'], 3)) : 0.0;
+        if($f <= 0 || $t <= 0){
+            $error = 'Tender and freight must be greater than zero.';
+            return false;
+        }
         $totalFreight = max(0, $f - $commission);
         $p = $t - $totalFreight;
         $stmt = $conn->prepare("UPDATE bilty SET sr_no=?, date=?, vehicle=?, bilty_no=?, party=?, location=?, bags=?, freight=?, commission=?, original_freight=?, tender=?, profit=? WHERE id=?");
@@ -438,6 +442,10 @@ function apply_change_request_local($conn, $requestRow, &$error){
         $f = isset($payload['freight']) ? max(0, round((float)$payload['freight'], 3)) : 0.0;
         $commission = 0.0;
         $t = isset($payload['tender']) ? max(0, round((float)$payload['tender'], 3)) : 0.0;
+        if($f <= 0 || $t <= 0){
+            $error = 'Tender and freight must be greater than zero.';
+            return false;
+        }
         $totalFreight = max(0, $f);
         $p = $t - $totalFreight;
         $stmt = $conn->prepare("UPDATE haleeb_bilty SET date=?, vehicle=?, vehicle_type=?, driver_phone_no=?, delivery_status=?, delivery_note=?, token_no=?, party=?, location=?, stops=?, freight=?, commission=?, tender=?, profit=? WHERE id=?");
