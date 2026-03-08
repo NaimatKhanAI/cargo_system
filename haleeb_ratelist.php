@@ -93,7 +93,7 @@ function latest_haleeb_rate_list_name_local($conn){
   return normalize_rate_list_name_local($row['list_name'] ?? 'Base List');
 }
 
-$msg = ''; $err = ''; $editingId = 0; $openAddRow = false; $openRateChange = false; $openTenderSync = false; $rateChangeMode = 'increment'; $rateChangePercent = ''; $rateChangeLabel = ''; $rateChangePetrolOld = ''; $rateChangePetrolNew = ''; $rateChangeSourceList = ''; $tenderSyncDateFrom = ''; $tenderSyncDateTo = '';
+$msg = ''; $err = ''; $editingId = 0; $openAddRow = false; $openRateChange = false; $openTenderSync = false; $rateChangeMode = 'increment'; $rateChangePercent = ''; $rateChangeLabel = ''; $rateChangePetrolOld = ''; $rateChangePetrolNew = ''; $rateChangeSourceList = ''; $tenderSyncDateFrom = ''; $tenderSyncDateTo = ''; $tenderSyncSourceList = '';
 
 if(!$canDirectModify){
   $blockedPostActions = ['add_column', 'apply_rate_change', 'apply_haleeb_tender_sync', 'save_columns', 'delete_column', 'delete_rate', 'update_rate', 'add_rate'];
@@ -258,13 +258,33 @@ if(isset($_POST['apply_haleeb_tender_sync'])){
   $openTenderSync = true;
   $tenderSyncDateFrom = isset($_POST['ts_date_from']) ? trim((string)$_POST['ts_date_from']) : '';
   $tenderSyncDateTo = isset($_POST['ts_date_to']) ? trim((string)$_POST['ts_date_to']) : '';
+  $tenderSyncSourceList = normalize_rate_list_name_local(isset($_POST['ts_source_list']) ? (string)$_POST['ts_source_list'] : '');
 
   if(!is_valid_ymd_date_local($tenderSyncDateFrom) || !is_valid_ymd_date_local($tenderSyncDateTo)){
     $err = 'Tender Sync: valid From and To dates are required.';
   } elseif($tenderSyncDateFrom > $tenderSyncDateTo){
     $err = 'Tender Sync: From date must be less than or equal to To date.';
   } else {
-    $syncSourceList = latest_haleeb_rate_list_name_local($conn);
+    $listRows = load_haleeb_rate_lists_local($conn);
+    $listLookup = [];
+    foreach($listRows as $listRow){
+      $name = normalize_rate_list_name_local($listRow['list_name']);
+      $listLookup[strtolower($name)] = $name;
+    }
+    if($tenderSyncSourceList === ''){
+      $tenderSyncSourceList = latest_haleeb_rate_list_name_local($conn);
+    }
+    $syncLookupKey = strtolower($tenderSyncSourceList);
+    if(isset($listLookup[$syncLookupKey])){
+      $tenderSyncSourceList = $listLookup[$syncLookupKey];
+    }
+    if($tenderSyncSourceList === '' || !isset($listLookup[strtolower($tenderSyncSourceList)])){
+      $err = 'Tender Sync: selected source list not found.';
+    }
+    $syncSourceList = $tenderSyncSourceList;
+    if($err !== ''){
+      // Stop processing if list is invalid.
+    } else {
     $vehicleTypeLookup = [];
     $vehicleKeys = [];
     $vtRes = $conn->query("SELECT column_key, column_label FROM haleeb_rate_list_columns WHERE is_deleted=0 AND column_key LIKE 'custom_%' ORDER BY display_order ASC, id ASC");
@@ -359,6 +379,7 @@ if(isset($_POST['apply_haleeb_tender_sync'])){
     $fetchStmt->close();
 
     $msg = "Haleeb tender sync complete ({$tenderSyncDateFrom} to {$tenderSyncDateTo}, list: {$syncSourceList}). Updated: {$updatedCount}/{$totalRows}, missing location in rate list: {$missingLocation}, unknown vehicle type: {$missingVehicleType}, rate missing: {$missingRate}, invalid/non-positive rate: {$invalidRate}.";
+    }
   }
 }
 
@@ -696,12 +717,19 @@ while($rowsRes && $rateRow = $rowsRes->fetch_assoc()){
     <div class="panel-body <?php echo $openTenderSync ? 'open' : ''; ?>" id="ts_body">
       <form method="post">
         <div class="add-col-row" style="flex-wrap:wrap;">
+          <select name="ts_source_list" required>
+            <?php foreach($rateListSections as $section): $sectionName = normalize_rate_list_name_local($section['list_name']); ?>
+              <option value="<?php echo htmlspecialchars($sectionName); ?>" <?php echo ($tenderSyncSourceList !== '' ? $tenderSyncSourceList : $latestRateListName) === $sectionName ? 'selected' : ''; ?>>
+                <?php echo htmlspecialchars($sectionName); ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
           <input type="date" name="ts_date_from" value="<?php echo htmlspecialchars($tenderSyncDateFrom); ?>" required>
           <input type="date" name="ts_date_to" value="<?php echo htmlspecialchars($tenderSyncDateTo); ?>" required>
-          <button class="nav-btn primary" type="submit" name="apply_haleeb_tender_sync" onclick="return confirm('Selected date range ki Haleeb bilties ka tender current rate list se update karna hai?')">Sync Tenders</button>
+          <button class="nav-btn primary" type="submit" name="apply_haleeb_tender_sync" onclick="return confirm('Selected date range ki Haleeb bilties ka tender selected rate list se update karna hai?')">Sync Tenders</button>
         </div>
         <div style="font-size:12px;color:var(--muted);">
-          Selected date range ki Haleeb bilties ke tender, current Haleeb rate list ke location + vehicle type match ke mutabiq update honge.
+          Selected date range ki Haleeb bilties ke tender, selected Haleeb rate list ke location + vehicle type match ke mutabiq update honge.
         </div>
       </form>
     </div>
