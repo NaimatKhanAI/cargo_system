@@ -426,18 +426,22 @@ function apply_change_request_local($conn, $requestRow, &$error){
         $d = isset($payload['date']) ? (string)$payload['date'] : date('Y-m-d');
         $v = isset($payload['vehicle']) ? trim((string)$payload['vehicle']) : '';
         $vt = isset($payload['vehicle_type']) ? trim((string)$payload['vehicle_type']) : '';
+        $driverPhoneNo = isset($payload['driver_phone_no']) ? trim((string)$payload['driver_phone_no']) : '';
+        $deliveryStatus = strtolower(trim((string)(isset($payload['delivery_status']) ? $payload['delivery_status'] : 'not_received')));
+        $deliveryStatus = str_replace(['-', ' '], '_', $deliveryStatus);
+        if($deliveryStatus !== 'received' && $deliveryStatus !== 'not_received'){ $deliveryStatus = 'not_received'; }
         $dn = isset($payload['delivery_note']) ? trim((string)$payload['delivery_note']) : '';
         $tn = isset($payload['token_no']) ? trim((string)$payload['token_no']) : '';
         $party = isset($payload['party']) ? trim((string)$payload['party']) : '';
         $l = isset($payload['location']) ? trim((string)$payload['location']) : '';
         $stops = isset($payload['stops']) ? trim((string)$payload['stops']) : '';
         $f = isset($payload['freight']) ? max(0, round((float)$payload['freight'], 3)) : 0.0;
-        $commission = isset($payload['commission']) ? max(0, round((float)$payload['commission'], 3)) : 0.0;
+        $commission = 0.0;
         $t = isset($payload['tender']) ? max(0, round((float)$payload['tender'], 3)) : 0.0;
-        $totalFreight = max(0, $f - $commission);
+        $totalFreight = max(0, $f);
         $p = $t - $totalFreight;
-        $stmt = $conn->prepare("UPDATE haleeb_bilty SET date=?, vehicle=?, vehicle_type=?, delivery_note=?, token_no=?, party=?, location=?, stops=?, freight=?, commission=?, tender=?, profit=? WHERE id=?");
-        $stmt->bind_param("ssssssssddddi", $d, $v, $vt, $dn, $tn, $party, $l, $stops, $f, $commission, $t, $p, $entityId);
+        $stmt = $conn->prepare("UPDATE haleeb_bilty SET date=?, vehicle=?, vehicle_type=?, driver_phone_no=?, delivery_status=?, delivery_note=?, token_no=?, party=?, location=?, stops=?, freight=?, commission=?, tender=?, profit=? WHERE id=?");
+        $stmt->bind_param("ssssssssssddddi", $d, $v, $vt, $driverPhoneNo, $deliveryStatus, $dn, $tn, $party, $l, $stops, $f, $commission, $t, $p, $entityId);
         $ok = $stmt->execute();
         $stmt->close();
         return (bool)$ok;

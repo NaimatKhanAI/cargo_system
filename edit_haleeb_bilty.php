@@ -53,10 +53,20 @@ function encode_stops_counts($same, $out){
     return 'SC:' . max(0, (int)$same) . '|OC:' . max(0, (int)$out);
 }
 
+function normalize_delivery_status_local($raw){
+    $status = strtolower(trim((string)$raw));
+    $status = str_replace(['-', ' '], '_', $status);
+    if($status === 'received') return 'received';
+    if($status === 'not_received') return 'not_received';
+    return 'not_received';
+}
+
 if(isset($_POST['update'])){
     $d  = isset($_POST['date']) ? $_POST['date'] : date('Y-m-d');
     $v  = isset($_POST['vehicle']) ? trim($_POST['vehicle']) : '';
     $vt = isset($_POST['vehicle_type']) ? trim($_POST['vehicle_type']) : '';
+    $driverPhoneNo = isset($_POST['driver_phone_no']) ? trim($_POST['driver_phone_no']) : '';
+    $deliveryStatus = normalize_delivery_status_local(isset($_POST['delivery_status']) ? $_POST['delivery_status'] : 'not_received');
     $dn = isset($_POST['delivery_note']) ? trim($_POST['delivery_note']) : '';
     $tn = isset($_POST['token_no']) ? trim($_POST['token_no']) : '';
     $party = isset($_POST['party']) ? trim($_POST['party']) : '';
@@ -66,21 +76,23 @@ if(isset($_POST['update'])){
     $stops = encode_stops_counts($sameCityCount, $outCityCount);
     $t  = isset($_POST['tender']) ? max(0, round((float)$_POST['tender'], 3)) : 0.0;
     $f  = isset($_POST['freight']) ? max(0, round((float)$_POST['freight'], 3)) : 0.0;
-    $commission = isset($_POST['commission']) ? max(0, round((float)$_POST['commission'], 3)) : 0.0;
+    $commission = 0.0;
     $freightPaymentType = 'paid';
-    $totalFreight = max(0, $f - $commission);
+    $totalFreight = max(0, $f);
     if(!auth_can_direct_modify('haleeb')){
         $payload = [
             'date' => $d,
             'vehicle' => $v,
             'vehicle_type' => $vt,
+            'driver_phone_no' => $driverPhoneNo,
+            'delivery_status' => $deliveryStatus,
             'delivery_note' => $dn,
             'token_no' => $tn,
             'party' => $party,
             'location' => $l,
             'stops' => $stops,
             'freight' => $f,
-            'commission' => $commission,
+            'commission' => 0,
             'tender' => $t
         ];
         $requestId = create_change_request_local($conn, 'haleeb', 'haleeb_bilty', $id, 'haleeb_update', $payload, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0);
@@ -90,9 +102,9 @@ if(isset($_POST['update'])){
         }
     } else {
         $p  = $t - $totalFreight;
-        $oldData = $conn->query("SELECT date, vehicle, vehicle_type, delivery_note, token_no, party, location, stops, freight, commission, tender FROM haleeb_bilty WHERE id=" . (int)$id . " LIMIT 1")->fetch_assoc();
-        $stmt = $conn->prepare("UPDATE haleeb_bilty SET date=?, vehicle=?, vehicle_type=?, delivery_note=?, token_no=?, party=?, location=?, stops=?, freight=?, commission=?, freight_payment_type=?, tender=?, profit=? WHERE id=?");
-        $stmt->bind_param("ssssssssddsddi", $d, $v, $vt, $dn, $tn, $party, $l, $stops, $f, $commission, $freightPaymentType, $t, $p, $id);
+        $oldData = $conn->query("SELECT date, vehicle, vehicle_type, driver_phone_no, delivery_status, delivery_note, token_no, party, location, stops, freight, commission, tender FROM haleeb_bilty WHERE id=" . (int)$id . " LIMIT 1")->fetch_assoc();
+        $stmt = $conn->prepare("UPDATE haleeb_bilty SET date=?, vehicle=?, vehicle_type=?, driver_phone_no=?, delivery_status=?, delivery_note=?, token_no=?, party=?, location=?, stops=?, freight=?, commission=?, freight_payment_type=?, tender=?, profit=? WHERE id=?");
+        $stmt->bind_param("ssssssssssddsddi", $d, $v, $vt, $driverPhoneNo, $deliveryStatus, $dn, $tn, $party, $l, $stops, $f, $commission, $freightPaymentType, $t, $p, $id);
         $stmt->execute(); $stmt->close();
         activity_notify_local(
             $conn,
@@ -107,13 +119,14 @@ if(isset($_POST['update'])){
                     'date' => $d,
                     'vehicle' => $v,
                     'vehicle_type' => $vt,
+                    'driver_phone_no' => $driverPhoneNo,
+                    'delivery_status' => $deliveryStatus,
                     'delivery_note' => $dn,
                     'token_no' => $tn,
                     'party' => $party,
                     'location' => $l,
                     'stops' => $stops,
                     'freight' => $f,
-                    'commission' => $commission,
                     'tender' => $t
                 ]
             ],
@@ -151,7 +164,7 @@ if($linkedRequestId > 0 && auth_can_direct_modify('haleeb')){
         $linkedRequest = $candidate;
         $prefill = request_payload_decode_local(isset($candidate['payload']) ? (string)$candidate['payload'] : '');
         if(count($prefill) > 0){
-            $map = ['date', 'vehicle', 'vehicle_type', 'delivery_note', 'token_no', 'party', 'location', 'stops', 'freight', 'commission', 'tender'];
+            $map = ['date', 'vehicle', 'vehicle_type', 'driver_phone_no', 'delivery_status', 'delivery_note', 'token_no', 'party', 'location', 'stops', 'freight', 'commission', 'tender'];
             foreach($map as $key){
                 if(array_key_exists($key, $prefill)){
                     $row[$key] = $prefill[$key];
@@ -280,6 +293,9 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
   .field input:focus, .field select:focus { outline: none; border-color: var(--accent); }
   .field input::-webkit-calendar-picker-indicator { filter: invert(0.5); cursor: pointer; }
   .field input::placeholder { color: var(--muted); }
+  .field select.status-tag { font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; }
+  .field select.status-tag.is-received { border-color: rgba(34,197,94,0.65); color: #86efac; background: rgba(34,197,94,0.09); }
+  .field select.status-tag.is-not-received { border-color: rgba(239,68,68,0.65); color: #fca5a5; background: rgba(239,68,68,0.09); }
   .stops-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .stop-box { border: 1px solid var(--border); background: var(--bg); padding: 10px; min-height: 92px; }
   .stop-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
@@ -354,12 +370,8 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
           <input id="vehicle_type" name="vehicle_type" value="<?php echo htmlspecialchars($row['vehicle_type']); ?>" list="vehicle_type_list" required>
         </div>
         <div class="field">
-          <label for="delivery_note">Delivery Note</label>
-          <input id="delivery_note" name="delivery_note" value="<?php echo htmlspecialchars($row['delivery_note']); ?>" required>
-        </div>
-        <div class="field">
-          <label for="token_no">Token No</label>
-          <input id="token_no" name="token_no" value="<?php echo htmlspecialchars($row['token_no']); ?>" required>
+          <label for="driver_phone_no">Driver No</label>
+          <input id="driver_phone_no" name="driver_phone_no" value="<?php echo htmlspecialchars((string)($row['driver_phone_no'] ?? '')); ?>" placeholder="03xx-xxxxxxx" inputmode="tel">
         </div>
         <div class="field">
           <label for="party">Party</label>
@@ -368,6 +380,21 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
         <div class="field">
           <label for="location">Location</label>
           <input id="location" name="location" value="<?php echo htmlspecialchars($row['location']); ?>" list="location_list" required>
+        </div>
+        <div class="field">
+          <label for="delivery_status">Delivery Status</label>
+          <select id="delivery_status" name="delivery_status" class="status-tag <?php echo (isset($row['delivery_status']) && strtolower((string)$row['delivery_status']) === 'received') ? 'is-received' : 'is-not-received'; ?>" required>
+            <option value="not_received" <?php echo (!isset($row['delivery_status']) || strtolower((string)$row['delivery_status']) !== 'received') ? 'selected' : ''; ?>>Not Received</option>
+            <option value="received" <?php echo (isset($row['delivery_status']) && strtolower((string)$row['delivery_status']) === 'received') ? 'selected' : ''; ?>>Received</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="token_no">Token No</label>
+          <input id="token_no" name="token_no" value="<?php echo htmlspecialchars($row['token_no']); ?>" required>
+        </div>
+        <div class="field">
+          <label for="delivery_note">Delivery Note</label>
+          <input id="delivery_note" name="delivery_note" value="<?php echo htmlspecialchars($row['delivery_note']); ?>" required>
         </div>
         <div class="field span-2">
           <label>Stops</label>
@@ -402,10 +429,7 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
           <label for="freight">Freight</label>
           <input id="freight" type="number" name="freight" value="<?php echo htmlspecialchars($row['freight']); ?>" min="0" step="any" required>
         </div>
-        <div class="field">
-          <label for="commission">Commission</label>
-          <input id="commission" type="number" name="commission" value="<?php echo htmlspecialchars(isset($row['commission']) ? $row['commission'] : 0); ?>" min="0" step="any" required>
-        </div>
+        <input id="commission" type="hidden" name="commission" value="0">
       </div>
 
       <div class="form-footer">
@@ -430,6 +454,7 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
   var locationInput = document.getElementById('location');
   var vehicleTypeInput = document.getElementById('vehicle_type');
   var tenderInput = document.getElementById('tender');
+  var deliveryStatusInput = document.getElementById('delivery_status');
   var addSameStopBtn = document.getElementById('add_same_stop');
   var addOutStopBtn = document.getElementById('add_out_stop');
   var sameStopList = document.getElementById('same_stop_list');
@@ -512,6 +537,17 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
     tenderInput.value = String(roundMoney((baseTender === null ? 0 : baseTender) + addon));
   }
 
+  function syncDeliveryStatusTag(){
+    if(!deliveryStatusInput) return;
+    if(String(deliveryStatusInput.value) === 'received'){
+      deliveryStatusInput.classList.add('is-received');
+      deliveryStatusInput.classList.remove('is-not-received');
+      return;
+    }
+    deliveryStatusInput.classList.add('is-not-received');
+    deliveryStatusInput.classList.remove('is-received');
+  }
+
   function makeStopChip(label, onRemove){
     var chip = document.createElement('span');
     chip.className = 'stop-chip';
@@ -573,8 +609,12 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
   locationInput.addEventListener('blur', tryAutoTender);
   vehicleTypeInput.addEventListener('change', tryAutoTender);
   vehicleTypeInput.addEventListener('blur', tryAutoTender);
+  if(deliveryStatusInput){
+    deliveryStatusInput.addEventListener('change', syncDeliveryStatusTag);
+  }
   renderStops();
   tryAutoTender();
+  syncDeliveryStatusTag();
 })();
 </script>
 </body>

@@ -11,6 +11,76 @@ $canFeed = auth_has_module_access('feed');
 $canManageUsers = auth_can_manage_users();
 $currentUserId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 
+function normalize_delivery_status_token_local($raw){
+    $status = strtolower(trim((string)$raw));
+    $status = str_replace(['-', ' '], '_', $status);
+    if($status === 'received') return 'received';
+    return 'not_received';
+}
+
+if(isset($_GET['set_delivery_status'])){
+    $statusBiltyId = isset($_GET['set_delivery_status']) ? (int)$_GET['set_delivery_status'] : 0;
+    $nextDeliveryStatus = normalize_delivery_status_token_local(isset($_GET['status']) ? (string)$_GET['status'] : '');
+    if($statusBiltyId <= 0){
+        header("location:haleeb.php?status_change=error");
+        exit();
+    }
+
+    $statusStmt = $conn->prepare("SELECT id, date, vehicle, vehicle_type, driver_phone_no, delivery_status, delivery_note, token_no, party, location, stops, freight, commission, tender FROM haleeb_bilty WHERE id=? LIMIT 1");
+    $statusStmt->bind_param("i", $statusBiltyId);
+    $statusStmt->execute();
+    $statusRow = $statusStmt->get_result()->fetch_assoc();
+    $statusStmt->close();
+    if(!$statusRow){
+        header("location:haleeb.php?status_change=error");
+        exit();
+    }
+
+    $currentDeliveryStatus = normalize_delivery_status_token_local(isset($statusRow['delivery_status']) ? $statusRow['delivery_status'] : '');
+    if($currentDeliveryStatus === $nextDeliveryStatus){
+        header("location:haleeb.php?status_change=nochange");
+        exit();
+    }
+
+    if(!$canDirectModify){
+        $payload = [
+            'date' => (string)($statusRow['date'] ?? date('Y-m-d')),
+            'vehicle' => (string)($statusRow['vehicle'] ?? ''),
+            'vehicle_type' => (string)($statusRow['vehicle_type'] ?? ''),
+            'driver_phone_no' => (string)($statusRow['driver_phone_no'] ?? ''),
+            'delivery_status' => $nextDeliveryStatus,
+            'delivery_note' => (string)($statusRow['delivery_note'] ?? ''),
+            'token_no' => (string)($statusRow['token_no'] ?? ''),
+            'party' => (string)($statusRow['party'] ?? ''),
+            'location' => (string)($statusRow['location'] ?? ''),
+            'stops' => (string)($statusRow['stops'] ?? ''),
+            'freight' => isset($statusRow['freight']) ? (float)$statusRow['freight'] : 0.0,
+            'commission' => 0,
+            'tender' => isset($statusRow['tender']) ? (float)$statusRow['tender'] : 0.0
+        ];
+        $requestId = create_change_request_local($conn, 'haleeb', 'haleeb_bilty', $statusBiltyId, 'haleeb_update', $payload, $currentUserId);
+        if($requestId > 0){
+            header("location:haleeb.php?status_change=requested");
+            exit();
+        }
+        header("location:haleeb.php?status_change=error");
+        exit();
+    }
+
+    $updateStatusStmt = $conn->prepare("UPDATE haleeb_bilty SET delivery_status=? WHERE id=? LIMIT 1");
+    $updateStatusStmt->bind_param("si", $nextDeliveryStatus, $statusBiltyId);
+    $okStatus = $updateStatusStmt->execute();
+    $affectedStatus = $updateStatusStmt->affected_rows;
+    $updateStatusStmt->close();
+    if($okStatus && $affectedStatus > 0){
+        header("location:haleeb.php?status_change=success");
+        exit();
+    }
+
+    header("location:haleeb.php?status_change=error");
+    exit();
+}
+
 if(isset($_GET['delete_all']) && $_GET['delete_all'] === '1'){
     if(!auth_can_direct_modify('haleeb')){
         header("location:haleeb.php?clear=denied");
@@ -84,6 +154,14 @@ if (isset($_GET['pay'])) {
     if ($_GET['pay'] === 'success') $pay_message = "Payment posted successfully.";
     elseif ($_GET['pay'] === 'error') $pay_message = "Payment failed. Please try again.";
     elseif ($_GET['pay'] === 'requested') $pay_message = "Payment request sent to account ledger admin for approval.";
+}
+$status_change_message = "";
+$status_change_error = false;
+if(isset($_GET['status_change'])){
+    if($_GET['status_change'] === 'success') $status_change_message = "Delivery status updated successfully.";
+    elseif($_GET['status_change'] === 'requested') $status_change_message = "Delivery status change request sent for approval.";
+    elseif($_GET['status_change'] === 'nochange') $status_change_message = "Delivery status is already set.";
+    elseif($_GET['status_change'] === 'error'){ $status_change_message = "Delivery status update failed. Please try again."; $status_change_error = true; }
 }
 $clear_message = "";
 if(isset($_GET['clear'])){
@@ -350,8 +428,26 @@ while($result && $row = $result->fetch_assoc()){
     display: inline-block; padding: 3px 9px; font-size: 10px; font-weight: 700;
     letter-spacing: 1px; text-transform: uppercase; border: 1px solid transparent;
   }
+  .status-toggle {
+    font-family: var(--font); line-height: 1.2; background: transparent;
+    cursor: pointer; transition: transform 0.12s ease, border-color 0.15s ease;
+  }
+  .status-toggle:hover { transform: translateY(-1px); }
+  .status-toggle:focus { outline: none; border-color: var(--accent); }
   .rem-zero { background: rgba(34,197,94,0.15); color: var(--green); border-color: rgba(34,197,94,0.25); }
   .rem-pending { background: rgba(239,68,68,0.15); color: var(--red); border-color: rgba(239,68,68,0.25); }
+  .status-modal-mask {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    display: none; align-items: center; justify-content: center; z-index: 2600; padding: 14px;
+  }
+  .status-modal-mask.open { display: flex; }
+  .status-modal-card {
+    width: min(420px, 100%); background: var(--surface); border: 1px solid var(--border);
+    padding: 18px 16px 14px; box-shadow: 0 24px 50px rgba(0,0,0,0.55);
+  }
+  .status-modal-title { font-size: 16px; font-weight: 800; margin-bottom: 8px; }
+  .status-modal-text { font-size: 13px; color: var(--muted); line-height: 1.45; margin-bottom: 14px; }
+  .status-modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
   .analytics-wrap {
     background: var(--surface); border: 1px solid var(--border); margin-bottom: 20px;
     display: none;
@@ -471,6 +567,11 @@ while($result && $row = $result->fetch_assoc()){
   <?php if($pay_message !== ""): ?>
     <div class="alert <?php echo $pay_message === 'Payment failed. Please try again.' ? 'error' : ''; ?>">
       <?php echo htmlspecialchars($pay_message); ?>
+    </div>
+  <?php endif; ?>
+  <?php if($status_change_message !== ""): ?>
+    <div class="alert <?php echo $status_change_error ? 'error' : ''; ?>">
+      <?php echo htmlspecialchars($status_change_message); ?>
     </div>
   <?php endif; ?>
   <?php if($clear_message !== ""): ?>
@@ -649,8 +750,11 @@ while($result && $row = $result->fetch_assoc()){
           $addedByName = isset($row['added_by_name']) && trim((string)$row['added_by_name']) !== '' ? (string)$row['added_by_name'] : '-';
           $driverPhoneNo = trim((string)($row['driver_phone_no'] ?? ''));
           $deliveryStatusRaw = strtolower(trim((string)($row['delivery_status'] ?? 'not_received')));
+          if($deliveryStatusRaw !== 'received') $deliveryStatusRaw = 'not_received';
           $deliveryStatusLabel = $deliveryStatusRaw === 'received' ? 'Received' : 'Not Received';
           $deliveryStatusClass = $deliveryStatusRaw === 'received' ? 'rem-zero' : 'rem-pending';
+          $deliveryStatusNext = $deliveryStatusRaw === 'received' ? 'not_received' : 'received';
+          $deliveryStatusNextLabel = $deliveryStatusNext === 'received' ? 'Received' : 'Not Received';
           $detailHref = 'bilty_detail.php?type=haleeb&id=' . (int)$row['id'] . '&src=haleeb';
           $stopsRaw = isset($row['stops']) ? (string)$row['stops'] : '';
           $sameStops = 0;
@@ -684,9 +788,15 @@ while($result && $row = $result->fetch_assoc()){
           <td><?php echo htmlspecialchars($row['party']); ?></td>
           <td><?php echo htmlspecialchars($row['location']); ?></td>
           <td>
-            <span class="rem-badge <?php echo $deliveryStatusClass; ?>">
+            <button type="button"
+              class="rem-badge status-toggle <?php echo $deliveryStatusClass; ?>"
+              data-status-id="<?php echo (int)$row['id']; ?>"
+              data-current-status="<?php echo htmlspecialchars($deliveryStatusRaw); ?>"
+              data-next-status="<?php echo htmlspecialchars($deliveryStatusNext); ?>"
+              data-next-label="<?php echo htmlspecialchars($deliveryStatusNextLabel); ?>"
+              title="Click to change status">
               <?php echo htmlspecialchars($deliveryStatusLabel); ?>
-            </span>
+            </button>
           </td>
           <td><?php echo htmlspecialchars($row['token_no']); ?></td>
           <td><?php echo htmlspecialchars($row['delivery_note']); ?></td>
@@ -716,6 +826,17 @@ while($result && $row = $result->fetch_assoc()){
   </div>
 </div>
 
+<div class="status-modal-mask" id="status_change_modal" aria-hidden="true">
+  <div class="status-modal-card" role="dialog" aria-modal="true" aria-labelledby="status_change_title">
+    <div class="status-modal-title" id="status_change_title">Change Delivery Status</div>
+    <div class="status-modal-text" id="status_change_text">Do you want to change delivery status?</div>
+    <div class="status-modal-actions">
+      <button class="btn-ghost" type="button" id="status_change_cancel">Cancel</button>
+      <button class="nav-btn primary" type="button" id="status_change_confirm">Yes, Change</button>
+    </div>
+  </div>
+</div>
+
 <script>
 (function(){
   var btn = document.getElementById('haleeb_menu_btn');
@@ -724,6 +845,51 @@ while($result && $row = $result->fetch_assoc()){
     btn.addEventListener('click', function(e){ e.stopPropagation(); pop.classList.toggle('open'); });
     document.addEventListener('click', function(e){ if(!pop.contains(e.target) && e.target !== btn) pop.classList.remove('open'); });
   }
+})();
+
+(function(){
+  var modal = document.getElementById('status_change_modal');
+  var text = document.getElementById('status_change_text');
+  var cancelBtn = document.getElementById('status_change_cancel');
+  var confirmBtn = document.getElementById('status_change_confirm');
+  var pending = null;
+  if(!modal || !text || !cancelBtn || !confirmBtn) return;
+
+  function closeModal(){
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+    pending = null;
+  }
+
+  function openModal(payload){
+    pending = payload;
+    text.textContent = 'Do you want to change delivery status from ' + payload.currentLabel + ' to ' + payload.nextLabel + '?';
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+  }
+
+  var toggles = Array.prototype.slice.call(document.querySelectorAll('.status-toggle[data-status-id]'));
+  toggles.forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var id = Number(btn.getAttribute('data-status-id') || 0);
+      var currentStatus = String(btn.getAttribute('data-current-status') || 'not_received');
+      var nextStatus = String(btn.getAttribute('data-next-status') || 'received');
+      var nextLabel = String(btn.getAttribute('data-next-label') || (nextStatus === 'received' ? 'Received' : 'Not Received'));
+      if(!Number.isFinite(id) || id <= 0) return;
+      var currentLabel = currentStatus === 'received' ? 'Received' : 'Not Received';
+      openModal({ id: id, nextStatus: nextStatus, currentLabel: currentLabel, nextLabel: nextLabel });
+    });
+  });
+
+  confirmBtn.addEventListener('click', function(){
+    if(!pending || !pending.id) return;
+    window.location.href = 'haleeb.php?set_delivery_status=' + encodeURIComponent(String(pending.id)) + '&status=' + encodeURIComponent(String(pending.nextStatus));
+  });
+
+  cancelBtn.addEventListener('click', closeModal);
+  modal.addEventListener('click', function(e){
+    if(e.target === modal) closeModal();
+  });
 })();
 
 (function(){
