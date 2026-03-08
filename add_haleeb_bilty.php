@@ -5,10 +5,36 @@ require_once 'config/auth.php';
 auth_require_login($conn);
 auth_require_module_access('haleeb');
 $isSuperAdmin = auth_is_super_admin();
+$currentUserId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
+
+function get_setting_value_local($conn, $key, $default = ''){
+    $stmt = $conn->prepare("SELECT setting_value FROM app_settings WHERE setting_key=? LIMIT 1");
+    if(!$stmt) return (string)$default;
+    $stmt->bind_param("s", $key);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $row = $res ? $res->fetch_assoc() : null;
+    $stmt->close();
+    return ($row && isset($row['setting_value'])) ? (string)$row['setting_value'] : (string)$default;
+}
+function set_setting_value_local($conn, $key, $value){
+    $stmt = $conn->prepare("INSERT INTO app_settings(setting_key, setting_value) VALUES(?, ?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)");
+    if(!$stmt) return false;
+    $stmt->bind_param("ss", $key, $value);
+    $ok = $stmt->execute();
+    $stmt->close();
+    return $ok;
+}
+function haleeb_rate_list_setting_key_local($userId){
+    $uid = max(0, (int)$userId);
+    return 'haleeb_rate_list_selected_user_' . $uid;
+}
+
 $today = date('Y-m-d');
 $flashSuccess = '';
 $flashError = '';
 $flashOld = [];
+$savedRateListSetting = trim((string)get_setting_value_local($conn, haleeb_rate_list_setting_key_local($currentUserId), ''));
 $resultFlag = isset($_GET['r']) ? strtolower(trim((string)$_GET['r'])) : '';
 if(isset($_SESSION['add_haleeb_success'])){
     $flashSuccess = trim((string)$_SESSION['add_haleeb_success']);
@@ -65,7 +91,7 @@ $formValues = [
     'delivery_note' => isset($flashOld['delivery_note']) ? trim((string)$flashOld['delivery_note']) : '',
     'tender' => isset($flashOld['tender']) ? trim((string)$flashOld['tender']) : '0',
     'tender_manual_mode' => isset($flashOld['tender_manual_mode']) ? trim((string)$flashOld['tender_manual_mode']) : '0',
-    'rate_list_name' => isset($flashOld['rate_list_name']) ? trim((string)$flashOld['rate_list_name']) : '',
+    'rate_list_name' => isset($flashOld['rate_list_name']) ? trim((string)$flashOld['rate_list_name']) : $savedRateListSetting,
     'freight' => isset($flashOld['freight']) ? trim((string)$flashOld['freight']) : '',
 ];
 if(!in_array($formValues['delivery_status'], ['received', 'not_received'], true)){
@@ -107,6 +133,23 @@ if(!isset($rateListLookup[strtolower($selectedRateListName)])){
     $selectedRateListName = isset($rateListLookup[strtolower($latestRateListName)]) ? $rateListLookup[strtolower($latestRateListName)] : $rateListNames[0];
 }
 $formValues['rate_list_name'] = $selectedRateListName;
+
+if(isset($_POST['save_haleeb_rate_list_setting']) && $_POST['save_haleeb_rate_list_setting'] === '1'){
+    header('Content-Type: application/json; charset=utf-8');
+    $requestedListName = normalize_rate_list_name_local(isset($_POST['rate_list_name']) ? (string)$_POST['rate_list_name'] : '');
+    $requestedKey = strtolower($requestedListName);
+    if(!isset($rateListLookup[$requestedKey])){
+        echo json_encode(['ok' => false, 'message' => 'Invalid rate list selected.']);
+        exit();
+    }
+    $resolvedName = (string)$rateListLookup[$requestedKey];
+    if(!set_setting_value_local($conn, haleeb_rate_list_setting_key_local($currentUserId), $resolvedName)){
+        echo json_encode(['ok' => false, 'message' => 'Rate list setting save nahi ho saka.']);
+        exit();
+    }
+    echo json_encode(['ok' => true, 'rate_list_name' => $resolvedName]);
+    exit();
+}
 
 $vehicleTypeOptions = [];
 $vehicleTypeLookup = [];
@@ -614,6 +657,27 @@ if($jsonSelectedRateListName === false) $jsonSelectedRateListName = '"Base List"
     if(!rateListModal) return;
     rateListModal.classList.remove('show');
   }
+  function persistRateListSelection(listName){
+    var payload = new URLSearchParams();
+    payload.set('save_haleeb_rate_list_setting', '1');
+    payload.set('rate_list_name', String(listName || ''));
+    return fetch('add_haleeb_bilty.php', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        'Accept': 'application/json'
+      },
+      body: payload.toString()
+    }).then(function(resp){
+      return resp.json().catch(function(){ return { ok: false, message: 'Invalid server response.' }; });
+    }).then(function(data){
+      if(!data || data.ok !== true){
+        var msg = data && data.message ? String(data.message) : 'Rate list setting save nahi ho saka.';
+        throw new Error(msg);
+      }
+      return data;
+    });
+  }
 
   function setReceivedHelp(text, type){
     if(!receivedStatusHelp) return;
@@ -873,9 +937,18 @@ if($jsonSelectedRateListName === false) $jsonSelectedRateListName = '"Base List"
   if(saveRateListBtn){
     saveRateListBtn.addEventListener('click', function(){
       var selected = modalRateListSelect ? modalRateListSelect.value : selectedRateListName;
-      setActiveRateList(selected, false);
-      setRateListNote('Rate list apply ho gayi.', 'ok');
-      setTimeout(function(){ closeRateListModal(); }, 180);
+      saveRateListBtn.disabled = true;
+      setRateListNote('Saving...', 'info');
+      persistRateListSelection(selected).then(function(data){
+        var savedName = (data && data.rate_list_name) ? String(data.rate_list_name) : selected;
+        setActiveRateList(savedName, false);
+        setRateListNote('Rate list save ho gayi.', 'ok');
+        setTimeout(function(){ closeRateListModal(); }, 220);
+      }).catch(function(err){
+        setRateListNote(err && err.message ? err.message : 'Rate list setting save nahi ho saka.', 'err');
+      }).finally(function(){
+        saveRateListBtn.disabled = false;
+      });
     });
   }
   if(rateListModal){
