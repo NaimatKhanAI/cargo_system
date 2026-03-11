@@ -445,6 +445,11 @@ list($entryStmt, $entries) = exec_prepared_result_local($conn, $entriesSql, $bin
 $pendingPayRequests = $canManageLedger ? fetch_pending_change_requests_local($conn, [], ['feed_pay', 'haleeb_pay']) : [];
 $flaggedActivityCount = activity_count_flagged_for_admin_local($conn);
 $openEntryPanel = $canManageLedger && ($editingId > 0 || isset($_POST['add_entry']) || isset($_POST['update_entry']));
+$openPayReqPanel = $canManageLedger && (
+    isset($_POST['approve_pay_request']) ||
+    isset($_POST['reject_pay_request']) ||
+    (isset($_GET['show_requests']) && (string)$_GET['show_requests'] === '1')
+);
 $openAnalyticsPanel = false;
 ?>
 <!DOCTYPE html>
@@ -541,6 +546,39 @@ $openAnalyticsPanel = false;
   }
   .toggle-body { display: none; }
   .toggle-body.open { display: block; }
+
+  .ledger-toolbar { margin-bottom: 12px; }
+  .ledger-toolbar-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 11px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    cursor: pointer;
+    font-family: var(--font);
+  }
+  .ledger-toolbar-btn:hover { background: var(--surface2); }
+  .ledger-toolbar-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .ledger-toolbar-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .ledger-toolbar-count {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent);
+  }
 
   .pay-req-panel {
     background: var(--surface); border: 1px solid var(--border); margin-bottom: 20px;
@@ -838,91 +876,108 @@ $openAnalyticsPanel = false;
   <?php endif; ?>
 
   <?php if($canManageLedger): ?>
-    <div class="pay-req-panel">
-      <div class="pay-req-head">
-        <span class="pay-req-title">Feed/Haleeb Payment Requests</span>
-        <span class="pay-req-count"><?php echo count($pendingPayRequests); ?> pending</span>
-      </div>
-      <?php if(count($pendingPayRequests) === 0): ?>
-        <div style="padding:14px 16px;" class="pay-req-note">No pending payment requests.</div>
-      <?php else: ?>
-        <div style="overflow-x:auto;">
-          <table class="pay-req-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Module</th>
-                <th>Requested By</th>
-                <th>Details</th>
-                <th>Requested At</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              <?php foreach($pendingPayRequests as $r): ?>
-                <?php
-                  $p = json_decode((string)$r['payload'], true);
-                  if(!is_array($p)) $p = [];
-                  $amt = isset($p['amount']) ? (float)$p['amount'] : 0;
-                  $mode = isset($p['amount_mode']) ? (string)$p['amount_mode'] : '';
-                  $category = isset($p['category']) ? (string)$p['category'] : '';
-                  $entryDate = isset($p['entry_date']) ? (string)$p['entry_date'] : '';
-                  $note = isset($p['note']) ? (string)$p['note'] : '';
-                  $entityId = isset($r['entity_id']) ? (int)$r['entity_id'] : 0;
-                  $reqModule = strtolower((string)($r['module_key'] ?? 'feed'));
-                  $detailHref = bilty_detail_link_local($reqModule === 'haleeb' ? 'haleeb' : 'feed', $entityId, 'account');
-                  $remainingErr = '';
-                  $remainingAmt = payment_request_remaining_local(
-                    $conn,
-                    isset($r['action_type']) ? (string)$r['action_type'] : '',
-                    $entityId,
-                    $remainingErr
-                  );
-                ?>
-                <tr>
-                  <td>#<?php echo (int)$r['id']; ?></td>
-                  <td><?php echo htmlspecialchars(strtoupper((string)$r['module_key'])); ?></td>
-                  <td><?php echo htmlspecialchars((string)($r['requested_by_name'] ?: ('User#' . (int)$r['requested_by']))); ?></td>
-                  <td>
-                    <div>Amount: <strong>Rs <?php echo format_amount_local($amt, 1); ?></strong></div>
-                    <div class="pay-req-note">Mode: <?php echo htmlspecialchars($mode); ?> | Category: <?php echo htmlspecialchars($category); ?> | Date: <?php echo htmlspecialchars($entryDate); ?></div>
-                    <?php if($note !== ''): ?><div class="pay-req-note">Note: <?php echo htmlspecialchars($note); ?></div><?php endif; ?>
-                    <?php if($remainingErr !== ''): ?>
-                      <div class="pay-req-note">Remaining: <?php echo htmlspecialchars($remainingErr); ?></div>
-                    <?php else: ?>
-                      <div class="pay-req-note">Remaining now: Rs <?php echo format_amount_local($remainingAmt, 1); ?></div>
-                    <?php endif; ?>
-                    <?php if($detailHref !== ''): ?>
-                      <div class="pay-req-note"><a class="ref-link" href="<?php echo htmlspecialchars($detailHref); ?>">Open Bilty Detail</a></div>
-                    <?php endif; ?>
-                  </td>
-                  <td><?php echo htmlspecialchars((string)$r['created_at']); ?></td>
-                  <td>
-                    <form method="post" class="pay-req-act">
-                      <input type="hidden" name="request_id" value="<?php echo (int)$r['id']; ?>">
-                      <label class="pay-req-field-label" for="req_amt_<?php echo (int)$r['id']; ?>">Approve Amount (Rs)</label>
-                      <input
-                        id="req_amt_<?php echo (int)$r['id']; ?>"
-                        class="pay-req-amount-input"
-                        type="number"
-                        name="request_amount"
-                        step="any"
-                        value="<?php echo htmlspecialchars(format_amount_local($amt, 1, false)); ?>"
-                        placeholder="0.00"
-                      >
-                      <input class="pay-req-note-input" type="text" name="review_note" placeholder="Optional note">
-                      <div class="pay-req-btns">
-                        <button class="btn-approve" type="submit" name="approve_pay_request">Approve</button>
-                        <button class="btn-reject" type="submit" name="reject_pay_request">Reject</button>
-                      </div>
-                    </form>
-                  </td>
-                </tr>
-              <?php endforeach; ?>
-            </tbody>
-          </table>
+    <div class="ledger-toolbar">
+      <button
+        class="ledger-toolbar-btn"
+        type="button"
+        id="ledger_pay_request_toggle"
+        data-toggle-target="ledger_pay_request_body"
+        aria-expanded="<?php echo $openPayReqPanel ? 'true' : 'false'; ?>"
+      >
+        <span class="ledger-toolbar-label">Payment Requests</span>
+        <span class="ledger-toolbar-meta">
+          <span class="ledger-toolbar-count"><?php echo count($pendingPayRequests); ?> pending</span>
+          <span class="toggle-icon"><?php echo $openPayReqPanel ? '-' : '+'; ?></span>
+        </span>
+      </button>
+    </div>
+    <div id="ledger_pay_request_body" class="toggle-body<?php echo $openPayReqPanel ? ' open' : ''; ?>">
+      <div class="pay-req-panel">
+        <div class="pay-req-head">
+          <span class="pay-req-title">Feed/Haleeb Payment Requests</span>
+          <span class="pay-req-count"><?php echo count($pendingPayRequests); ?> pending</span>
         </div>
-      <?php endif; ?>
+        <?php if(count($pendingPayRequests) === 0): ?>
+          <div style="padding:14px 16px;" class="pay-req-note">No pending payment requests.</div>
+        <?php else: ?>
+          <div style="overflow-x:auto;">
+            <table class="pay-req-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Module</th>
+                  <th>Requested By</th>
+                  <th>Details</th>
+                  <th>Requested At</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <?php foreach($pendingPayRequests as $r): ?>
+                  <?php
+                    $p = json_decode((string)$r['payload'], true);
+                    if(!is_array($p)) $p = [];
+                    $amt = isset($p['amount']) ? (float)$p['amount'] : 0;
+                    $mode = isset($p['amount_mode']) ? (string)$p['amount_mode'] : '';
+                    $category = isset($p['category']) ? (string)$p['category'] : '';
+                    $entryDate = isset($p['entry_date']) ? (string)$p['entry_date'] : '';
+                    $note = isset($p['note']) ? (string)$p['note'] : '';
+                    $entityId = isset($r['entity_id']) ? (int)$r['entity_id'] : 0;
+                    $reqModule = strtolower((string)($r['module_key'] ?? 'feed'));
+                    $detailHref = bilty_detail_link_local($reqModule === 'haleeb' ? 'haleeb' : 'feed', $entityId, 'account');
+                    $remainingErr = '';
+                    $remainingAmt = payment_request_remaining_local(
+                      $conn,
+                      isset($r['action_type']) ? (string)$r['action_type'] : '',
+                      $entityId,
+                      $remainingErr
+                    );
+                  ?>
+                  <tr>
+                    <td>#<?php echo (int)$r['id']; ?></td>
+                    <td><?php echo htmlspecialchars(strtoupper((string)$r['module_key'])); ?></td>
+                    <td><?php echo htmlspecialchars((string)($r['requested_by_name'] ?: ('User#' . (int)$r['requested_by']))); ?></td>
+                    <td>
+                      <div>Amount: <strong>Rs <?php echo format_amount_local($amt, 1); ?></strong></div>
+                      <div class="pay-req-note">Mode: <?php echo htmlspecialchars($mode); ?> | Category: <?php echo htmlspecialchars($category); ?> | Date: <?php echo htmlspecialchars($entryDate); ?></div>
+                      <?php if($note !== ''): ?><div class="pay-req-note">Note: <?php echo htmlspecialchars($note); ?></div><?php endif; ?>
+                      <?php if($remainingErr !== ''): ?>
+                        <div class="pay-req-note">Remaining: <?php echo htmlspecialchars($remainingErr); ?></div>
+                      <?php else: ?>
+                        <div class="pay-req-note">Remaining now: Rs <?php echo format_amount_local($remainingAmt, 1); ?></div>
+                      <?php endif; ?>
+                      <?php if($detailHref !== ''): ?>
+                        <div class="pay-req-note"><a class="ref-link" href="<?php echo htmlspecialchars($detailHref); ?>">Open Bilty Detail</a></div>
+                      <?php endif; ?>
+                    </td>
+                    <td><?php echo htmlspecialchars((string)$r['created_at']); ?></td>
+                    <td>
+                      <form method="post" class="pay-req-act">
+                        <input type="hidden" name="request_id" value="<?php echo (int)$r['id']; ?>">
+                        <label class="pay-req-field-label" for="req_amt_<?php echo (int)$r['id']; ?>">Approve Amount (Rs)</label>
+                        <input
+                          id="req_amt_<?php echo (int)$r['id']; ?>"
+                          class="pay-req-amount-input"
+                          type="number"
+                          name="request_amount"
+                          step="any"
+                          value="<?php echo htmlspecialchars(format_amount_local($amt, 1, false)); ?>"
+                          placeholder="0.00"
+                        >
+                        <input class="pay-req-note-input" type="text" name="review_note" placeholder="Optional note">
+                        <div class="pay-req-btns">
+                          <button class="btn-approve" type="submit" name="approve_pay_request">Approve</button>
+                          <button class="btn-reject" type="submit" name="reject_pay_request">Reject</button>
+                        </div>
+                      </form>
+                    </td>
+                  </tr>
+                <?php endforeach; ?>
+              </tbody>
+            </table>
+          </div>
+        <?php endif; ?>
+      </div>
     </div>
   <?php endif; ?>
 
