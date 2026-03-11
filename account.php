@@ -15,9 +15,19 @@ function exec_prepared_result_local($conn, $sql, $types = '', $values = []){
     $stmt = $conn->prepare($sql);
     if(!$stmt) return [null, false];
     $count = count($values);
-    if($count === 1) $stmt->bind_param($types, $values[0]);
-    elseif($count === 2) $stmt->bind_param($types, $values[0], $values[1]);
-    elseif($count === 3) $stmt->bind_param($types, $values[0], $values[1], $values[2]);
+    if($count > 0){
+        $bindTypes = (string)$types;
+        if(strlen($bindTypes) !== $count){
+            $stmt->close();
+            return [null, false];
+        }
+        $bindArgs = [];
+        $bindArgs[] = &$bindTypes;
+        foreach($values as $idx => $val){
+            $bindArgs[] = &$values[$idx];
+        }
+        call_user_func_array([$stmt, 'bind_param'], $bindArgs);
+    }
     $stmt->execute();
     $res = $stmt->get_result();
     return [$stmt, $res];
@@ -104,6 +114,7 @@ $categoryLabels = [
     'feed_hamid' => 'Feed - Hamid',
     'feed_amir' => 'Feed - Amir',
     'haleeb' => 'Haleeb',
+    'prime_pump' => 'Prime Pump',
     'loan' => 'Loan',
 ];
 $allowedCategories = array_keys($categoryLabels);
@@ -114,6 +125,10 @@ $msg = ''; $err = '';
 $formEntryDate = date('Y-m-d');
 $formCategory = 'feed'; $formEntryType = 'debit'; $formAmountMode = 'cash';
 $formAmount = ''; $formNote = '';
+$primeFormDate = date('Y-m-d');
+$primeCardAmount = '';
+$primeRecoveryAmount = '';
+$primeFormNote = '';
 $editingId = 0;
 $dateFrom = isset($_GET['date_from']) ? trim((string)$_GET['date_from']) : '';
 $dateTo = isset($_GET['date_to']) ? trim((string)$_GET['date_to']) : '';
@@ -190,6 +205,68 @@ if(isset($_POST['approve_pay_request']) || isset($_POST['reject_pay_request'])){
             if($err === ''){
                 $err = $reviewError !== '' ? $reviewError : 'Payment request review failed.';
             }
+        }
+    }
+}
+
+if(isset($_POST['add_prime_card']) || isset($_POST['add_prime_recovery'])){
+    $isPrimeCard = isset($_POST['add_prime_card']);
+    $primeFormDate = isset($_POST['prime_entry_date']) ? trim((string)$_POST['prime_entry_date']) : date('Y-m-d');
+    $primeFormNote = isset($_POST['prime_note']) ? trim((string)$_POST['prime_note']) : '';
+    $rawCardAmount = isset($_POST['prime_card_amount']) ? trim((string)$_POST['prime_card_amount']) : '';
+    $rawRecoveryAmount = isset($_POST['prime_recovery_amount']) ? trim((string)$_POST['prime_recovery_amount']) : '';
+    $primeCardAmount = $rawCardAmount;
+    $primeRecoveryAmount = $rawRecoveryAmount;
+
+    $amountRaw = $isPrimeCard ? $rawCardAmount : $rawRecoveryAmount;
+    $amountRaw = str_replace(',', '', $amountRaw);
+    $amount = $amountRaw !== '' ? (float)$amountRaw : 0.0;
+
+    if(!$canManageLedger){
+        $err = 'Account ledger is view-only for your account.';
+    } elseif(!preg_match('/^\d{4}-\d{2}-\d{2}$/', $primeFormDate)){
+        $err = 'Invalid Prime entry date.';
+    } elseif($amount <= 0){
+        $err = 'Prime amount must be greater than 0.';
+    } else {
+        $entryType = $isPrimeCard ? 'credit' : 'debit';
+        $amountMode = $isPrimeCard ? 'account' : 'cash';
+        $notePrefix = $isPrimeCard ? 'Prime Pump Card Issued' : 'Prime Pump Recovery';
+        $entryNote = $primeFormNote !== '' ? ($notePrefix . ' - ' . $primeFormNote) : $notePrefix;
+
+        $stmt = $conn->prepare("INSERT INTO account_entries(entry_date, category, entry_type, amount_mode, amount, note) VALUES(?, 'prime_pump', ?, ?, ?, ?)");
+        $stmt->bind_param("sssds", $primeFormDate, $entryType, $amountMode, $amount, $entryNote);
+        $ok = $stmt->execute();
+        $entryId = (int)$stmt->insert_id;
+        $stmt->close();
+
+        if($ok){
+            activity_notify_local(
+                $conn,
+                'account',
+                $isPrimeCard ? 'prime_card_recorded' : 'prime_recovery_recorded',
+                'account_entry',
+                $entryId,
+                $isPrimeCard ? 'Prime pump card entry recorded.' : 'Prime pump recovery entry recorded.',
+                [
+                    'entry_date' => $primeFormDate,
+                    'category' => 'prime_pump',
+                    'entry_type' => $entryType,
+                    'amount_mode' => $amountMode,
+                    'amount' => $amount,
+                    'note' => $entryNote
+                ],
+                $currentUserId
+            );
+            $msg = $isPrimeCard ? 'Prime card entry added.' : 'Prime recovery entry added.';
+            if($isPrimeCard){
+                $primeCardAmount = '';
+            } else {
+                $primeRecoveryAmount = '';
+            }
+            $primeFormNote = '';
+        } else {
+            $err = 'Could not save Prime entry.';
         }
     }
 }
@@ -420,6 +497,107 @@ list($catStmt, $catResult) = exec_prepared_result_local($conn, $catTotalsSql, $b
 while($r = $catResult->fetch_assoc()) $categoryTotals[$r['category']] = $r;
 if($catStmt) $catStmt->close();
 
+$businessByMonth = [];
+$businessSql = "SELECT ym, SUM(total_amount) AS business_total
+FROM (
+    SELECT DATE_FORMAT(date, '%Y-%m') AS ym,
+           SUM(COALESCE(original_freight, GREATEST(COALESCE(freight,0) - COALESCE(commission,0), 0))) AS total_amount
+    FROM bilty
+    GROUP BY DATE_FORMAT(date, '%Y-%m')
+    UNION ALL
+    SELECT DATE_FORMAT(date, '%Y-%m') AS ym,
+           SUM(GREATEST(COALESCE(freight,0) - COALESCE(commission,0), 0)) AS total_amount
+    FROM haleeb_bilty
+    GROUP BY DATE_FORMAT(date, '%Y-%m')
+) t
+GROUP BY ym";
+$businessRes = $conn->query($businessSql);
+while($businessRes && $bRow = $businessRes->fetch_assoc()){
+    $monthKey = isset($bRow['ym']) ? (string)$bRow['ym'] : '';
+    if($monthKey === '') continue;
+    $businessByMonth[$monthKey] = (float)($bRow['business_total'] ?? 0);
+}
+if($businessRes) $businessRes->free();
+
+$primeByMonth = [];
+$primeMonthlySql = "SELECT DATE_FORMAT(entry_date, '%Y-%m') AS ym,
+                           SUM(CASE WHEN entry_type='credit' THEN amount ELSE 0 END) AS card_total,
+                           SUM(CASE WHEN entry_type='debit' THEN amount ELSE 0 END) AS recovery_total
+                    FROM account_entries
+                    WHERE category='prime_pump'
+                    GROUP BY DATE_FORMAT(entry_date, '%Y-%m')";
+$primeMonthlyRes = $conn->query($primeMonthlySql);
+while($primeMonthlyRes && $pRow = $primeMonthlyRes->fetch_assoc()){
+    $monthKey = isset($pRow['ym']) ? (string)$pRow['ym'] : '';
+    if($monthKey === '') continue;
+    $primeByMonth[$monthKey] = [
+        'card_total' => (float)($pRow['card_total'] ?? 0),
+        'recovery_total' => (float)($pRow['recovery_total'] ?? 0),
+    ];
+}
+if($primeMonthlyRes) $primeMonthlyRes->free();
+
+$primeTotals = ['card_total' => 0.0, 'recovery_total' => 0.0];
+$primeTotalsRes = $conn->query("SELECT SUM(CASE WHEN entry_type='credit' THEN amount ELSE 0 END) AS card_total, SUM(CASE WHEN entry_type='debit' THEN amount ELSE 0 END) AS recovery_total FROM account_entries WHERE category='prime_pump'");
+if($primeTotalsRes){
+    $primeTotalsRow = $primeTotalsRes->fetch_assoc();
+    if($primeTotalsRow){
+        $primeTotals['card_total'] = (float)($primeTotalsRow['card_total'] ?? 0);
+        $primeTotals['recovery_total'] = (float)($primeTotalsRow['recovery_total'] ?? 0);
+    }
+    $primeTotalsRes->free();
+}
+$primeRunningBalance = (float)$primeTotals['card_total'] - (float)$primeTotals['recovery_total'];
+
+$allReportMonthsMap = [];
+foreach($businessByMonth as $monthKey => $_) $allReportMonthsMap[$monthKey] = true;
+foreach($primeByMonth as $monthKey => $_) $allReportMonthsMap[$monthKey] = true;
+$allReportMonthsAsc = array_keys($allReportMonthsMap);
+sort($allReportMonthsAsc);
+
+$companyFuelRows = [];
+$pumpRecoveryRowsMap = [];
+$runningCarry = 0.0;
+foreach($allReportMonthsAsc as $monthKey){
+    $businessTotal = isset($businessByMonth[$monthKey]) ? (float)$businessByMonth[$monthKey] : 0.0;
+    $expectedFuel = $businessTotal * 0.5;
+    $monthCardGiven = isset($primeByMonth[$monthKey]['card_total']) ? (float)$primeByMonth[$monthKey]['card_total'] : 0.0;
+    $monthRecovery = isset($primeByMonth[$monthKey]['recovery_total']) ? (float)$primeByMonth[$monthKey]['recovery_total'] : 0.0;
+    $difference = $monthCardGiven - $expectedFuel;
+
+    $companyFuelRows[$monthKey] = [
+        'month' => $monthKey,
+        'business_total' => $businessTotal,
+        'expected_fuel' => $expectedFuel,
+        'actual_card' => $monthCardGiven,
+        'difference' => $difference,
+    ];
+
+    $runningCarry += ($monthCardGiven - $monthRecovery);
+    $pumpRecoveryRowsMap[$monthKey] = [
+        'month' => $monthKey,
+        'card_given' => $monthCardGiven,
+        'cash_received' => $monthRecovery,
+        'running_balance' => $runningCarry,
+    ];
+}
+
+$reportMonthsDesc = array_reverse($allReportMonthsAsc);
+$reportMonthsDesc = array_slice($reportMonthsDesc, 0, 18);
+
+$companyFuelReportRows = [];
+$pumpRecoveryReportRows = [];
+foreach($reportMonthsDesc as $monthKey){
+    if(isset($companyFuelRows[$monthKey])) $companyFuelReportRows[] = $companyFuelRows[$monthKey];
+    if(isset($pumpRecoveryRowsMap[$monthKey])) $pumpRecoveryReportRows[] = $pumpRecoveryRowsMap[$monthKey];
+}
+
+$currentMonthKey = date('Y-m');
+$currentMonthBusiness = isset($companyFuelRows[$currentMonthKey]['business_total']) ? (float)$companyFuelRows[$currentMonthKey]['business_total'] : 0.0;
+$currentMonthExpectedFuel = $currentMonthBusiness * 0.5;
+$currentMonthActualCard = isset($companyFuelRows[$currentMonthKey]['actual_card']) ? (float)$companyFuelRows[$currentMonthKey]['actual_card'] : 0.0;
+$currentMonthFuelDiff = $currentMonthActualCard - $currentMonthExpectedFuel;
+
 $entriesSql = "SELECT
     account_entries.*,
     COALESCE(NULLIF(b.party, ''), NULLIF(h.party, ''), '') AS linked_party,
@@ -449,6 +627,11 @@ $openPayReqPanel = $canManageLedger && (
     isset($_POST['approve_pay_request']) ||
     isset($_POST['reject_pay_request']) ||
     (isset($_GET['show_requests']) && (string)$_GET['show_requests'] === '1')
+);
+$openFuelPumpPanel = $canManageLedger && (
+    isset($_POST['add_prime_card']) ||
+    isset($_POST['add_prime_recovery']) ||
+    (isset($_GET['show_fuel_pump']) && (string)$_GET['show_fuel_pump'] === '1')
 );
 $openAnalyticsPanel = false;
 ?>
@@ -579,6 +762,161 @@ $openAnalyticsPanel = false;
     font-size: 11px;
     color: var(--accent);
   }
+  .fp-balance-due { color: #fb7185; }
+  .fp-balance-clear { color: var(--green); }
+
+  .fuel-pump-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    margin-bottom: 20px;
+  }
+  .fuel-pump-body { padding: 16px; }
+  .fuel-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .fuel-kpi-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    padding: 10px 12px;
+  }
+  .fuel-kpi-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .fuel-kpi-value {
+    font-family: var(--mono);
+    font-size: 16px;
+    font-weight: 500;
+  }
+  .fuel-kpi-value.red { color: var(--red); }
+  .fuel-kpi-value.green { color: var(--green); }
+  .fuel-kpi-value.yellow { color: var(--accent); }
+
+  .prime-entry-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .prime-entry-card {
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    padding: 12px;
+  }
+  .prime-entry-title {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .prime-entry-form {
+    display: grid;
+    grid-template-columns: 120px 1fr 1fr auto;
+    gap: 8px;
+    align-items: end;
+  }
+  .prime-entry-field label {
+    display: block;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.1px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .prime-entry-field input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 9px;
+    font-family: var(--font);
+    font-size: 12px;
+  }
+  .btn-prime {
+    padding: 9px 12px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+    font-family: var(--font);
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .btn-prime.issue {
+    color: var(--green);
+    border-color: rgba(34,197,94,0.3);
+    background: rgba(34,197,94,0.1);
+  }
+  .btn-prime.recovery {
+    color: var(--blue);
+    border-color: rgba(96,165,250,0.35);
+    background: rgba(96,165,250,0.1);
+  }
+  .btn-prime:hover { filter: brightness(1.1); }
+
+  .fuel-report-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .fuel-report-box {
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    overflow: hidden;
+  }
+  .fuel-report-head {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .fuel-report-wrap {
+    max-height: 320px;
+    overflow: auto;
+  }
+  .fuel-report-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 620px;
+  }
+  .fuel-report-table th {
+    padding: 9px 10px;
+    text-align: left;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.1px;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    background: rgba(30,33,40,0.8);
+    white-space: nowrap;
+  }
+  .fuel-report-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(42,45,53,0.7);
+    font-size: 12px;
+    font-family: var(--mono);
+  }
+  .fuel-report-table td.status-short { color: var(--red); }
+  .fuel-report-table td.status-excess { color: var(--green); }
+  .fuel-report-table td.status-even { color: var(--muted); }
+  .fuel-report-table td .status-short { color: var(--red); }
+  .fuel-report-table td .status-excess { color: var(--green); }
+  .fuel-report-table td .status-even { color: var(--muted); }
 
   .pay-req-panel {
     background: var(--surface); border: 1px solid var(--border); margin-bottom: 20px;
@@ -839,6 +1177,9 @@ $openAnalyticsPanel = false;
     .form-row { grid-template-columns: 1fr 1fr 1fr; }
     .analytics-grid { grid-template-columns: 1fr 1fr; }
     .analytics-stats { grid-template-columns: 1fr 1fr; }
+    .fuel-kpi-grid { grid-template-columns: 1fr 1fr; }
+    .prime-entry-form { grid-template-columns: 1fr 1fr; }
+    .fuel-report-grid { grid-template-columns: 1fr; }
   }
   @media(max-width: 700px) {
     .topbar { padding: 14px 16px; flex-direction: column; align-items: flex-start; gap: 10px; }
@@ -846,6 +1187,9 @@ $openAnalyticsPanel = false;
     .stats-grid { grid-template-columns: 1fr 1fr; }
     .cat-cards { grid-template-columns: 1fr; }
     .form-row { grid-template-columns: 1fr 1fr; }
+    .fuel-kpi-grid { grid-template-columns: 1fr; }
+    .prime-entry-grid { grid-template-columns: 1fr; }
+    .prime-entry-form { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -977,6 +1321,187 @@ $openAnalyticsPanel = false;
             </table>
           </div>
         <?php endif; ?>
+      </div>
+    </div>
+  <?php endif; ?>
+
+  <?php if($canManageLedger): ?>
+    <div class="ledger-toolbar">
+      <button
+        class="ledger-toolbar-btn"
+        type="button"
+        id="ledger_fuel_pump_toggle"
+        data-toggle-target="ledger_fuel_pump_body"
+        aria-expanded="<?php echo $openFuelPumpPanel ? 'true' : 'false'; ?>"
+      >
+        <span class="ledger-toolbar-label">Company Fuel + Pump Recovery</span>
+        <span class="ledger-toolbar-meta">
+          <span class="ledger-toolbar-count <?php echo $primeRunningBalance > 0.0001 ? 'fp-balance-due' : 'fp-balance-clear'; ?>">
+            Prime Balance: Rs <?php echo format_amount_local(abs($primeRunningBalance), 1); ?><?php echo $primeRunningBalance > 0.0001 ? ' Due' : ' Clear'; ?>
+          </span>
+          <span class="toggle-icon"><?php echo $openFuelPumpPanel ? '-' : '+'; ?></span>
+        </span>
+      </button>
+    </div>
+    <div id="ledger_fuel_pump_body" class="toggle-body<?php echo $openFuelPumpPanel ? ' open' : ''; ?>">
+      <div class="fuel-pump-panel">
+        <div class="fuel-pump-body">
+          <div class="fuel-kpi-grid">
+            <div class="fuel-kpi-card">
+              <div class="fuel-kpi-label">This Month Business</div>
+              <div class="fuel-kpi-value">Rs <?php echo format_amount_local($currentMonthBusiness, 1); ?></div>
+            </div>
+            <div class="fuel-kpi-card">
+              <div class="fuel-kpi-label">Expected Fuel (50%)</div>
+              <div class="fuel-kpi-value yellow">Rs <?php echo format_amount_local($currentMonthExpectedFuel, 1); ?></div>
+            </div>
+            <div class="fuel-kpi-card">
+              <div class="fuel-kpi-label">Actual Card (This Month)</div>
+              <div class="fuel-kpi-value">Rs <?php echo format_amount_local($currentMonthActualCard, 1); ?></div>
+              <div class="pay-req-note">
+                <?php if(abs($currentMonthFuelDiff) < 0.0001): ?>
+                  Difference: Even
+                <?php elseif($currentMonthFuelDiff < 0): ?>
+                  Difference: Short Rs <?php echo format_amount_local(abs($currentMonthFuelDiff), 1); ?>
+                <?php else: ?>
+                  Difference: Excess Rs <?php echo format_amount_local($currentMonthFuelDiff, 1); ?>
+                <?php endif; ?>
+              </div>
+            </div>
+            <div class="fuel-kpi-card">
+              <div class="fuel-kpi-label">Prime Running Balance</div>
+              <div class="fuel-kpi-value <?php echo $primeRunningBalance > 0.0001 ? 'red' : 'green'; ?>">
+                Rs <?php echo format_amount_local(abs($primeRunningBalance), 1); ?><?php echo $primeRunningBalance > 0.0001 ? ' Due' : ' Settled'; ?>
+              </div>
+            </div>
+          </div>
+
+          <div class="prime-entry-grid">
+            <div class="prime-entry-card">
+              <div class="prime-entry-title">Card To Prime (Auto Pump Credit)</div>
+              <form method="post" class="prime-entry-form">
+                <div class="prime-entry-field">
+                  <label for="prime_entry_date_card">Date</label>
+                  <input id="prime_entry_date_card" type="date" name="prime_entry_date" value="<?php echo htmlspecialchars($primeFormDate); ?>" required>
+                </div>
+                <div class="prime-entry-field">
+                  <label for="prime_card_amount">Card Amount (Rs)</label>
+                  <input id="prime_card_amount" type="number" step="any" min="0.001" name="prime_card_amount" value="<?php echo htmlspecialchars($primeCardAmount); ?>" placeholder="0.00" required>
+                </div>
+                <div class="prime-entry-field">
+                  <label for="prime_note_card">Note</label>
+                  <input id="prime_note_card" type="text" name="prime_note" value="<?php echo htmlspecialchars($primeFormNote); ?>" placeholder="Optional note">
+                </div>
+                <button class="btn-prime issue" type="submit" name="add_prime_card">Add Card</button>
+              </form>
+            </div>
+
+            <div class="prime-entry-card">
+              <div class="prime-entry-title">Prime Partial Payment (Recovery Debit)</div>
+              <form method="post" class="prime-entry-form">
+                <div class="prime-entry-field">
+                  <label for="prime_entry_date_recovery">Date</label>
+                  <input id="prime_entry_date_recovery" type="date" name="prime_entry_date" value="<?php echo htmlspecialchars($primeFormDate); ?>" required>
+                </div>
+                <div class="prime-entry-field">
+                  <label for="prime_recovery_amount">Recovery Amount (Rs)</label>
+                  <input id="prime_recovery_amount" type="number" step="any" min="0.001" name="prime_recovery_amount" value="<?php echo htmlspecialchars($primeRecoveryAmount); ?>" placeholder="0.00" required>
+                </div>
+                <div class="prime-entry-field">
+                  <label for="prime_note_recovery">Note</label>
+                  <input id="prime_note_recovery" type="text" name="prime_note" value="<?php echo htmlspecialchars($primeFormNote); ?>" placeholder="Optional note">
+                </div>
+                <button class="btn-prime recovery" type="submit" name="add_prime_recovery">Add Recovery</button>
+              </form>
+            </div>
+          </div>
+
+          <div class="fuel-report-grid">
+            <div class="fuel-report-box">
+              <div class="fuel-report-head">Company Fuel Report (Actual Card vs 50% Requirement)</div>
+              <div class="fuel-report-wrap">
+                <table class="fuel-report-table">
+                  <thead>
+                    <tr>
+                      <th>Month</th>
+                      <th>Business</th>
+                      <th>Expected 50%</th>
+                      <th>Actual Card</th>
+                      <th>Short/Excess</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <?php if(count($companyFuelReportRows) === 0): ?>
+                      <tr><td colspan="5">No data found.</td></tr>
+                    <?php else: ?>
+                      <?php foreach($companyFuelReportRows as $row): ?>
+                        <?php
+                          $monthLabelTs = strtotime((string)$row['month'] . '-01');
+                          $monthLabel = $monthLabelTs ? date('M Y', $monthLabelTs) : (string)$row['month'];
+                          $diffVal = (float)$row['difference'];
+                          if(abs($diffVal) < 0.0001){
+                              $diffText = 'Even';
+                              $diffClass = 'status-even';
+                          } elseif($diffVal < 0){
+                              $diffText = 'Short Rs ' . format_amount_local(abs($diffVal), 1);
+                              $diffClass = 'status-short';
+                          } else {
+                              $diffText = 'Excess Rs ' . format_amount_local($diffVal, 1);
+                              $diffClass = 'status-excess';
+                          }
+                        ?>
+                        <tr>
+                          <td><?php echo htmlspecialchars($monthLabel); ?></td>
+                          <td>Rs <?php echo format_amount_local((float)$row['business_total'], 1); ?></td>
+                          <td>Rs <?php echo format_amount_local((float)$row['expected_fuel'], 1); ?></td>
+                          <td>Rs <?php echo format_amount_local((float)$row['actual_card'], 1); ?></td>
+                          <td><span class="<?php echo htmlspecialchars($diffClass); ?>"><?php echo htmlspecialchars($diffText); ?></span></td>
+                        </tr>
+                      <?php endforeach; ?>
+                    <?php endif; ?>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="fuel-report-box">
+              <div class="fuel-report-head">Pump Recovery Report (Card Given vs Cash Received)</div>
+              <div class="fuel-report-wrap">
+                <table class="fuel-report-table">
+                  <thead>
+                    <tr>
+                      <th>Month</th>
+                      <th>Card Given (Credit)</th>
+                      <th>Cash Received (Debit)</th>
+                      <th>Running Balance</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <?php if(count($pumpRecoveryReportRows) === 0): ?>
+                      <tr><td colspan="4">No data found.</td></tr>
+                    <?php else: ?>
+                      <?php foreach($pumpRecoveryReportRows as $row): ?>
+                        <?php
+                          $monthLabelTs = strtotime((string)$row['month'] . '-01');
+                          $monthLabel = $monthLabelTs ? date('M Y', $monthLabelTs) : (string)$row['month'];
+                          $runningVal = (float)$row['running_balance'];
+                        ?>
+                        <tr>
+                          <td><?php echo htmlspecialchars($monthLabel); ?></td>
+                          <td>Rs <?php echo format_amount_local((float)$row['card_given'], 1); ?></td>
+                          <td>Rs <?php echo format_amount_local((float)$row['cash_received'], 1); ?></td>
+                          <td class="<?php echo $runningVal > 0.0001 ? 'status-short' : 'status-excess'; ?>">
+                            Rs <?php echo format_amount_local(abs($runningVal), 1); ?><?php echo $runningVal > 0.0001 ? ' Due' : ' Settled'; ?>
+                          </td>
+                        </tr>
+                      <?php endforeach; ?>
+                    <?php endif; ?>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   <?php endif; ?>
