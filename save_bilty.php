@@ -30,8 +30,8 @@ $postedTenderManualMode = (isset($_POST['tender_manual_mode']) && trim((string)$
 $isManualTender = auth_is_super_admin() && $postedTenderManualMode === '1';
 
 if($d !== '' && $b !== ''){
-    $dupStmt = $conn->prepare("SELECT id FROM bilty WHERE date=? AND bilty_no=? LIMIT 1");
-    $dupStmt->bind_param("ss", $d, $b);
+    $dupStmt = $conn->prepare("SELECT id FROM bilty WHERE date=? AND bilty_no=? AND feed_portion=? LIMIT 1");
+    $dupStmt->bind_param("sss", $d, $b, $feedPortion);
     $dupStmt->execute();
     $dupRow = $dupStmt->get_result()->fetch_assoc();
     $dupStmt->close();

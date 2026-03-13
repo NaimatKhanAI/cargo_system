@@ -193,9 +193,13 @@ $formErrorMessage = '';
 if($flashError === 'duplicate_bilty_same_date'){
     $dupNo = isset($flashOld['bilty']) ? trim((string)$flashOld['bilty']) : '';
     $dupDate = isset($flashOld['date']) ? trim((string)$flashOld['date']) : '';
-    $formErrorMessage = 'Same date par yeh bilty number already maujood hai.';
+    $dupSection = feed_portion_label_local(isset($flashOld['feed_portion']) ? (string)$flashOld['feed_portion'] : '');
+    $formErrorMessage = 'Same date aur same section mein yeh bilty number pehle se maujood hai.';
     if($dupNo !== '' && $dupDate !== ''){
         $formErrorMessage .= ' Bilty No: ' . $dupNo . ' | Date: ' . $dupDate;
+    }
+    if($dupSection !== ''){
+        $formErrorMessage .= ' | Section: ' . $dupSection;
     }
 } elseif($flashError === 'tender_fetch_failed'){
     $formErrorMessage = 'Internet ki wajah se tender rate fetch nahi ho paya. SR dobara likhein.';
