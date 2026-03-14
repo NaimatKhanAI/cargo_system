@@ -3,7 +3,7 @@ if(!function_exists('feed_portion_options_local')){
     function feed_portion_options_local(){
         return [
             'al_amir' => 'Amir',
-            'mian_hameed' => 'Hameed',
+            'mian_hameed' => 'Hamid',
             'm_ilyas' => 'Ilyas',
         ];
     }

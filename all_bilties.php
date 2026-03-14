@@ -264,7 +264,7 @@ foreach($allBilties as $r){
         <select id="a_section">
           <option value="">All</option>
           <option value="amir">Amir</option>
-          <option value="hameed">Hameed</option>
+          <option value="hamid">Hamid</option>
           <option value="ilyas">Ilyas</option>
         </select>
       </div>

@@ -11,7 +11,16 @@ $isSuperAdmin = auth_is_super_admin();
 $canHaleeb = auth_has_module_access('haleeb');
 $canManageUsers = auth_can_manage_users();
 $userFeedPortion = auth_get_feed_portion();
-$userFeedPortionLabel = feed_portion_label_local($userFeedPortion);
+$feedPortionOptions = feed_portion_options_local();
+$feedSectionOrder = ['m_ilyas', 'mian_hameed', 'al_amir'];
+$feedFilterKey = '';
+if($isSuperAdmin && isset($_GET['portion'])){
+    $portionParam = strtolower(trim((string)$_GET['portion']));
+    if(isset($feedPortionOptions[$portionParam])) $feedFilterKey = $portionParam;
+}
+$activeFeedPortionKey = $isSuperAdmin ? $feedFilterKey : $userFeedPortion;
+$activeFeedPortionLabel = $activeFeedPortionKey !== '' ? feed_portion_label_local($activeFeedPortionKey) : '';
+$addBiltyHref = 'add_bilty.php' . ($activeFeedPortionKey !== '' ? ('?portion=' . rawurlencode($activeFeedPortionKey)) : '');
 $currentUserId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 
 if(isset($_GET['confirm_driver_pay'])){
@@ -179,7 +188,7 @@ if(isset($_GET['req']) && $_GET['req'] === 'submitted'){
 
 $vehicleOptions = [];
 $biltyOptions = [];
-if($isSuperAdmin){
+if($activeFeedPortionKey === ''){
     $vehicleRes = $conn->query("SELECT DISTINCT vehicle FROM bilty WHERE vehicle IS NOT NULL AND vehicle <> '' ORDER BY vehicle ASC");
     while($vehicleRes && $vrow = $vehicleRes->fetch_assoc()){
         $vehicleOptions[] = (string)$vrow['vehicle'];
@@ -190,7 +199,7 @@ if($isSuperAdmin){
     }
 } else {
     $vehicleStmt = $conn->prepare("SELECT DISTINCT vehicle FROM bilty WHERE feed_portion=? AND vehicle IS NOT NULL AND vehicle <> '' ORDER BY vehicle ASC");
-    $vehicleStmt->bind_param("s", $userFeedPortion);
+    $vehicleStmt->bind_param("s", $activeFeedPortionKey);
     $vehicleStmt->execute();
     $vehicleRes = $vehicleStmt->get_result();
     while($vehicleRes && $vrow = $vehicleRes->fetch_assoc()){
@@ -199,7 +208,7 @@ if($isSuperAdmin){
     $vehicleStmt->close();
 
     $biltyStmt = $conn->prepare("SELECT DISTINCT bilty_no FROM bilty WHERE feed_portion=? AND bilty_no IS NOT NULL AND bilty_no <> '' ORDER BY bilty_no ASC");
-    $biltyStmt->bind_param("s", $userFeedPortion);
+    $biltyStmt->bind_param("s", $activeFeedPortionKey);
     $biltyStmt->execute();
     $biltyRes = $biltyStmt->get_result();
     while($biltyRes && $brow = $biltyRes->fetch_assoc()){
@@ -232,7 +241,7 @@ if($dateFrom !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateFrom)){ $where[]
 if($dateTo !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateTo)){ $where[] = "date <= ?"; $bindTypes .= "s"; $bindValues[] = $dateTo; }
 if($vehicleSearch !== '' && $canDirectModify){ $where[] = "vehicle LIKE ?"; $bindTypes .= "s"; $bindValues[] = "%" . $vehicleSearch . "%"; }
 if($biltySearch !== '' && $canDirectModify){ $where[] = "bilty_no LIKE ?"; $bindTypes .= "s"; $bindValues[] = "%" . $biltySearch . "%"; }
-if(!$isSuperAdmin){ $where[] = "feed_portion = ?"; $bindTypes .= "s"; $bindValues[] = $userFeedPortion; }
+if($activeFeedPortionKey !== ''){ $where[] = "feed_portion = ?"; $bindTypes .= "s"; $bindValues[] = $activeFeedPortionKey; }
 
 $sql = "SELECT b.*,
         COALESCE(NULLIF(u.username, ''), CASE WHEN b.added_by_user_id IS NULL THEN '-' ELSE CONCAT('User#', b.added_by_user_id) END) AS added_by_name,
@@ -358,8 +367,14 @@ while($result && $row = $result->fetch_assoc()){
   .nav-btn:hover { background: var(--surface2); color: var(--text); border-color: var(--muted); }
   .nav-btn.primary { background: var(--accent); color: #0e0f11; border-color: var(--accent); }
   .nav-btn.primary:hover { background: #e0b030; }
+  .nav-btn.active { background: var(--accent); color: #0e0f11; border-color: var(--accent); }
   .nav-btn.danger { background: rgba(239,68,68,0.12); color: var(--red); border-color: rgba(239,68,68,0.25); }
   .nav-btn.danger:hover { background: rgba(239,68,68,0.22); color: var(--red); border-color: rgba(239,68,68,0.35); }
+  .section-switch { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 10px 28px; border-bottom: 1px solid var(--border); background: var(--surface2); }
+  .section-switch .switch-label { font-size: 10px; font-weight: 700; letter-spacing: 1.6px; text-transform: uppercase; color: var(--muted); margin-right: 6px; }
+  .section-switch .nav-btn { padding: 6px 10px; font-size: 12px; }
+  .section-switch .nav-btn.hisab { background: rgba(34,197,94,0.12); color: var(--green); border-color: rgba(34,197,94,0.25); }
+  .section-switch .nav-btn.hisab:hover { background: rgba(34,197,94,0.22); }
 
   /* MENU */
   .menu-wrap { position: relative; }
@@ -536,6 +551,7 @@ while($result && $row = $result->fetch_assoc()){
     .topbar h1 { font-size: 15px; }
     .search-form { grid-template-columns: 1fr; }
     .nav-btn { padding: 7px 10px; font-size: 12px; }
+    .section-switch { padding: 10px 16px; }
     .analytics-grid { grid-template-columns: 1fr; }
     .analytics-stats { grid-template-columns: 1fr; }
     .bar-row { grid-template-columns: 90px 1fr auto; }
@@ -547,10 +563,10 @@ while($result && $row = $result->fetch_assoc()){
 <div class="topbar">
   <div class="topbar-logo">
     <span class="badge">Feed</span>
-    <h1>Feed<?php echo $isSuperAdmin ? '' : (' - ' . htmlspecialchars($userFeedPortionLabel)); ?></h1>
+    <h1>Feed<?php echo $activeFeedPortionLabel !== '' ? (' - ' . htmlspecialchars($activeFeedPortionLabel)) : ''; ?></h1>
   </div>
   <div class="nav-links">
-    <a class="nav-btn primary" href="add_bilty.php<?php echo $isSuperAdmin ? '' : ('?portion=' . rawurlencode($userFeedPortion)); ?>">Add Bilty</a>
+    <a class="nav-btn primary" href="<?php echo htmlspecialchars($addBiltyHref); ?>">Add Bilty</a>
     <?php if($canDirectModify): ?>
       <button class="nav-btn" type="button" id="feed_analytics_toggle">Analytics</button>
     <?php endif; ?>
@@ -589,6 +605,22 @@ while($result && $row = $result->fetch_assoc()){
     </div>
   </div>
 </div>
+
+<?php if($isSuperAdmin): ?>
+  <div class="section-switch">
+    <span class="switch-label">Feed Sections</span>
+    <?php foreach($feedSectionOrder as $portionKey): ?>
+      <?php if(!isset($feedPortionOptions[$portionKey])) continue; ?>
+      <a class="nav-btn <?php echo $activeFeedPortionKey === $portionKey ? 'active' : ''; ?>" href="feed.php?portion=<?php echo urlencode($portionKey); ?>">Feed - <?php echo htmlspecialchars($feedPortionOptions[$portionKey]); ?></a>
+    <?php endforeach; ?>
+    <a class="nav-btn <?php echo $activeFeedPortionKey === '' ? 'active' : ''; ?>" href="feed.php">All Feed</a>
+    <span class="switch-label">Hisab</span>
+    <?php foreach($feedSectionOrder as $portionKey): ?>
+      <?php if(!isset($feedPortionOptions[$portionKey])) continue; ?>
+      <a class="nav-btn hisab" href="account.php?cat=feed&feed_section=<?php echo urlencode($portionKey); ?>">Hisab - <?php echo htmlspecialchars($feedPortionOptions[$portionKey]); ?></a>
+    <?php endforeach; ?>
+  </div>
+<?php endif; ?>
 
 <div class="main">
   <?php if($import_message !== ""): ?>
@@ -632,6 +664,9 @@ while($result && $row = $result->fetch_assoc()){
 
   <div class="search-panel">
     <form class="search-form" method="get">
+      <?php if($activeFeedPortionKey !== ''): ?>
+        <input type="hidden" name="portion" value="<?php echo htmlspecialchars($activeFeedPortionKey); ?>">
+      <?php endif; ?>
       <div class="field">
         <label for="date_from">From</label>
         <input id="date_from" type="date" name="date_from" value="<?php echo htmlspecialchars($dateFrom); ?>">
@@ -660,7 +695,7 @@ while($result && $row = $result->fetch_assoc()){
       </div>
       <div class="search-actions">
         <button class="nav-btn primary" type="submit">Search</button>
-        <a class="btn-ghost" href="feed.php">Reset</a>
+        <a class="btn-ghost" href="feed.php<?php echo $activeFeedPortionKey !== '' ? ('?portion=' . rawurlencode($activeFeedPortionKey)) : ''; ?>">Reset</a>
       </div>
     </form>
   </div>

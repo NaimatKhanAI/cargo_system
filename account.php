@@ -132,6 +132,23 @@ $primeFormNote = '';
 $editingId = 0;
 $dateFrom = isset($_GET['date_from']) ? trim((string)$_GET['date_from']) : '';
 $dateTo = isset($_GET['date_to']) ? trim((string)$_GET['date_to']) : '';
+$feedSectionParam = isset($_GET['feed_section']) ? strtolower(trim((string)$_GET['feed_section'])) : '';
+$feedSectionParam = $feedSectionParam === 'hameed' ? 'hamid' : $feedSectionParam;
+$feedSectionKey = '';
+if($feedSectionParam !== ''){
+    $feedOptions = feed_portion_options_local();
+    if(isset($feedOptions[$feedSectionParam])){
+        $feedSectionKey = $feedSectionParam;
+    } else {
+        foreach($feedOptions as $portionKey => $portionLabel){
+            if(strtolower((string)$portionLabel) === $feedSectionParam){
+                $feedSectionKey = $portionKey;
+                break;
+            }
+        }
+    }
+}
+$feedSectionLabel = $feedSectionKey !== '' ? feed_portion_label_local($feedSectionKey) : '';
 
 if(isset($_POST['approve_pay_request']) || isset($_POST['reject_pay_request'])){
     if(!$canManageLedger){
@@ -456,10 +473,17 @@ if($cat === 'feed'){
     $bindTypes .= 's';
     $bindValues[] = $cat;
 }
+if($feedSectionKey !== ''){
+    $where[] = "account_entries.bilty_id IN (SELECT id FROM bilty WHERE feed_portion = ?)";
+    $bindTypes .= 's';
+    $bindValues[] = $feedSectionKey;
+}
 $whereSql = count($where) > 0 ? (' WHERE ' . implode(' AND ', $where)) : '';
 $dateQueryTail = '';
 if($dateFrom !== '') $dateQueryTail .= '&date_from=' . urlencode($dateFrom);
 if($dateTo !== '') $dateQueryTail .= '&date_to=' . urlencode($dateTo);
+$filterQueryTail = $dateQueryTail;
+if($feedSectionKey !== '') $filterQueryTail .= '&feed_section=' . urlencode($feedSectionKey);
 
 if($canManageLedger && isset($_GET['edit_id']) && !isset($_POST['update_entry'])){
     $requestedEditId = (int)$_GET['edit_id'];
@@ -1198,7 +1222,7 @@ $openAnalyticsPanel = false;
 <div class="topbar">
   <div class="topbar-logo">
     <span class="badge-pill">Ledger</span>
-    <h1>Account</h1>
+    <h1>Account<?php echo $feedSectionLabel !== '' ? (' - Feed - ' . htmlspecialchars($feedSectionLabel)) : ''; ?></h1>
   </div>
   <div class="nav-links">
     <?php if($canReviewActivity): ?>
@@ -1563,8 +1587,8 @@ $openAnalyticsPanel = false;
             <?php if($editingId > 0): ?>
               <input type="hidden" name="edit_id" value="<?php echo (int)$editingId; ?>">
               <button class="btn-submit" type="submit" name="update_entry">Update</button>
-              <a class="btn-cancel" href="account.php?cat=<?php echo urlencode($cat); ?>&date_from=<?php echo urlencode($dateFrom); ?>&date_to=<?php echo urlencode($dateTo); ?>">Cancel</a>
-              <a class="btn-del" href="account.php?cat=<?php echo urlencode($cat); ?>&date_from=<?php echo urlencode($dateFrom); ?>&date_to=<?php echo urlencode($dateTo); ?>&delete_id=<?php echo (int)$editingId; ?>" onclick="return confirm('Delete this entry?')" title="Delete">&#128465;</a>
+              <a class="btn-cancel" href="account.php?cat=<?php echo urlencode($cat); ?>&date_from=<?php echo urlencode($dateFrom); ?>&date_to=<?php echo urlencode($dateTo); ?><?php echo $feedSectionKey !== '' ? ('&feed_section=' . urlencode($feedSectionKey)) : ''; ?>">Cancel</a>
+              <a class="btn-del" href="account.php?cat=<?php echo urlencode($cat); ?>&date_from=<?php echo urlencode($dateFrom); ?>&date_to=<?php echo urlencode($dateTo); ?><?php echo $feedSectionKey !== '' ? ('&feed_section=' . urlencode($feedSectionKey)) : ''; ?>&delete_id=<?php echo (int)$editingId; ?>" onclick="return confirm('Delete this entry?')" title="Delete">&#128465;</a>
             <?php else: ?>
               <button class="btn-submit" type="submit" name="add_entry">Save</button>
             <?php endif; ?>
@@ -1583,15 +1607,18 @@ $openAnalyticsPanel = false;
   <!-- FILTER -->
   <div class="cat-panel">
     <div class="cat-filter-row">
-      <a class="cat-btn <?php echo $cat==='all'?'active':''; ?>" href="account.php?cat=all<?php echo $dateQueryTail; ?>">All</a>
+      <a class="cat-btn <?php echo $cat==='all'?'active':''; ?>" href="account.php?cat=all<?php echo $filterQueryTail; ?>">All</a>
       <?php foreach($allowedCategories as $categoryKey): ?>
-        <a class="cat-btn <?php echo $cat === $categoryKey ? 'active' : ''; ?>" href="account.php?cat=<?php echo urlencode($categoryKey); ?><?php echo $dateQueryTail; ?>">
+        <a class="cat-btn <?php echo $cat === $categoryKey ? 'active' : ''; ?>" href="account.php?cat=<?php echo urlencode($categoryKey); ?><?php echo $filterQueryTail; ?>">
           <?php echo htmlspecialchars(ledger_category_label_local($categoryKey, $categoryLabels)); ?>
         </a>
       <?php endforeach; ?>
     </div>
     <form class="date-filter" method="get">
       <input type="hidden" name="cat" value="<?php echo htmlspecialchars($cat); ?>">
+      <?php if($feedSectionKey !== ''): ?>
+        <input type="hidden" name="feed_section" value="<?php echo htmlspecialchars($feedSectionKey); ?>">
+      <?php endif; ?>
       <div class="form-field">
         <label>From</label>
         <input type="date" name="date_from" value="<?php echo htmlspecialchars($dateFrom); ?>">
@@ -1601,7 +1628,7 @@ $openAnalyticsPanel = false;
         <input type="date" name="date_to" value="<?php echo htmlspecialchars($dateTo); ?>">
       </div>
       <button class="btn-apply" type="submit">Apply</button>
-      <a class="btn-cancel" href="account.php?cat=<?php echo urlencode($cat); ?>">Reset</a>
+      <a class="btn-cancel" href="account.php?cat=<?php echo urlencode($cat); ?><?php echo $feedSectionKey !== '' ? ('&feed_section=' . urlencode($feedSectionKey)) : ''; ?>">Reset</a>
     </form>
   </div>
 
@@ -1664,9 +1691,9 @@ $openAnalyticsPanel = false;
         <label for="a_led_feed_section">Feed Section</label>
         <select id="a_led_feed_section">
           <option value="">All</option>
-          <option value="amir">Amir</option>
-          <option value="hameed">Hameed</option>
           <option value="ilyas">Ilyas</option>
+          <option value="hamid">Hamid</option>
+          <option value="amir">Amir</option>
         </select>
       </div>
       <div class="form-field">
@@ -1839,7 +1866,7 @@ $openAnalyticsPanel = false;
           <td class="td-note"><?php echo htmlspecialchars($row['note']); ?></td>
           <?php if($canManageLedger): ?>
             <td class="col-action">
-              <a class="act-edit" href="account.php?cat=<?php echo urlencode($cat); ?>&date_from=<?php echo urlencode($dateFrom); ?>&date_to=<?php echo urlencode($dateTo); ?>&edit_id=<?php echo (int)$row['id']; ?>" title="Edit">&#9998;</a>
+              <a class="act-edit" href="account.php?cat=<?php echo urlencode($cat); ?>&date_from=<?php echo urlencode($dateFrom); ?>&date_to=<?php echo urlencode($dateTo); ?><?php echo $feedSectionKey !== '' ? ('&feed_section=' . urlencode($feedSectionKey)) : ''; ?>&edit_id=<?php echo (int)$row['id']; ?>" title="Edit">&#9998;</a>
             </td>
           <?php endif; ?>
         </tr>
@@ -1941,6 +1968,8 @@ $openAnalyticsPanel = false;
   setSelectOptions(f.party, collectOptions('party', 'partyLabel'));
   setSelectOptions(f.vehicle, collectOptions('vehicle', 'vehicleLabel'));
   setSelectOptions(f.addedBy, collectOptions('addedBy', 'addedByLabel'));
+  var defaultFeedSection = <?php echo json_encode($feedSectionLabel !== '' ? strtolower($feedSectionLabel) : ''); ?>;
+  if(defaultFeedSection && f.feedSection){ f.feedSection.value = defaultFeedSection; }
 
   function apply(){
     var x = {
