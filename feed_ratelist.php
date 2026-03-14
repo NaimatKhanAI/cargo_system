@@ -2,6 +2,7 @@
 require_once __DIR__ . '/config/session_bootstrap.php';
 include 'config/db.php';
 require_once 'config/auth.php';
+require_once __DIR__ . '/config/feed_portions.php';
 auth_require_login($conn);
 auth_require_module_access('feed');
 auth_require_super_admin('dashboard.php');
@@ -46,6 +47,7 @@ function sr_exists_local($conn, $srKey, $srValue, $excludeId = 0){ $srCanon = ca
 function is_valid_ymd_date_local($value){ $v = trim((string)$value); if(!preg_match('/^\d{4}-\d{2}-\d{2}$/', $v)) return false; $dt = DateTime::createFromFormat('Y-m-d', $v); return $dt && $dt->format('Y-m-d') === $v; }
 
 $msg = ''; $err = ''; $editingId = 0; $openAddRow = false; $openRateChange = false; $openTenderUpdate = false; $rateChangeSource = ''; $rateChangeMode = 'increment'; $rateChangePercent = ''; $rateChangeLabel = ''; $rateChangePetrolOld = ''; $rateChangePetrolNew = ''; $tenderUpdateDateFrom = ''; $tenderUpdateDateTo = ''; $tenderUpdateSource = ''; $tenderUpdateMode = 'increment'; $tenderUpdatePercent = '';
+$tenderUpdateSection = '';
 
 if(!$canDirectModify){
   $blockedPostActions = ['add_column', 'apply_rate_change', 'apply_bilty_tender_update', 'save_columns', 'delete_column', 'delete_rate', 'update_rate', 'add_rate'];
@@ -168,6 +170,7 @@ if(isset($_POST['apply_bilty_tender_update'])){
   $tenderUpdateSource = isset($_POST['tu_source_column']) ? trim((string)$_POST['tu_source_column']) : '';
   $tenderUpdateMode = isset($_POST['tu_mode']) ? trim((string)$_POST['tu_mode']) : 'increment';
   $tenderUpdatePercent = isset($_POST['tu_percent']) ? trim((string)$_POST['tu_percent']) : '';
+  $tenderUpdateSection = normalize_feed_portion_local(isset($_POST['tu_section']) ? (string)$_POST['tu_section'] : '');
 
   $allCols = load_columns($conn);
   $activeCols = array_values(array_filter($allCols, function($c){ return (int)$c['is_deleted'] === 0; }));
@@ -188,6 +191,8 @@ if(isset($_POST['apply_bilty_tender_update'])){
     $err = 'Tender Update: select a valid base column.';
   } elseif($tenderUpdatePercent === '' || !is_numeric($tenderUpdatePercent)){
     $err = 'Tender Update: enter a valid percent value.';
+  } elseif($tenderUpdateSection === ''){
+    $err = 'Tender Update: select a feed section.';
   } else {
     $percent = abs((float)$tenderUpdatePercent);
     $factor = ($tenderUpdateMode === 'decrement') ? (1 - ($percent / 100)) : (1 + ($percent / 100));
@@ -216,8 +221,8 @@ if(isset($_POST['apply_bilty_tender_update'])){
       $rateBySr[$srCanon] = $rateRow;
     }
 
-    $biltyStmt = $conn->prepare("SELECT id, sr_no, bags, freight, commission FROM bilty WHERE date >= ? AND date <= ? ORDER BY id ASC");
-    $biltyStmt->bind_param("ss", $tenderUpdateDateFrom, $tenderUpdateDateTo);
+    $biltyStmt = $conn->prepare("SELECT id, sr_no, bags, freight, commission FROM bilty WHERE date >= ? AND date <= ? AND feed_portion=? ORDER BY id ASC");
+    $biltyStmt->bind_param("sss", $tenderUpdateDateFrom, $tenderUpdateDateTo, $tenderUpdateSection);
     $biltyStmt->execute();
     $biltyRes = $biltyStmt->get_result();
 
@@ -285,7 +290,8 @@ if(isset($_POST['apply_bilty_tender_update'])){
     $biltyStmt->close();
     $labelText = $sourceLabel !== '' ? $sourceLabel : $tenderUpdateSource;
     $modeText = $tenderUpdateMode === 'decrement' ? 'decrease' : 'increase';
-    $msg = "Feed tender update complete ({$tenderUpdateDateFrom} to {$tenderUpdateDateTo}, {$modeText} {$percent}%, base: {$labelText}). Updated: {$updatedCount}/{$totalRows}, missing bilty SR: {$missingBiltySr}, SR not found in rate list: {$missingRateSr}, source rate missing/non-numeric: {$invalidRateValue}, non-positive tender skipped: {$nonPositiveTender}.";
+    $sectionLabel = feed_portion_label_local($tenderUpdateSection);
+    $msg = "Feed tender update complete ({$tenderUpdateDateFrom} to {$tenderUpdateDateTo}, {$modeText} {$percent}%, base: {$labelText}, section: {$sectionLabel}). Updated: {$updatedCount}/{$totalRows}, missing bilty SR: {$missingBiltySr}, SR not found in rate list: {$missingRateSr}, source rate missing/non-numeric: {$invalidRateValue}, non-positive tender skipped: {$nonPositiveTender}.";
   }
 }
 if(isset($_POST['save_columns'])){ $cols = load_columns($conn); foreach($cols as $c){ $key = $c['column_key']; $labelField = 'label_' . $key; $hideField = 'hide_' . $key; $newLabel = isset($_POST[$labelField]) ? trim($_POST[$labelField]) : $c['column_label']; $isHidden = isset($_POST[$hideField]) ? 1 : 0; if($newLabel === '') $newLabel = $c['column_label']; $upd = $conn->prepare("UPDATE rate_list_columns SET column_label=?, is_hidden=? WHERE column_key=?"); $upd->bind_param("sis", $newLabel, $isHidden, $key); $upd->execute(); $upd->close(); } $msg = 'Column settings updated.'; }
@@ -525,6 +531,14 @@ $rows = $conn->query("SELECT id, source_file, source_image_path, sr_no, station_
         <div class="add-col-row" style="flex-wrap:wrap;">
           <input type="date" name="tu_date_from" value="<?php echo htmlspecialchars($tenderUpdateDateFrom); ?>" required>
           <input type="date" name="tu_date_to" value="<?php echo htmlspecialchars($tenderUpdateDateTo); ?>" required>
+          <select name="tu_section" required>
+            <option value="">Select feed section</option>
+            <?php foreach(feed_portion_options_local() as $portionKey => $portionLabel): ?>
+              <option value="<?php echo htmlspecialchars($portionKey); ?>" <?php echo $tenderUpdateSection === $portionKey ? 'selected' : ''; ?>>
+                <?php echo htmlspecialchars($portionLabel); ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
           <select name="tu_source_column" required>
             <option value="">Select base column</option>
             <?php foreach($displayColumns as $c): ?>
