@@ -6,6 +6,10 @@ require_once 'config/change_requests.php';
 require_once 'config/activity_notifications.php';
 auth_require_login($conn);
 auth_require_module_access('haleeb');
+if(auth_is_viewer()){
+    header("location:haleeb.php?denied=view_only");
+    exit();
+}
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 if($id <= 0){ header("location:haleeb.php"); exit(); }
 $isSuperAdmin = auth_is_super_admin();

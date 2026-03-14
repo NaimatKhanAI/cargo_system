@@ -4,6 +4,10 @@ include 'config/db.php';
 require_once 'config/auth.php';
 auth_require_login($conn);
 auth_require_module_access('haleeb');
+if(auth_is_viewer()){
+    header("location:haleeb.php?denied=view_only");
+    exit();
+}
 auth_require_super_admin('dashboard.php');
 $currentUserId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 $addedByUserId = $currentUserId > 0 ? $currentUserId : null;

@@ -11,6 +11,10 @@ if(!$canHaleebAccess && !$canLedgerAccess){
     header("location:dashboard.php?denied=" . urlencode('haleeb'));
     exit();
 }
+if(auth_is_viewer()){
+    header("location:haleeb.php?denied=view_only");
+    exit();
+}
 $isSuperAdmin = auth_is_super_admin();
 $canDirectHaleebPay = auth_can_direct_modify('haleeb') || $canLedgerAccess;
 $source = isset($_GET['src']) ? strtolower(trim((string)$_GET['src'])) : '';

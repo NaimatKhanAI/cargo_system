@@ -11,8 +11,13 @@ if(!$canFeedAccess && !$canLedgerAccess){
     header("location:dashboard.php?denied=" . urlencode('feed'));
     exit();
 }
+if(auth_is_viewer()){
+    header("location:feed.php?denied=view_only");
+    exit();
+}
 $isSuperAdmin = auth_is_super_admin();
 $canDirectFeedPay = auth_can_direct_modify('feed') || $canLedgerAccess;
+$userFeedPortions = auth_get_feed_portions();
 $userFeedPortion = auth_get_feed_portion();
 $source = isset($_GET['src']) ? strtolower(trim((string)$_GET['src'])) : '';
 $fallbackReturnUrl = $source === 'all_bilties' ? 'all_bilties.php' : 'feed.php';
@@ -43,8 +48,18 @@ if($isSuperAdmin || $canLedgerAccess){
     $stmt = $conn->prepare("SELECT * FROM bilty WHERE id=? LIMIT 1");
     $stmt->bind_param("i", $id);
 } else {
-    $stmt = $conn->prepare("SELECT * FROM bilty WHERE id=? AND feed_portion=? LIMIT 1");
-    $stmt->bind_param("is", $id, $userFeedPortion);
+    if(count($userFeedPortions) === 1){
+        $stmt = $conn->prepare("SELECT * FROM bilty WHERE id=? AND feed_portion=? LIMIT 1");
+        $stmt->bind_param("is", $id, $userFeedPortions[0]);
+    } else {
+        $placeholders = implode(',', array_fill(0, count($userFeedPortions), '?'));
+        $stmt = $conn->prepare("SELECT * FROM bilty WHERE id=? AND feed_portion IN ($placeholders) LIMIT 1");
+        $types = 'i' . str_repeat('s', count($userFeedPortions));
+        $params = array_merge([$types, $id], $userFeedPortions);
+        $bindArgs = [];
+        foreach($params as $k => $v){ $bindArgs[$k] = &$params[$k]; }
+        call_user_func_array([$stmt, 'bind_param'], $bindArgs);
+    }
 }
 $stmt->execute();
 $row = $stmt->get_result()->fetch_assoc(); $stmt->close();

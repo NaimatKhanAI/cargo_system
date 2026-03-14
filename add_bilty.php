@@ -6,7 +6,13 @@ require_once 'config/feed_portions.php';
 auth_require_login($conn);
 auth_require_module_access('feed');
 
+if(auth_is_viewer()){
+    header("location:feed.php?denied=view_only");
+    exit();
+}
+
 $isSuperAdmin = auth_is_super_admin();
+$userFeedPortions = auth_get_feed_portions();
 $userFeedPortion = auth_get_feed_portion();
 
 function normalize_date_label_local($v){ $v = strtolower(trim((string)$v)); $v = str_replace(['.', '-', ' '], '/', $v); $v = preg_replace('#/+#', '/', $v); $parts = explode('/', $v); if(count($parts) === 3){ $m = ltrim($parts[0], '0'); $d = ltrim($parts[1], '0'); $y = trim($parts[2]); if($m === '') $m = '0'; if($d === '') $d = '0'; return $m . '/' . $d . '/' . $y; } return $v; }
@@ -35,6 +41,14 @@ function get_feed_portion_column_key_local($conn, $portionKey, $activeColumns){
 
 $activeColumns = load_active_rate_columns_local($conn);
 $feedPortionOptions = feed_portion_options_local();
+$availableFeedPortionOptions = $feedPortionOptions;
+if(!$isSuperAdmin){
+    $allowedMap = array_flip($userFeedPortions);
+    $availableFeedPortionOptions = array_filter($feedPortionOptions, function($key) use ($allowedMap){
+        return isset($allowedMap[$key]);
+    }, ARRAY_FILTER_USE_KEY);
+}
+$canSelectPortion = $isSuperAdmin || count($availableFeedPortionOptions) > 1;
 $flashSuccess = '';
 $flashError = '';
 $flashOld = [];
@@ -97,7 +111,12 @@ if(isset($_GET['lookup_tender']) && $_GET['lookup_tender'] === '1'){
     $sr = isset($_GET['sr_no']) ? trim((string)$_GET['sr_no']) : '';
     if($sr === ''){ echo json_encode(['ok' => false, 'message' => 'SR No is required']); exit(); }
 
-    $lookupPortion = $isSuperAdmin ? normalize_feed_portion_local(isset($_GET['portion']) ? (string)$_GET['portion'] : '') : $userFeedPortion;
+    $requestedPortion = normalize_feed_portion_key_local(isset($_GET['portion']) ? (string)$_GET['portion'] : '');
+    if($isSuperAdmin){
+        $lookupPortion = $requestedPortion !== '' ? $requestedPortion : feed_default_portion_key_local();
+    } else {
+        $lookupPortion = feed_portion_list_has_key_local($userFeedPortions, $requestedPortion) ? $requestedPortion : $userFeedPortion;
+    }
 
     $defaultTargetLabel = '1/1/2026';
     $targetNorm = normalize_date_label_local($defaultTargetLabel);
@@ -171,13 +190,22 @@ if(isset($_GET['lookup_tender']) && $_GET['lookup_tender'] === '1'){
     exit();
 }
 
-$selectedFeedPortion = $isSuperAdmin ? normalize_feed_portion_local(isset($_GET['portion']) ? (string)$_GET['portion'] : '') : $userFeedPortion;
-if($isSuperAdmin && isset($flashOld['feed_portion'])){
-    $oldFeedPortion = normalize_feed_portion_local((string)$flashOld['feed_portion']);
-    if(isset($feedPortionOptions[$oldFeedPortion])) $selectedFeedPortion = $oldFeedPortion;
+$requestedPortion = normalize_feed_portion_key_local(isset($_GET['portion']) ? (string)$_GET['portion'] : '');
+$selectedFeedPortion = $isSuperAdmin
+    ? ($requestedPortion !== '' ? $requestedPortion : feed_default_portion_key_local())
+    : $userFeedPortion;
+if(!$isSuperAdmin && $requestedPortion !== '' && feed_portion_list_has_key_local($userFeedPortions, $requestedPortion)){
+    $selectedFeedPortion = $requestedPortion;
+}
+if(isset($flashOld['feed_portion'])){
+    $oldFeedPortion = normalize_feed_portion_key_local((string)$flashOld['feed_portion']);
+    if($oldFeedPortion !== '' && ($isSuperAdmin || feed_portion_list_has_key_local($userFeedPortions, $oldFeedPortion))){
+        $selectedFeedPortion = $oldFeedPortion;
+    }
 }
 $portionColumnMap = [];
 foreach($feedPortionOptions as $portionKey => $portionLabel){
+    if(!$isSuperAdmin && !isset($availableFeedPortionOptions[$portionKey])) continue;
     $columnKey = get_feed_portion_column_key_local($conn, $portionKey, $activeColumns);
     $portionColumnMap[$portionKey] = [
         'column_key' => $columnKey,
@@ -364,11 +392,11 @@ if(!in_array($formValues['freight_payment_type'], ['to_pay', 'paid'], true)){
     <div class="form-title">Add Bilty</div>
     <form action="save_bilty.php" method="post">
       <div class="grid">
-        <?php if($isSuperAdmin): ?>
+        <?php if($canSelectPortion): ?>
         <div class="field">
           <label for="feed_portion">Feed Section</label>
           <select id="feed_portion" name="feed_portion" required>
-            <?php foreach($feedPortionOptions as $portionKey => $portionLabel): ?>
+            <?php foreach($availableFeedPortionOptions as $portionKey => $portionLabel): ?>
               <option value="<?php echo htmlspecialchars($portionKey); ?>" <?php echo $selectedFeedPortion === $portionKey ? 'selected' : ''; ?>>
                 <?php echo htmlspecialchars($portionLabel); ?>
               </option>
@@ -510,7 +538,7 @@ if(!in_array($formValues['freight_payment_type'], ['to_pay', 'paid'], true)){
   var manualTenderOverride = tenderManualInput && String(tenderManualInput.value || '0') === '1';
 
   var isSuperAdmin = <?php echo $isSuperAdmin ? 'true' : 'false'; ?>;
-  var portionLabels = <?php echo json_encode($feedPortionOptions, JSON_UNESCAPED_UNICODE); ?>;
+  var portionLabels = <?php echo json_encode($availableFeedPortionOptions, JSON_UNESCAPED_UNICODE); ?>;
   var portionColumnMap = <?php echo json_encode($portionColumnMap, JSON_UNESCAPED_UNICODE); ?>;
   var defaultPortion = <?php echo json_encode($selectedFeedPortion, JSON_UNESCAPED_UNICODE); ?>;
   var canManualTender = isSuperAdmin && tenderInput && String(tenderInput.type || '').toLowerCase() !== 'hidden';

@@ -25,7 +25,10 @@ function auth_store_session_local($row){
     $_SESSION['user'] = (string)$row['username'];
     $_SESSION['role'] = (string)$row['role'];
     $_SESSION['can_access_feed'] = (int)$row['can_access_feed'];
-    $_SESSION['feed_portion'] = normalize_feed_portion_local(isset($row['feed_portion']) ? (string)$row['feed_portion'] : '');
+    $portionRaw = isset($row['feed_portion']) ? (string)$row['feed_portion'] : '';
+    $portionList = normalize_feed_portion_list_local($portionRaw);
+    $_SESSION['feed_portion'] = feed_portion_list_to_csv_local($portionList);
+    $_SESSION['feed_portions'] = $portionList;
     $_SESSION['can_access_haleeb'] = (int)$row['can_access_haleeb'];
     $_SESSION['can_access_account'] = (int)$row['can_access_account'];
     $_SESSION['can_access_image_processing'] = isset($row['can_access_image_processing']) ? (int)$row['can_access_image_processing'] : 0;
@@ -68,6 +71,10 @@ function auth_is_super_admin(){
     return isset($_SESSION['role']) && (string)$_SESSION['role'] === 'super_admin';
 }
 
+function auth_is_viewer(){
+    return isset($_SESSION['role']) && (string)$_SESSION['role'] === 'viewer';
+}
+
 function auth_has_module_access($module){
     if($module === 'feed') return isset($_SESSION['can_access_feed']) && (int)$_SESSION['can_access_feed'] === 1;
     if($module === 'haleeb') return isset($_SESSION['can_access_haleeb']) && (int)$_SESSION['can_access_haleeb'] === 1;
@@ -106,7 +113,15 @@ function auth_can_review_activity(){
 }
 
 function auth_get_feed_portion(){
-    return normalize_feed_portion_local(isset($_SESSION['feed_portion']) ? (string)$_SESSION['feed_portion'] : '');
+    $list = auth_get_feed_portions();
+    return isset($list[0]) ? (string)$list[0] : normalize_feed_portion_local('');
+}
+
+function auth_get_feed_portions(){
+    if(isset($_SESSION['feed_portions']) && is_array($_SESSION['feed_portions']) && count($_SESSION['feed_portions']) > 0){
+        return array_values($_SESSION['feed_portions']);
+    }
+    return normalize_feed_portion_list_local(isset($_SESSION['feed_portion']) ? (string)$_SESSION['feed_portion'] : '');
 }
 
 function auth_require_activity_review($fallback = 'dashboard.php'){

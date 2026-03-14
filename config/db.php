@@ -251,7 +251,18 @@ $conn->query("ALTER TABLE bilty ADD bags INT DEFAULT 0 AFTER location");
 
 $allowedFeedPortionsSql = "'" . implode("','", array_keys(feed_portion_options_local())) . "'";
 $defaultFeedPortion = feed_default_portion_key_local();
-$conn->query("UPDATE users SET feed_portion='{$defaultFeedPortion}' WHERE feed_portion IS NULL OR feed_portion='' OR feed_portion NOT IN ($allowedFeedPortionsSql)");
+$userPortionRes = $conn->query("SELECT id, feed_portion FROM users");
+while($userPortionRes && $urow = $userPortionRes->fetch_assoc()){
+    $uid = (int)($urow['id'] ?? 0);
+    $current = isset($urow['feed_portion']) ? (string)$urow['feed_portion'] : '';
+    $normalized = feed_portion_list_to_csv_local($current);
+    if($uid > 0 && $normalized !== $current){
+        $upd = $conn->prepare("UPDATE users SET feed_portion=? WHERE id=?");
+        $upd->bind_param("si", $normalized, $uid);
+        $upd->execute();
+        $upd->close();
+    }
+}
 $conn->query("UPDATE bilty SET feed_portion='{$defaultFeedPortion}' WHERE feed_portion IS NULL OR feed_portion='' OR feed_portion NOT IN ($allowedFeedPortionsSql)");
 $feedPortionIdxCheck = $conn->query("SHOW INDEX FROM bilty WHERE Key_name='idx_bilty_feed_portion'");
 if($feedPortionIdxCheck && $feedPortionIdxCheck->num_rows === 0){

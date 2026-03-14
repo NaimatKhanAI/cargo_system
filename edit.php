@@ -7,9 +7,14 @@ require_once 'config/change_requests.php';
 require_once 'config/activity_notifications.php';
 auth_require_login($conn);
 auth_require_module_access('feed');
+if(auth_is_viewer()){
+    header("location:feed.php?denied=view_only");
+    exit();
+}
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 if($id <= 0){ header("location:feed.php"); exit(); }
 $isSuperAdmin = auth_is_super_admin();
+$userFeedPortions = auth_get_feed_portions();
 $userFeedPortion = auth_get_feed_portion();
 $linkedRequestId = isset($_GET['request_id']) ? (int)$_GET['request_id'] : 0;
 $linkedRequest = null;
@@ -22,8 +27,18 @@ if($isSuperAdmin){
     $rowStmt = $conn->prepare("SELECT * FROM bilty WHERE id=? LIMIT 1");
     $rowStmt->bind_param("i", $id);
 } else {
-    $rowStmt = $conn->prepare("SELECT * FROM bilty WHERE id=? AND feed_portion=? LIMIT 1");
-    $rowStmt->bind_param("is", $id, $userFeedPortion);
+    if(count($userFeedPortions) === 1){
+        $rowStmt = $conn->prepare("SELECT * FROM bilty WHERE id=? AND feed_portion=? LIMIT 1");
+        $rowStmt->bind_param("is", $id, $userFeedPortions[0]);
+    } else {
+        $placeholders = implode(',', array_fill(0, count($userFeedPortions), '?'));
+        $rowStmt = $conn->prepare("SELECT * FROM bilty WHERE id=? AND feed_portion IN ($placeholders) LIMIT 1");
+        $types = 'i' . str_repeat('s', count($userFeedPortions));
+        $params = array_merge([$types, $id], $userFeedPortions);
+        $bindArgs = [];
+        foreach($params as $k => $v){ $bindArgs[$k] = &$params[$k]; }
+        call_user_func_array([$rowStmt, 'bind_param'], $bindArgs);
+    }
 }
 $rowStmt->execute();
 $row = $rowStmt->get_result()->fetch_assoc();

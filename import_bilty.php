@@ -5,6 +5,10 @@ require_once 'config/auth.php';
 require_once 'config/feed_portions.php';
 auth_require_login($conn);
 auth_require_module_access('feed');
+if(auth_is_viewer()){
+    header("location:feed.php?denied=view_only");
+    exit();
+}
 auth_require_super_admin('dashboard.php');
 $currentUserId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 $addedByUserId = $currentUserId > 0 ? $currentUserId : null;

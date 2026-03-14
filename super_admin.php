@@ -16,6 +16,9 @@ $err = '';
 function bool_post_local($key){ return isset($_POST[$key]) ? 1 : 0; }
 function decode_payload_local($raw){ if(trim((string)$raw) === '') return []; $decoded = json_decode((string)$raw, true); return is_array($decoded) ? $decoded : []; }
 function value_text_local($v){ if($v === null) return '(empty)'; $t = trim((string)$v); return $t === '' ? '(empty)' : $t; }
+function feed_portion_post_local($key){
+    return feed_portion_list_to_csv_local(isset($_POST[$key]) ? $_POST[$key] : '');
+}
 
 function build_change_lines_local($conn, $requestRow){
     $actionType = isset($requestRow['action_type']) ? (string)$requestRow['action_type'] : '';
@@ -77,9 +80,9 @@ if(isset($_POST['create_user'])){
     $username = isset($_POST['username']) ? trim((string)$_POST['username']) : '';
     $password = isset($_POST['password']) ? trim((string)$_POST['password']) : '';
     $role = isset($_POST['role']) ? trim((string)$_POST['role']) : 'sub_admin';
-    $feedPortion = normalize_feed_portion_local(isset($_POST['feed_portion']) ? (string)$_POST['feed_portion'] : '');
+    $feedPortion = feed_portion_post_local('feed_portion');
     if($username === '' || $password === ''){ $err = 'Username and password required.'; }
-    elseif(!in_array($role, ['super_admin','sub_admin'], true)){ $err = 'Invalid role.'; }
+    elseif(!in_array($role, ['super_admin','sub_admin','viewer'], true)){ $err = 'Invalid role.'; }
     else {
         $chk = $conn->prepare("SELECT id FROM users WHERE username=? LIMIT 1"); $chk->bind_param("s", $username); $chk->execute(); $exists = $chk->get_result()->num_rows > 0; $chk->close();
         if($exists){ $err = 'Username already exists.'; }
@@ -97,11 +100,11 @@ if(isset($_POST['update_user'])){
     $userId = isset($_POST['user_id']) ? (int)$_POST['user_id'] : 0;
     $selfId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
     $role = isset($_POST['role']) ? trim((string)$_POST['role']) : 'sub_admin';
-    $feedPortion = normalize_feed_portion_local(isset($_POST['feed_portion']) ? (string)$_POST['feed_portion'] : '');
+    $feedPortion = feed_portion_post_local('feed_portion');
     $ia = bool_post_local('is_active'); $af = bool_post_local('can_access_feed'); $ah = bool_post_local('can_access_haleeb'); $aa = bool_post_local('can_access_account'); $aip = bool_post_local('can_access_image_processing'); $cra = bool_post_local('can_review_activity'); $cmu = bool_post_local('can_manage_users');
     $password = isset($_POST['new_password']) ? trim((string)$_POST['new_password']) : '';
     if($userId <= 0){ $err = 'Invalid user.'; }
-    elseif(!in_array($role, ['super_admin','sub_admin'], true)){ $err = 'Invalid role.'; }
+    elseif(!in_array($role, ['super_admin','sub_admin','viewer'], true)){ $err = 'Invalid role.'; }
     else {
         if($userId === $selfId){
             // Logged-in super admin cannot change own role/access; only password allowed.
@@ -354,21 +357,22 @@ $feedPortionOptions = feed_portion_options_local();
             <span class="cf-label">Password</span>
             <input class="cf-input" type="password" name="password" placeholder="password" required>
           </div>
-          <div class="cf-field">
-            <span class="cf-label">Role</span>
-            <select class="cf-select" name="role">
-              <option value="sub_admin">Sub Admin</option>
-              <option value="super_admin">Super Admin</option>
-            </select>
-          </div>
-          <div class="cf-field">
-            <span class="cf-label">Feed Section</span>
-            <select class="cf-select" name="feed_portion">
-              <?php foreach($feedPortionOptions as $portionKey => $portionLabel): ?>
-                <option value="<?php echo htmlspecialchars($portionKey); ?>"><?php echo htmlspecialchars($portionLabel); ?></option>
-              <?php endforeach; ?>
-            </select>
-          </div>
+            <div class="cf-field">
+              <span class="cf-label">Role</span>
+              <select class="cf-select" name="role">
+                <option value="sub_admin">Sub Admin</option>
+                <option value="viewer">Viewer</option>
+                <option value="super_admin">Super Admin</option>
+              </select>
+            </div>
+            <div class="cf-field">
+              <span class="cf-label">Feed Section</span>
+              <select class="cf-select" name="feed_portion[]" multiple size="3">
+                <?php foreach($feedPortionOptions as $portionKey => $portionLabel): ?>
+                  <option value="<?php echo htmlspecialchars($portionKey); ?>"><?php echo htmlspecialchars($portionLabel); ?></option>
+                <?php endforeach; ?>
+              </select>
+            </div>
           <div class="cf-field">
             <span class="cf-label">Permissions</span>
             <div class="chk-group">
@@ -432,26 +436,27 @@ $feedPortionOptions = feed_portion_options_local();
                 <?php else: ?>
                   <select class="tbl-select" name="role">
                     <option value="sub_admin" <?php echo $u['role'] === 'sub_admin' ? 'selected' : ''; ?>>sub_admin</option>
+                    <option value="viewer" <?php echo $u['role'] === 'viewer' ? 'selected' : ''; ?>>viewer</option>
                     <option value="super_admin" <?php echo $u['role'] === 'super_admin' ? 'selected' : ''; ?>>super_admin</option>
                   </select>
                 <?php endif; ?>
               </td>
               <td><label class="chk-label"><input type="checkbox" name="is_active" <?php echo (int)$u['is_active'] ? 'checked' : ''; ?> <?php echo $isSelf ? 'disabled' : ''; ?>></label></td>
               <td><label class="chk-label"><input type="checkbox" name="can_access_feed" <?php echo (int)$u['can_access_feed'] ? 'checked' : ''; ?> <?php echo $isSelf ? 'disabled' : ''; ?>></label></td>
-              <td>
-                <?php if($isSelf): ?>
-                  <span class="role-sub"><?php echo htmlspecialchars(feed_portion_label_local($u['feed_portion'])); ?></span>
-                  <input type="hidden" name="feed_portion" value="<?php echo htmlspecialchars(normalize_feed_portion_local($u['feed_portion'])); ?>">
-                <?php else: ?>
-                  <select class="tbl-select" name="feed_portion">
-                    <?php foreach($feedPortionOptions as $portionKey => $portionLabel): ?>
-                      <option value="<?php echo htmlspecialchars($portionKey); ?>" <?php echo normalize_feed_portion_local($u['feed_portion']) === $portionKey ? 'selected' : ''; ?>>
-                        <?php echo htmlspecialchars($portionLabel); ?>
-                      </option>
-                    <?php endforeach; ?>
-                  </select>
-                <?php endif; ?>
-              </td>
+                <td>
+                  <?php if($isSelf): ?>
+                    <span class="role-sub"><?php echo htmlspecialchars(feed_portion_labels_string_local($u['feed_portion'])); ?></span>
+                    <input type="hidden" name="feed_portion" value="<?php echo htmlspecialchars(feed_portion_list_to_csv_local($u['feed_portion'])); ?>">
+                  <?php else: ?>
+                    <select class="tbl-select" name="feed_portion[]" multiple size="3">
+                      <?php foreach($feedPortionOptions as $portionKey => $portionLabel): ?>
+                        <option value="<?php echo htmlspecialchars($portionKey); ?>" <?php echo feed_portion_list_has_key_local($u['feed_portion'], $portionKey) ? 'selected' : ''; ?>>
+                          <?php echo htmlspecialchars($portionLabel); ?>
+                        </option>
+                      <?php endforeach; ?>
+                    </select>
+                  <?php endif; ?>
+                </td>
               <td><label class="chk-label"><input type="checkbox" name="can_access_haleeb" <?php echo (int)$u['can_access_haleeb'] ? 'checked' : ''; ?> <?php echo $isSelf ? 'disabled' : ''; ?>></label></td>
               <td><label class="chk-label"><input type="checkbox" name="can_access_account" <?php echo (int)$u['can_access_account'] ? 'checked' : ''; ?> <?php echo $isSelf ? 'disabled' : ''; ?>></label></td>
               <td><label class="chk-label"><input type="checkbox" name="can_access_image_processing" <?php echo (int)$u['can_access_image_processing'] ? 'checked' : ''; ?> <?php echo $isSelf ? 'disabled' : ''; ?>></label></td>

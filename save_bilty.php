@@ -7,7 +7,12 @@ require_once 'config/activity_notifications.php';
 require_once 'config/change_requests.php';
 auth_require_login($conn);
 auth_require_module_access('feed');
+if(auth_is_viewer()){
+    header("location:feed.php?denied=view_only");
+    exit();
+}
 $currentUserId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
+$userFeedPortions = auth_get_feed_portions();
 
 $sr = isset($_POST['sr_no']) ? trim((string)$_POST['sr_no']) : '';
 $d = isset($_POST['date']) ? trim((string)$_POST['date']) : '';
@@ -22,9 +27,14 @@ $freightPaymentType = isset($_POST['freight_payment_type']) ? strtolower(trim((s
 if(!in_array($freightPaymentType, ['to_pay', 'paid'], true)){
     $freightPaymentType = 'to_pay';
 }
-$feedPortion = normalize_feed_portion_local(isset($_POST['feed_portion']) ? (string)$_POST['feed_portion'] : '');
+$postedFeedPortion = normalize_feed_portion_key_local(isset($_POST['feed_portion']) ? (string)$_POST['feed_portion'] : '');
+$feedPortion = $postedFeedPortion !== '' ? $postedFeedPortion : normalize_feed_portion_local('');
 if(!auth_is_super_admin()){
-    $feedPortion = auth_get_feed_portion();
+    if($postedFeedPortion !== '' && feed_portion_list_has_key_local($userFeedPortions, $postedFeedPortion)){
+        $feedPortion = $postedFeedPortion;
+    } else {
+        $feedPortion = auth_get_feed_portion();
+    }
 }
 $postedTenderManualMode = (isset($_POST['tender_manual_mode']) && trim((string)$_POST['tender_manual_mode']) === '1') ? '1' : '0';
 $isManualTender = auth_is_super_admin() && $postedTenderManualMode === '1';

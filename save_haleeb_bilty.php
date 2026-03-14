@@ -6,6 +6,10 @@ require_once 'config/activity_notifications.php';
 require_once 'config/change_requests.php';
 auth_require_login($conn);
 auth_require_module_access('haleeb');
+if(auth_is_viewer()){
+    header("location:haleeb.php?denied=view_only");
+    exit();
+}
 $currentUserId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 
 function decode_stop_rows_local($raw){

@@ -7,6 +7,7 @@ auth_require_login($conn);
 auth_require_module_access('haleeb');
 $canDirectModify = auth_can_direct_modify('haleeb');
 $isSuperAdmin = auth_is_super_admin();
+$isViewer = auth_is_viewer();
 $canFeed = auth_has_module_access('feed');
 $canManageUsers = auth_can_manage_users();
 $currentUserId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
@@ -20,6 +21,10 @@ function normalize_delivery_status_token_local($raw){
 
 $hasStatusChangeRequest = isset($_POST['set_delivery_status']) || isset($_GET['set_delivery_status']);
 if($hasStatusChangeRequest){
+    if($isViewer){
+        header("location:haleeb.php?status_change=denied");
+        exit();
+    }
     $statusBiltyId = isset($_POST['set_delivery_status']) ? (int)$_POST['set_delivery_status'] : (isset($_GET['set_delivery_status']) ? (int)$_GET['set_delivery_status'] : 0);
     $nextDeliveryStatus = normalize_delivery_status_token_local(isset($_POST['status']) ? (string)$_POST['status'] : (isset($_GET['status']) ? (string)$_GET['status'] : ''));
     $providedTokenNo = isset($_POST['token_no']) ? trim((string)$_POST['token_no']) : (isset($_GET['token_no']) ? trim((string)$_GET['token_no']) : '');
@@ -545,11 +550,13 @@ while($result && $row = $result->fetch_assoc()){
     <span class="badge">Haleeb</span>
     <h1>Haleeb</h1>
   </div>
-  <div class="nav-links">
-    <a class="nav-btn primary" href="add_haleeb_bilty.php">Add Bilty</a>
-    <?php if($canDirectModify): ?>
+    <div class="nav-links">
+      <?php if(!$isViewer): ?>
+      <a class="nav-btn primary" href="add_haleeb_bilty.php">Add Bilty</a>
+      <?php endif; ?>
+      <?php if($canDirectModify): ?>
       <button class="nav-btn" type="button" id="haleeb_analytics_toggle">Analytics</button>
-    <?php endif; ?>
+      <?php endif; ?>
     <?php if($canFeed): ?>
       <a class="nav-btn" href="feed.php">Feed</a>
     <?php endif; ?>
@@ -824,6 +831,7 @@ while($result && $row = $result->fetch_assoc()){
           <td><?php echo htmlspecialchars($row['party']); ?></td>
           <td><?php echo htmlspecialchars($row['location']); ?></td>
           <td>
+            <?php if(!$isViewer): ?>
             <button type="button"
               class="rem-badge status-toggle <?php echo $deliveryStatusClass; ?>"
               data-status-id="<?php echo (int)$row['id']; ?>"
@@ -835,6 +843,9 @@ while($result && $row = $result->fetch_assoc()){
               title="Click to change status">
               <?php echo htmlspecialchars($deliveryStatusLabel); ?>
             </button>
+            <?php else: ?>
+            <span class="rem-badge <?php echo $deliveryStatusClass; ?>"><?php echo htmlspecialchars($deliveryStatusLabel); ?></span>
+            <?php endif; ?>
           </td>
           <td><?php echo htmlspecialchars($row['token_no']); ?></td>
           <td><?php echo htmlspecialchars($row['delivery_note']); ?></td>
@@ -846,8 +857,10 @@ while($result && $row = $result->fetch_assoc()){
           <td>
             <div class="action-cell">
               <a class="act-btn act-view" href="<?php echo htmlspecialchars($detailHref); ?>" title="View Details">&#128065;</a>
+              <?php if(!$isViewer): ?>
               <a class="act-btn act-pay" href="pay_now_haleeb.php?id=<?php echo $row['id']; ?>" title="Pay">&#8377;</a>
               <a class="act-btn act-edit" href="edit_haleeb_bilty.php?id=<?php echo $row['id']; ?>" title="Edit">&#9998;</a>
+              <?php endif; ?>
               <a class="act-btn act-pdf" href="haleeb_pdf.php?id=<?php echo $row['id']; ?>" target="_blank" title="PDF">&#128196;</a>
             </div>
           </td>

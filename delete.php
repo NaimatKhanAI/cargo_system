@@ -6,7 +6,12 @@ require_once 'config/change_requests.php';
 require_once 'config/activity_notifications.php';
 auth_require_login($conn);
 auth_require_module_access('feed');
+if(auth_is_viewer()){
+header("location:feed.php?denied=view_only");
+exit();
+}
 $isSuperAdmin = auth_is_super_admin();
+$userFeedPortions = auth_get_feed_portions();
 $userFeedPortion = auth_get_feed_portion();
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 if($id > 0){
@@ -14,8 +19,18 @@ if($isSuperAdmin){
 $accessStmt = $conn->prepare("SELECT id FROM bilty WHERE id=? LIMIT 1");
 $accessStmt->bind_param("i", $id);
 } else {
+if(count($userFeedPortions) === 1){
 $accessStmt = $conn->prepare("SELECT id FROM bilty WHERE id=? AND feed_portion=? LIMIT 1");
-$accessStmt->bind_param("is", $id, $userFeedPortion);
+$accessStmt->bind_param("is", $id, $userFeedPortions[0]);
+} else {
+$placeholders = implode(',', array_fill(0, count($userFeedPortions), '?'));
+$accessStmt = $conn->prepare("SELECT id FROM bilty WHERE id=? AND feed_portion IN ($placeholders) LIMIT 1");
+$types = 'i' . str_repeat('s', count($userFeedPortions));
+$params = array_merge([$types, $id], $userFeedPortions);
+$bindArgs = [];
+foreach($params as $k => $v){ $bindArgs[$k] = &$params[$k]; }
+call_user_func_array([$accessStmt, 'bind_param'], $bindArgs);
+}
 }
 $accessStmt->execute();
 $hasAccess = $accessStmt->get_result()->num_rows > 0;

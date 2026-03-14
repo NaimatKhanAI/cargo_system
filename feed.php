@@ -8,17 +8,27 @@ auth_require_login($conn);
 auth_require_module_access('feed');
 $canDirectModify = auth_can_direct_modify('feed');
 $isSuperAdmin = auth_is_super_admin();
+$isViewer = auth_is_viewer();
 $canHaleeb = auth_has_module_access('haleeb');
 $canManageUsers = auth_can_manage_users();
+$userFeedPortions = auth_get_feed_portions();
 $userFeedPortion = auth_get_feed_portion();
 $feedPortionOptions = feed_portion_options_local();
 $feedSectionOrder = ['m_ilyas', 'mian_hameed', 'al_amir'];
 $feedFilterKey = '';
-if($isSuperAdmin && isset($_GET['portion'])){
-    $portionParam = strtolower(trim((string)$_GET['portion']));
-    if(isset($feedPortionOptions[$portionParam])) $feedFilterKey = $portionParam;
+$portionParam = isset($_GET['portion']) ? normalize_feed_portion_key_local((string)$_GET['portion']) : '';
+if($portionParam !== '' && isset($feedPortionOptions[$portionParam])){
+    if($isSuperAdmin || feed_portion_list_has_key_local($userFeedPortions, $portionParam)){
+        $feedFilterKey = $portionParam;
+    }
 }
-$activeFeedPortionKey = $isSuperAdmin ? $feedFilterKey : $userFeedPortion;
+$activeFeedPortionKey = $feedFilterKey;
+$activeFeedPortionList = [];
+if($isSuperAdmin){
+    if($feedFilterKey !== '') $activeFeedPortionList = [$feedFilterKey];
+} else {
+    $activeFeedPortionList = $feedFilterKey !== '' ? [$feedFilterKey] : $userFeedPortions;
+}
 $activeFeedPortionLabel = $activeFeedPortionKey !== '' ? feed_portion_label_local($activeFeedPortionKey) : '';
 $addBiltyHref = 'add_bilty.php' . ($activeFeedPortionKey !== '' ? ('?portion=' . rawurlencode($activeFeedPortionKey)) : '');
 $currentUserId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
@@ -188,7 +198,7 @@ if(isset($_GET['req']) && $_GET['req'] === 'submitted'){
 
 $vehicleOptions = [];
 $biltyOptions = [];
-if($activeFeedPortionKey === ''){
+if(count($activeFeedPortionList) === 0){
     $vehicleRes = $conn->query("SELECT DISTINCT vehicle FROM bilty WHERE vehicle IS NOT NULL AND vehicle <> '' ORDER BY vehicle ASC");
     while($vehicleRes && $vrow = $vehicleRes->fetch_assoc()){
         $vehicleOptions[] = (string)$vrow['vehicle'];
@@ -197,9 +207,10 @@ if($activeFeedPortionKey === ''){
     while($biltyRes && $brow = $biltyRes->fetch_assoc()){
         $biltyOptions[] = (string)$brow['bilty_no'];
     }
-} else {
+} elseif(count($activeFeedPortionList) === 1){
+    $portionKey = (string)$activeFeedPortionList[0];
     $vehicleStmt = $conn->prepare("SELECT DISTINCT vehicle FROM bilty WHERE feed_portion=? AND vehicle IS NOT NULL AND vehicle <> '' ORDER BY vehicle ASC");
-    $vehicleStmt->bind_param("s", $activeFeedPortionKey);
+    $vehicleStmt->bind_param("s", $portionKey);
     $vehicleStmt->execute();
     $vehicleRes = $vehicleStmt->get_result();
     while($vehicleRes && $vrow = $vehicleRes->fetch_assoc()){
@@ -208,7 +219,34 @@ if($activeFeedPortionKey === ''){
     $vehicleStmt->close();
 
     $biltyStmt = $conn->prepare("SELECT DISTINCT bilty_no FROM bilty WHERE feed_portion=? AND bilty_no IS NOT NULL AND bilty_no <> '' ORDER BY bilty_no ASC");
-    $biltyStmt->bind_param("s", $activeFeedPortionKey);
+    $biltyStmt->bind_param("s", $portionKey);
+    $biltyStmt->execute();
+    $biltyRes = $biltyStmt->get_result();
+    while($biltyRes && $brow = $biltyRes->fetch_assoc()){
+        $biltyOptions[] = (string)$brow['bilty_no'];
+    }
+    $biltyStmt->close();
+} else {
+    $placeholders = implode(',', array_fill(0, count($activeFeedPortionList), '?'));
+    $types = str_repeat('s', count($activeFeedPortionList));
+
+    $vehicleStmt = $conn->prepare("SELECT DISTINCT vehicle FROM bilty WHERE feed_portion IN ($placeholders) AND vehicle IS NOT NULL AND vehicle <> '' ORDER BY vehicle ASC");
+    $vehicleParams = array_merge([$types], $activeFeedPortionList);
+    $vehicleBind = [];
+    foreach($vehicleParams as $k => $v){ $vehicleBind[$k] = &$vehicleParams[$k]; }
+    call_user_func_array([$vehicleStmt, 'bind_param'], $vehicleBind);
+    $vehicleStmt->execute();
+    $vehicleRes = $vehicleStmt->get_result();
+    while($vehicleRes && $vrow = $vehicleRes->fetch_assoc()){
+        $vehicleOptions[] = (string)$vrow['vehicle'];
+    }
+    $vehicleStmt->close();
+
+    $biltyStmt = $conn->prepare("SELECT DISTINCT bilty_no FROM bilty WHERE feed_portion IN ($placeholders) AND bilty_no IS NOT NULL AND bilty_no <> '' ORDER BY bilty_no ASC");
+    $biltyParams = array_merge([$types], $activeFeedPortionList);
+    $biltyBind = [];
+    foreach($biltyParams as $k => $v){ $biltyBind[$k] = &$biltyParams[$k]; }
+    call_user_func_array([$biltyStmt, 'bind_param'], $biltyBind);
     $biltyStmt->execute();
     $biltyRes = $biltyStmt->get_result();
     while($biltyRes && $brow = $biltyRes->fetch_assoc()){
@@ -241,7 +279,14 @@ if($dateFrom !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateFrom)){ $where[]
 if($dateTo !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateTo)){ $where[] = "date <= ?"; $bindTypes .= "s"; $bindValues[] = $dateTo; }
 if($vehicleSearch !== '' && $canDirectModify){ $where[] = "vehicle LIKE ?"; $bindTypes .= "s"; $bindValues[] = "%" . $vehicleSearch . "%"; }
 if($biltySearch !== '' && $canDirectModify){ $where[] = "bilty_no LIKE ?"; $bindTypes .= "s"; $bindValues[] = "%" . $biltySearch . "%"; }
-if($activeFeedPortionKey !== ''){ $where[] = "feed_portion = ?"; $bindTypes .= "s"; $bindValues[] = $activeFeedPortionKey; }
+if(count($activeFeedPortionList) > 0){
+    $placeholders = implode(',', array_fill(0, count($activeFeedPortionList), '?'));
+    $where[] = "feed_portion IN (" . $placeholders . ")";
+    $bindTypes .= str_repeat('s', count($activeFeedPortionList));
+    foreach($activeFeedPortionList as $portionKey){
+        $bindValues[] = $portionKey;
+    }
+}
 
 $sql = "SELECT b.*,
         COALESCE(NULLIF(u.username, ''), CASE WHEN b.added_by_user_id IS NULL THEN '-' ELSE CONCAT('User#', b.added_by_user_id) END) AS added_by_name,
@@ -566,12 +611,14 @@ while($result && $row = $result->fetch_assoc()){
   <div class="topbar-logo">
     <span class="badge">Feed</span>
     <h1>Feed<?php echo $activeFeedPortionLabel !== '' ? (' - ' . htmlspecialchars($activeFeedPortionLabel)) : ''; ?></h1>
-  </div>
-  <div class="nav-links">
-    <a class="nav-btn primary" href="<?php echo htmlspecialchars($addBiltyHref); ?>">Add Bilty</a>
-    <?php if($canDirectModify): ?>
-      <button class="nav-btn" type="button" id="feed_analytics_toggle">Analytics</button>
-    <?php endif; ?>
+    </div>
+    <div class="nav-links">
+      <?php if(!$isViewer): ?>
+      <a class="nav-btn primary" href="<?php echo htmlspecialchars($addBiltyHref); ?>">Add Bilty</a>
+      <?php endif; ?>
+      <?php if($canDirectModify): ?>
+        <button class="nav-btn" type="button" id="feed_analytics_toggle">Analytics</button>
+      <?php endif; ?>
     <?php if($canHaleeb): ?>
       <a class="nav-btn" href="haleeb.php">Haleeb</a>
     <?php endif; ?>
@@ -883,11 +930,13 @@ while($result && $row = $result->fetch_assoc()){
           <td>
             <div class="action-cell">
               <a class="act-btn act-view" href="<?php echo htmlspecialchars($detailHref); ?>" title="View Details">&#128065;</a>
+              <?php if(!$isViewer): ?>
               <a class="act-btn act-pay" href="pay_now.php?id=<?php echo $row['id']; ?>" title="Pay">&#8377;</a>
               <?php if($canDirectModify && $paymentTypeRaw === 'to_pay' && $remaining > 0.0001): ?>
                 <a class="act-btn act-confirm" href="feed.php?confirm_driver_pay=<?php echo (int)$row['id']; ?>" title="Request Full Driver Payment" onclick="return confirm('Send full driver payment request for approval?')">&#10003;</a>
               <?php endif; ?>
               <a class="act-btn act-edit" href="edit.php?id=<?php echo $row['id']; ?>" title="Edit">&#9998;</a>
+              <?php endif; ?>
               <a class="act-btn act-pdf" href="pdf.php?id=<?php echo $row['id']; ?>" target="_blank" title="PDF">&#128196;</a>
             </div>
           </td>
