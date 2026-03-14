@@ -229,6 +229,9 @@ $feedPortionOptions = feed_portion_options_local();
   .chk-group { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding-top: 2px; }
   .chk-label { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); cursor: pointer; white-space: nowrap; }
   .chk-label input[type="checkbox"] { accent-color: var(--accent); width: 13px; height: 13px; }
+  .portion-group { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding-top: 2px; }
+  .portion-label { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); cursor: pointer; white-space: nowrap; }
+  .portion-label input[type="checkbox"] { accent-color: var(--accent); width: 13px; height: 13px; }
   .btn-create { padding: 9px 20px; background: var(--accent); color: #0e0f11; border: none; cursor: pointer; font-family: var(--font); font-size: 13px; font-weight: 800; transition: background 0.15s; white-space: nowrap; align-self: flex-end; }
   .btn-create:hover { background: #e0b030; }
 
@@ -367,11 +370,14 @@ $feedPortionOptions = feed_portion_options_local();
             </div>
             <div class="cf-field">
               <span class="cf-label">Feed Section</span>
-              <select class="cf-select" name="feed_portion[]" multiple size="3">
+              <div class="portion-group">
                 <?php foreach($feedPortionOptions as $portionKey => $portionLabel): ?>
-                  <option value="<?php echo htmlspecialchars($portionKey); ?>"><?php echo htmlspecialchars($portionLabel); ?></option>
+                  <label class="portion-label">
+                    <input type="checkbox" name="feed_portion[]" value="<?php echo htmlspecialchars($portionKey); ?>">
+                    <?php echo htmlspecialchars($portionLabel); ?>
+                  </label>
                 <?php endforeach; ?>
-              </select>
+              </div>
             </div>
           <div class="cf-field">
             <span class="cf-label">Permissions</span>
@@ -448,13 +454,14 @@ $feedPortionOptions = feed_portion_options_local();
                     <span class="role-sub"><?php echo htmlspecialchars(feed_portion_labels_string_local($u['feed_portion'])); ?></span>
                     <input type="hidden" name="feed_portion" value="<?php echo htmlspecialchars(feed_portion_list_to_csv_local($u['feed_portion'])); ?>">
                   <?php else: ?>
-                    <select class="tbl-select" name="feed_portion[]" multiple size="3">
+                    <div class="portion-group">
                       <?php foreach($feedPortionOptions as $portionKey => $portionLabel): ?>
-                        <option value="<?php echo htmlspecialchars($portionKey); ?>" <?php echo feed_portion_list_has_key_local($u['feed_portion'], $portionKey) ? 'selected' : ''; ?>>
+                        <label class="portion-label">
+                          <input type="checkbox" name="feed_portion[]" value="<?php echo htmlspecialchars($portionKey); ?>" <?php echo feed_portion_list_has_key_local($u['feed_portion'], $portionKey) ? 'checked' : ''; ?>>
                           <?php echo htmlspecialchars($portionLabel); ?>
-                        </option>
+                        </label>
                       <?php endforeach; ?>
-                    </select>
+                    </div>
                   <?php endif; ?>
                 </td>
               <td><label class="chk-label"><input type="checkbox" name="can_access_haleeb" <?php echo (int)$u['can_access_haleeb'] ? 'checked' : ''; ?> <?php echo $isSelf ? 'disabled' : ''; ?>></label></td>
