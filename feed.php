@@ -370,6 +370,7 @@ while($result && $row = $result->fetch_assoc()){
   .nav-btn.active { background: var(--accent); color: #0e0f11; border-color: var(--accent); }
   .nav-btn.danger { background: rgba(239,68,68,0.12); color: var(--red); border-color: rgba(239,68,68,0.25); }
   .nav-btn.danger:hover { background: rgba(239,68,68,0.22); color: var(--red); border-color: rgba(239,68,68,0.35); }
+  .nav-btn[disabled] { opacity: 0.6; cursor: not-allowed; }
   .section-switch { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 10px 28px; border-bottom: 1px solid var(--border); background: var(--surface2); }
   .section-switch .switch-label { font-size: 10px; font-weight: 700; letter-spacing: 1.6px; text-transform: uppercase; color: var(--muted); margin-right: 6px; }
   .section-switch .nav-btn { padding: 6px 10px; font-size: 12px; }
@@ -509,6 +510,7 @@ while($result && $row = $result->fetch_assoc()){
     display: flex; justify-content: space-between; align-items: center;
     padding: 12px 16px; border-bottom: 1px solid var(--border);
   }
+  .analytics-actions { display: flex; gap: 6px; align-items: center; }
   .analytics-grid {
     padding: 14px 16px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px;
   }
@@ -704,7 +706,10 @@ while($result && $row = $result->fetch_assoc()){
   <div class="analytics-wrap" id="feed_analytics_wrap">
     <div class="analytics-head">
       <span class="tbl-header-title">Analytics</span>
-      <button class="nav-btn" type="button" id="feed_analytics_reset">Reset Analytics</button>
+      <div class="analytics-actions">
+        <button class="nav-btn" type="button" id="feed_analytics_reset">Reset Analytics</button>
+        <button class="nav-btn" type="button" id="feed_analytics_export">Export Selected</button>
+      </div>
     </div>
     <div class="analytics-grid">
       <div class="field">
@@ -840,6 +845,7 @@ while($result && $row = $result->fetch_assoc()){
           $detailHref = 'bilty_detail.php?type=feed&id=' . (int)$row['id'] . '&src=feed';
         ?>
         <tr data-analytics-row="1"
+            data-id="<?php echo (int)$row['id']; ?>"
             data-date="<?php echo htmlspecialchars((string)($row['date'] ?? '')); ?>"
             data-sr="<?php echo htmlspecialchars((string)($row['sr_no'] ?? '')); ?>"
             data-bilty="<?php echo htmlspecialchars((string)($row['bilty_no'] ?? '')); ?>"
@@ -916,6 +922,8 @@ while($result && $row = $result->fetch_assoc()){
   if(!wrap) return;
 
   var statsBox = document.getElementById('feed_analytics_stats');
+  var exportBtn = document.getElementById('feed_analytics_export');
+  var lastShownIds = [];
   var rows = Array.prototype.slice.call(document.querySelectorAll('#feed_records_tbody tr[data-analytics-row=\"1\"]'));
   var records = rows.map(function(row){
     var d = row.dataset || {};
@@ -924,6 +932,7 @@ while($result && $row = $result->fetch_assoc()){
     var total = Number(d.total || Math.max(freight - commission, 0));
     var remaining = Number(d.remaining || 0);
     return {
+      id: Number(d.id || 0),
       el: row,
       date: String(d.date || ''),
       sr: String(d.sr || ''),
@@ -952,6 +961,27 @@ while($result && $row = $result->fetch_assoc()){
       profit: Number(d.profit || 0)
     };
   });
+
+  function setExportState(){
+    if(!exportBtn) return;
+    exportBtn.disabled = lastShownIds.length === 0;
+    exportBtn.textContent = lastShownIds.length > 0 ? ('Export Selected (' + lastShownIds.length + ')') : 'Export Selected';
+  }
+
+  function submitExport(ids){
+    var form = document.createElement('form');
+    form.method = 'post';
+    form.action = 'export_bilty.php';
+    form.style.display = 'none';
+    var input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'ids';
+    input.value = ids.join(',');
+    form.appendChild(input);
+    document.body.appendChild(form);
+    form.submit();
+    form.remove();
+  }
 
   function fillDatalist(id, values, maxItems){
     var list = document.getElementById(id);
@@ -1051,6 +1081,8 @@ while($result && $row = $result->fetch_assoc()){
       r.el.style.display = ok ? '' : 'none';
       if(ok) shown.push(r);
     });
+    lastShownIds = shown.map(function(r){ return r.id; }).filter(function(v){ return v > 0; });
+    setExportState();
 
     var totals = shown.reduce(function(a, r){
       a.count += 1; a.bags += r.bags; a.freight += r.freight; a.commission += r.commission; a.total += r.totalCost; a.tender += r.tender;
@@ -1104,6 +1136,10 @@ while($result && $row = $result->fetch_assoc()){
       else f[k].value = '';
     });
     applyAnalytics();
+  });
+  if(exportBtn) exportBtn.addEventListener('click', function(){
+    if(lastShownIds.length === 0) return;
+    submitExport(lastShownIds);
   });
 
   Object.keys(f).forEach(function(k){
