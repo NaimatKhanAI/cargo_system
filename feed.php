@@ -932,9 +932,6 @@ while($result && $row = $result->fetch_assoc()){
               <a class="act-btn act-view" href="<?php echo htmlspecialchars($detailHref); ?>" title="View Details">&#128065;</a>
               <?php if(!$isViewer): ?>
               <a class="act-btn act-pay" href="pay_now.php?id=<?php echo $row['id']; ?>" title="Pay">&#8377;</a>
-              <?php if($canDirectModify && $paymentTypeRaw === 'to_pay' && $remaining > 0.0001): ?>
-                <a class="act-btn act-confirm" href="feed.php?confirm_driver_pay=<?php echo (int)$row['id']; ?>" title="Request Full Driver Payment" onclick="return confirm('Send full driver payment request for approval?')">&#10003;</a>
-              <?php endif; ?>
               <a class="act-btn act-edit" href="edit.php?id=<?php echo $row['id']; ?>" title="Edit">&#9998;</a>
               <?php endif; ?>
               <a class="act-btn act-pdf" href="pdf.php?id=<?php echo $row['id']; ?>" target="_blank" title="PDF">&#128196;</a>
