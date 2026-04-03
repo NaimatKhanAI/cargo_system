@@ -327,6 +327,10 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
   .field select.status-tag { font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; }
   .field select.status-tag.is-received { border-color: rgba(34,197,94,0.65); color: #86efac; background: rgba(34,197,94,0.09); }
   .field select.status-tag.is-not-received { border-color: rgba(239,68,68,0.65); color: #fca5a5; background: rgba(239,68,68,0.09); }
+  .field-meta { margin-top: 5px; font-size: 11px; font-family: var(--mono); color: var(--muted); }
+  .field-meta.info { color: #93c5fd; }
+  .field-meta.ok { color: var(--green); }
+  .field-meta.err { color: var(--red); }
   .stops-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .stop-box { border: 1px solid var(--border); background: var(--bg); padding: 10px; min-height: 92px; }
   .stop-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
@@ -455,6 +459,8 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
           <div class="field">
             <label for="tender">Tender</label>
             <input id="tender" type="number" name="tender" value="<?php echo htmlspecialchars($row['tender']); ?>" min="0.001" step="any" required>
+            <div class="field-meta" id="tender_suggestion"></div>
+            <button id="apply_updated_tender" class="nav-btn" type="button" style="margin-top:8px; display:none;">Apply Updated Tender</button>
           </div>
         <?php else: ?>
           <input id="tender" type="hidden" name="tender" value="<?php echo htmlspecialchars($row['tender']); ?>">
@@ -488,6 +494,8 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
   var locationInput = document.getElementById('location');
   var vehicleTypeInput = document.getElementById('vehicle_type');
   var tenderInput = document.getElementById('tender');
+  var tenderSuggestion = document.getElementById('tender_suggestion');
+  var applyUpdatedTenderBtn = document.getElementById('apply_updated_tender');
   var deliveryStatusInput = document.getElementById('delivery_status');
   var addSameStopBtn = document.getElementById('add_same_stop');
   var addOutStopBtn = document.getElementById('add_out_stop');
@@ -500,8 +508,10 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
   var vehicleTypeLookup = <?php echo $jsonVehicleTypeLookup; ?>;
   var rateLookup = <?php echo $jsonRateLookup; ?>;
   var stopsInitial = <?php echo $jsonStopsInitial; ?>;
+  var isSuperAdmin = <?php echo $isSuperAdmin ? 'true' : 'false'; ?>;
   var sameStops = [];
   var outStops = [];
+  var suggestedTender = null;
 
   function normalizeToken(v){
     return String(v || '').trim().toLowerCase().replace(/\s+/g, ' ');
@@ -517,6 +527,25 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
 
   function roundMoney(v){
     return Math.round(v * 1000) / 1000;
+  }
+
+  function formatTender(v){
+    var n = Number(v);
+    if(!Number.isFinite(n)) return '';
+    var out = String(roundMoney(n));
+    if(out.indexOf('.') === -1) return out;
+    out = out.replace(/0+$/, '').replace(/\.$/, '');
+    return out;
+  }
+
+  function setTenderSuggestion(text, type, showApply){
+    if(tenderSuggestion){
+      tenderSuggestion.textContent = text || '';
+      tenderSuggestion.className = 'field-meta' + (type ? ' ' + type : '');
+    }
+    if(applyUpdatedTenderBtn){
+      applyUpdatedTenderBtn.style.display = showApply ? 'inline-block' : 'none';
+    }
   }
 
   function normalizeAlphaNum(v){
@@ -564,11 +593,32 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
     return parseRateNumber(row[vehicleKey]);
   }
 
-  function tryAutoTender(){
+  function refreshTenderSuggestion(){
+    if(!isSuperAdmin || !tenderInput || String(tenderInput.type || '').toLowerCase() === 'hidden'){
+      suggestedTender = null;
+      setTenderSuggestion('', '', false);
+      return false;
+    }
     var baseTender = getBaseTenderFromRateList();
     var addon = getStopsAddon(vehicleTypeInput.value);
-    if(baseTender === null && addon === 0) return;
-    tenderInput.value = String(roundMoney((baseTender === null ? 0 : baseTender) + addon));
+    if(baseTender === null || !(baseTender > 0)){
+      suggestedTender = null;
+      setTenderSuggestion('Updated list me tender value available nahi hai.', 'err', false);
+      return false;
+    }
+    suggestedTender = roundMoney(baseTender + addon);
+    var currentTender = parseNumeric(tenderInput.value);
+    var sameAsCurrent = currentTender !== null && Math.abs(currentTender - suggestedTender) < 0.0005;
+    var text = 'Updated list me tender value ' + formatTender(suggestedTender) + ' hai.';
+    if(addon > 0){
+      text += ' Stop charges included.';
+    }
+    if(sameAsCurrent){
+      setTenderSuggestion(text + ' Current tender already same hai.', 'ok', false);
+      return true;
+    }
+    setTenderSuggestion(text + ' Update karna ho to Apply Updated Tender dabayein.', 'info', true);
+    return true;
   }
 
   function syncDeliveryStatusTag(){
@@ -615,12 +665,12 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
     renderStopList(sameStopList, sameStops, 'Same', function(idx){
       sameStops.splice(idx, 1);
       renderStops();
-      tryAutoTender();
+      refreshTenderSuggestion();
     });
     renderStopList(outStopList, outStops, 'Out', function(idx){
       outStops.splice(idx, 1);
       renderStops();
-      tryAutoTender();
+      refreshTenderSuggestion();
     });
   }
 
@@ -628,7 +678,7 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
     if(type === 'same') sameStops.push(1);
     else outStops.push(1);
     renderStops();
-    tryAutoTender();
+    refreshTenderSuggestion();
   }
 
   addSameStopBtn.addEventListener('click', function(){ addStop('same'); });
@@ -639,15 +689,28 @@ if($jsonRateLookup === false) $jsonRateLookup = '{}';
   for(var i = 0; i < initialSame; i++) sameStops.push(1);
   for(var j = 0; j < initialOut; j++) outStops.push(1);
 
-  locationInput.addEventListener('change', tryAutoTender);
-  locationInput.addEventListener('blur', tryAutoTender);
-  vehicleTypeInput.addEventListener('change', tryAutoTender);
-  vehicleTypeInput.addEventListener('blur', tryAutoTender);
+  locationInput.addEventListener('change', refreshTenderSuggestion);
+  locationInput.addEventListener('blur', refreshTenderSuggestion);
+  vehicleTypeInput.addEventListener('change', refreshTenderSuggestion);
+  vehicleTypeInput.addEventListener('blur', refreshTenderSuggestion);
+  if(applyUpdatedTenderBtn){
+    applyUpdatedTenderBtn.addEventListener('click', function(){
+      if(!tenderInput || suggestedTender === null || !(suggestedTender > 0)){
+        return;
+      }
+      var confirmMsg = 'Updated list me tender value ' + formatTender(suggestedTender) + ' hai. Kya aap tender update karna chahte hain?';
+      if(!window.confirm(confirmMsg)){
+        return;
+      }
+      tenderInput.value = String(roundMoney(suggestedTender));
+      setTenderSuggestion('Updated tender apply ho gaya. Save par click karein.', 'ok', false);
+    });
+  }
   if(deliveryStatusInput){
     deliveryStatusInput.addEventListener('change', syncDeliveryStatusTag);
   }
   renderStops();
-  tryAutoTender();
+  refreshTenderSuggestion();
   syncDeliveryStatusTag();
 })();
 </script>

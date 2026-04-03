@@ -87,17 +87,7 @@ if(isset($_POST['update'])){
             $freightPaymentType = 'to_pay';
         }
     }
-    $submittedTender = isset($_POST['tender']) ? (float)$_POST['tender'] : 0.0;
-    $baseTender = $submittedTender;
-    if(isset($_POST['tender_raw']) && trim((string)$_POST['tender_raw']) !== ''){
-        $baseTender = (float)$_POST['tender_raw'];
-    }
-    if($baseTender < 0){
-        $baseTender = 0.0;
-    }
-    $baseBags = 200;
-    $scaledTender = ($bags > 0) ? (($baseTender / $baseBags) * $bags) : 0.0;
-    $t = ($bags > 300) ? round($scaledTender * 0.90, 3) : round($scaledTender, 3);
+    $t = isset($_POST['tender']) ? max(0, round((float)$_POST['tender'], 3)) : 0.0;
     $totalFreight = max(0, $f - $commission);
     if($f <= 0 || $t <= 0){
         $redirectInvalid = "edit.php?id=" . (int)$id;
@@ -229,6 +219,7 @@ if(isset($_POST['update'])){
   .field input::-webkit-calendar-picker-indicator { filter: invert(0.5); cursor: pointer; }
   .field input::placeholder { color: var(--muted); }
   .field-meta { margin-top: 5px; font-size: 11px; font-family: var(--mono); color: var(--muted); }
+  .field-meta.info { color: #93c5fd; }
   .field-meta.ok { color: var(--green); }
   .field-meta.err { color: var(--red); }
 
@@ -282,7 +273,7 @@ if(isset($_POST['update'])){
         <div class="field">
           <label for="sr_no">SR No</label>
           <input id="sr_no" name="sr_no" value="<?php echo htmlspecialchars($row['sr_no'] ?? ''); ?>" required>
-          <div class="field-meta" id="tender_help">Tender auto-lookup enabled.</div>
+          <div class="field-meta" id="tender_help">Tender auto extract off. Updated value suggestion dikhayega.</div>
         </div>
         <div class="field">
           <label for="date">Date</label>
@@ -332,12 +323,11 @@ if(isset($_POST['update'])){
           <div class="field">
             <label for="tender">Tender</label>
             <input id="tender" type="number" name="tender" value="<?php echo htmlspecialchars($row['tender']); ?>" min="0.001" step="any" required>
-            <input id="tender_raw" type="hidden" name="tender_raw" value="">
-            <div class="field-meta" id="tender_discount_note"></div>
+            <div class="field-meta" id="tender_suggestion"></div>
+            <button id="apply_updated_tender" class="nav-btn" type="button" style="margin-top:8px; display:none;">Apply Updated Tender</button>
           </div>
         <?php else: ?>
           <input id="tender" type="hidden" name="tender" value="<?php echo htmlspecialchars($row['tender']); ?>">
-          <input id="tender_raw" type="hidden" name="tender_raw" value="">
         <?php endif; ?>
       </div>
 
@@ -353,24 +343,21 @@ if(isset($_POST['update'])){
 (function(){
   var srInput = document.getElementById('sr_no');
   var tenderInput = document.getElementById('tender');
-  var tenderRawInput = document.getElementById('tender_raw');
   var bagsInput = document.getElementById('bags');
   var tenderHelp = document.getElementById('tender_help');
-  var tenderDiscountNote = document.getElementById('tender_discount_note');
+  var tenderSuggestion = document.getElementById('tender_suggestion');
+  var applyUpdatedTenderBtn = document.getElementById('apply_updated_tender');
   var feedPortionInput = document.getElementById('edit_feed_portion');
-  var form = document.querySelector('form');
+  var isSuperAdmin = <?php echo $isSuperAdmin ? 'true' : 'false'; ?>;
   var timer = null;
   var reqId = 0;
-  var applyingTenderRule = false;
+  var latestBaseRate = null;
+  var suggestedTender = null;
 
   function setHelp(text, type){
     if(!tenderHelp) return;
     tenderHelp.textContent = text || '';
     tenderHelp.className = 'field-meta' + (type ? ' ' + type : '');
-  }
-
-  function roundTender(v){
-    return Math.round(v * 1000) / 1000;
   }
 
   function parseNumeric(v){
@@ -379,63 +366,101 @@ if(isset($_POST['update'])){
     return Number.isFinite(n) ? n : null;
   }
 
-  function setDiscountNote(text, cls){
-    if(!tenderDiscountNote) return;
-    tenderDiscountNote.textContent = text || '';
-    tenderDiscountNote.className = 'field-meta' + (cls ? ' ' + cls : '');
+  function roundTender(v){
+    return Math.round(v * 1000) / 1000;
   }
 
-  function applyTenderBagRule(){
-    if(!tenderInput || !tenderRawInput) return;
-    var baseTender = parseNumeric(tenderRawInput.value);
-    if(baseTender === null){
-      setDiscountNote('', '');
+  function formatTender(v){
+    var n = Number(v);
+    if(!Number.isFinite(n)) return '';
+    var out = String(roundTender(n));
+    if(out.indexOf('.') === -1) return out;
+    out = out.replace(/0+$/, '').replace(/\.$/, '');
+    return out;
+  }
+
+  function setSuggestion(text, type, showApply){
+    if(tenderSuggestion){
+      tenderSuggestion.textContent = text || '';
+      tenderSuggestion.className = 'field-meta' + (type ? ' ' + type : '');
+    }
+    if(applyUpdatedTenderBtn){
+      applyUpdatedTenderBtn.style.display = showApply ? 'inline-block' : 'none';
+    }
+  }
+
+  function computeSuggestedTender(baseTender){
+    var bags = bagsInput ? parseInt(bagsInput.value, 10) : 0;
+    if(Number.isNaN(bags)) bags = 0;
+    var baseBags = 200;
+    var finalTender = (bags > 0) ? ((baseTender / baseBags) * bags) : 0;
+    var discountApplied = false;
+    if(bags > 300){
+      finalTender *= 0.90;
+      discountApplied = true;
+    }
+    return { value: roundTender(finalTender), discountApplied: discountApplied };
+  }
+
+  function refreshSuggestion(){
+    if(!isSuperAdmin || !tenderInput || String(tenderInput.type || '').toLowerCase() === 'hidden'){
+      return;
+    }
+    if(latestBaseRate === null || !(latestBaseRate > 0)){
+      suggestedTender = null;
+      setSuggestion('', '', false);
       return;
     }
 
-    var bags = bagsInput ? parseInt(bagsInput.value, 10) : 0;
-    if(Number.isNaN(bags)) bags = 0;
-
-    var baseBags = 200;
-    var finalTender = (bags > 0) ? ((baseTender / baseBags) * bags) : 0;
-    if(bags > 300){
-      finalTender = finalTender * 0.90;
-      setDiscountNote('Bags > 300: tender adjusted by -10%', 'ok');
-    } else {
-      setDiscountNote('', '');
+    var calc = computeSuggestedTender(latestBaseRate);
+    suggestedTender = calc.value;
+    var currentTender = parseNumeric(tenderInput.value);
+    var sameAsCurrent = currentTender !== null && Math.abs(currentTender - suggestedTender) < 0.0005;
+    var text = 'Updated list me tender value ' + formatTender(suggestedTender) + ' hai.';
+    if(calc.discountApplied){
+      text += ' Bags > 300 adjustment included.';
     }
-
-    applyingTenderRule = true;
-    tenderInput.value = String(roundTender(finalTender));
-    applyingTenderRule = false;
+    if(sameAsCurrent){
+      setSuggestion(text + ' Current tender already same hai.', 'ok', false);
+      return;
+    }
+    setSuggestion(text + ' Update karna ho to Apply Updated Tender dabayein.', 'info', true);
   }
 
   function lookupTender(){
     var sr = (srInput && srInput.value ? srInput.value : '').trim();
     if(sr === ''){
-      setHelp('Enter SR No to auto fetch tender.', '');
+      latestBaseRate = null;
+      suggestedTender = null;
+      setHelp('Enter SR No to check updated tender suggestion.', '');
+      setSuggestion('', '', false);
       return;
     }
 
-    reqId++;
+    reqId += 1;
     var cur = reqId;
-    setHelp('Checking rate...', '');
+    setHelp('Checking updated tender...', 'info');
     var portion = feedPortionInput ? (feedPortionInput.value || '') : '';
-
     fetch('add_bilty.php?lookup_tender=1&portion=' + encodeURIComponent(portion) + '&sr_no=' + encodeURIComponent(sr), { headers: { 'Accept': 'application/json' } })
       .then(function(r){ return r.json(); })
       .then(function(data){
         if(cur !== reqId) return;
-        if(data && data.ok){
-          if(tenderRawInput) tenderRawInput.value = String(data.rate);
-          applyTenderBagRule();
-          setHelp('Auto fill: ' + (data.value_column_label || data.column_label || 'selected'), 'ok');
-        } else {
-          setHelp((data && data.message) ? data.message : 'Rate not found', 'err');
+        if(data && data.ok && parseNumeric(data.rate) !== null){
+          latestBaseRate = parseNumeric(data.rate);
+          setHelp('Updated list found: ' + (data.value_column_label || data.column_label || 'selected'), 'ok');
+          refreshSuggestion();
+          return;
         }
+        latestBaseRate = null;
+        suggestedTender = null;
+        setSuggestion('', '', false);
+        setHelp((data && data.message) ? data.message : 'Rate not found', 'err');
       })
       .catch(function(){
         if(cur !== reqId) return;
+        latestBaseRate = null;
+        suggestedTender = null;
+        setSuggestion('', '', false);
         setHelp('Cannot get rate.', 'err');
       });
   }
@@ -443,40 +468,44 @@ if(isset($_POST['update'])){
   if(srInput){
     srInput.addEventListener('input', function(){
       if(timer) clearTimeout(timer);
+      latestBaseRate = null;
+      suggestedTender = null;
+      setSuggestion('', '', false);
       timer = setTimeout(lookupTender, 250);
     });
     srInput.addEventListener('blur', lookupTender);
   }
 
-  if(tenderInput){
-    tenderInput.addEventListener('input', function(){
-      if(applyingTenderRule) return;
-      if(tenderRawInput) tenderRawInput.value = tenderInput.value;
-      applyTenderBagRule();
-    });
-  }
-
   if(bagsInput){
-    bagsInput.addEventListener('input', applyTenderBagRule);
-    bagsInput.addEventListener('change', applyTenderBagRule);
-  }
-
-  if(form){
-    form.addEventListener('submit', function(){
-      if(tenderRawInput && String(tenderRawInput.value || '').trim() === '' && tenderInput){
-        tenderRawInput.value = tenderInput.value;
+    bagsInput.addEventListener('input', function(){
+      if(latestBaseRate !== null){
+        refreshSuggestion();
       }
-      applyTenderBagRule();
+    });
+    bagsInput.addEventListener('change', function(){
+      if(latestBaseRate !== null){
+        refreshSuggestion();
+      }
     });
   }
 
-  if(tenderRawInput && tenderInput && String(tenderInput.value || '').trim() !== ''){
-    tenderRawInput.value = tenderInput.value;
+  if(applyUpdatedTenderBtn){
+    applyUpdatedTenderBtn.addEventListener('click', function(){
+      if(!tenderInput || suggestedTender === null || !(suggestedTender > 0)){
+        return;
+      }
+      var confirmMsg = 'Updated list me tender value ' + formatTender(suggestedTender) + ' hai. Kya aap tender update karna chahte hain?';
+      if(!window.confirm(confirmMsg)){
+        return;
+      }
+      tenderInput.value = String(roundTender(suggestedTender));
+      setSuggestion('Updated tender apply ho gaya. Save par click karein.', 'ok', false);
+    });
   }
+
+  setHelp('Tender auto extract nahi hoga. Sirf updated list suggestion show hogi.', '');
   if(srInput && String(srInput.value || '').trim() !== ''){
     lookupTender();
-  } else {
-    setHelp('Enter SR No to auto fetch tender.', '');
   }
 })();
 </script>
