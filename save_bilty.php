@@ -150,29 +150,6 @@ $ok = $stmt->execute();
 $newId = (int)$stmt->insert_id;
 $stmt->close();
 
-if($ok && $freightPaymentType === 'to_pay' && auth_can_direct_modify('feed') && $totalFreight > 0){
-    $entryDate = $d !== '' ? $d : date('Y-m-d');
-    $entryCategory = 'feed';
-    $entryMode = 'account';
-    $entryNote = 'Auto Driver Payment - Feed Bilty ' . ($b !== '' ? $b : ('#' . $newId));
-    $autoPay = $conn->prepare("INSERT INTO account_entries(entry_date, category, entry_type, amount_mode, bilty_id, haleeb_bilty_id, amount, note) VALUES(?, ?, 'debit', ?, ?, NULL, ?, ?)");
-    $autoPay->bind_param("sssids", $entryDate, $entryCategory, $entryMode, $newId, $totalFreight, $entryNote);
-    $autoPay->execute();
-    $autoPay->close();
-}
-if($ok && $freightPaymentType === 'to_pay' && !auth_can_direct_modify('feed') && $totalFreight > 0){
-    $entryDate = $d !== '' ? $d : date('Y-m-d');
-    $entryNote = 'Auto Driver Payment Request - Feed Bilty ' . ($b !== '' ? $b : ('#' . $newId));
-    $payload = [
-        'entry_date' => $entryDate,
-        'category' => 'feed',
-        'amount_mode' => 'account',
-        'amount' => round($totalFreight, 3),
-        'note' => $entryNote
-    ];
-    create_change_request_local($conn, 'feed', 'bilty', $newId, 'feed_pay', $payload, $currentUserId);
-}
-
 if($ok){
     activity_notify_local(
         $conn,

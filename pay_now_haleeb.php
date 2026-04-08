@@ -55,8 +55,16 @@ $paidStmt->bind_param("i", $id); $paidStmt->execute();
 $paidRes = $paidStmt->get_result()->fetch_assoc(); $paidStmt->close();
 $paidTotal = $paidRes && $paidRes['paid_total'] ? (float)$paidRes['paid_total'] : 0;
 $commission = isset($row['commission']) ? (float)$row['commission'] : 0;
+$paymentTypeRaw = isset($row['freight_payment_type']) ? strtolower(trim((string)$row['freight_payment_type'])) : 'to_pay';
+if(!in_array($paymentTypeRaw, ['to_pay', 'paid'], true)) $paymentTypeRaw = 'to_pay';
+$isCompanySettled = $paymentTypeRaw === 'to_pay';
 $baseFreight = max((float)$row['freight'] - $commission, 0);
-$remainingFreight = max(0, $baseFreight - $paidTotal);
+if($isCompanySettled){
+    $paidTotal = $baseFreight;
+    $remainingFreight = 0.0;
+} else {
+    $remainingFreight = max(0, $baseFreight - $paidTotal);
+}
 
 if(isset($_POST['pay_now'])){
     $formDate = isset($_POST['entry_date']) ? $_POST['entry_date'] : $today;
@@ -66,7 +74,9 @@ if(isset($_POST['pay_now'])){
     $formAmount = $payAmount > 0 ? (string)$payAmount : '';
     $formNote = isset($_POST['note']) ? trim($_POST['note']) : '';
 
-    if(!in_array($formCategory, $allowedCategories, true)) $err = 'Invalid category selected.';
+    if($isCompanySettled) $err = 'This To Pay bilty is company-settled and not linked with account ledger.';
+    elseif($remainingFreight <= 0.0001) $err = 'No remaining freight left for ledger payment.';
+    elseif(!in_array($formCategory, $allowedCategories, true)) $err = 'Invalid category selected.';
     elseif(!in_array($formAmountMode, ['cash', 'account'], true)) $err = 'Invalid payment mode.';
     elseif($payAmount <= 0) $err = 'Pay amount must be greater than 0.';
     elseif($payAmount > $remainingFreight) $err = 'Pay amount cannot exceed remaining freight.';
@@ -283,6 +293,11 @@ $paidPct = $baseFreight > 0 ? min(100, round($paidTotal / $baseFreight * 100)) :
         <div class="alert"><?php echo htmlspecialchars($err); ?></div>
       <?php endif; ?>
 
+      <?php if($isCompanySettled): ?>
+        <div class="field-hint" style="margin-bottom:14px;">To Pay bilty company side se settled hai, ledger payment required nahi.</div>
+      <?php endif; ?>
+
+      <?php if(!$isCompanySettled && $remainingFreight > 0.0001): ?>
       <form method="post">
         <div class="field">
           <label for="entry_date">Date</label>
@@ -314,6 +329,9 @@ $paidPct = $baseFreight > 0 ? min(100, round($paidTotal / $baseFreight * 100)) :
         </div>
         <button class="submit-btn" type="submit" name="pay_now">Save Payment</button>
       </form>
+      <?php else: ?>
+        <div class="field-hint">Ledger payment form disabled because this bilty is already settled.</div>
+      <?php endif; ?>
     </div>
   </div>
 </div>

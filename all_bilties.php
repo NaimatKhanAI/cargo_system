@@ -57,7 +57,10 @@ $feedSelect = "SELECT
   COALESCE(b.commission, 0) AS commission,
   COALESCE(b.original_freight, GREATEST((COALESCE(b.freight,0) - COALESCE(b.commission,0)), 0)) AS total_cost,
   COALESCE(b.freight_payment_type, 'to_pay') AS freight_payment_type,
-  GREATEST(COALESCE(b.original_freight, GREATEST((COALESCE(b.freight,0) - COALESCE(b.commission,0)), 0)) - COALESCE(fp.paid_total, 0), 0) AS remaining_balance
+  CASE
+    WHEN COALESCE(NULLIF(LOWER(TRIM(b.freight_payment_type)), ''), 'to_pay') = 'to_pay' THEN 0
+    ELSE GREATEST(COALESCE(b.original_freight, GREATEST((COALESCE(b.freight,0) - COALESCE(b.commission,0)), 0)) - COALESCE(fp.paid_total, 0), 0)
+  END AS remaining_balance
 FROM bilty b
 LEFT JOIN (
   SELECT bilty_id, SUM(amount) AS paid_total
@@ -79,7 +82,10 @@ $haleebSelect = "SELECT
   COALESCE(h.commission, 0) AS commission,
   GREATEST((COALESCE(h.freight,0) - COALESCE(h.commission,0)), 0) AS total_cost,
   COALESCE(h.freight_payment_type, 'to_pay') AS freight_payment_type,
-  GREATEST(GREATEST((COALESCE(h.freight,0) - COALESCE(h.commission,0)), 0) - COALESCE(hp.paid_total, 0), 0) AS remaining_balance
+  CASE
+    WHEN COALESCE(NULLIF(LOWER(TRIM(h.freight_payment_type)), ''), 'to_pay') = 'to_pay' THEN 0
+    ELSE GREATEST(GREATEST((COALESCE(h.freight,0) - COALESCE(h.commission,0)), 0) - COALESCE(hp.paid_total, 0), 0)
+  END AS remaining_balance
 FROM haleeb_bilty h
 LEFT JOIN (
   SELECT haleeb_bilty_id, SUM(amount) AS paid_total

@@ -328,12 +328,19 @@ function apply_feed_pay_local($conn, $entityId, $payload, &$error){
     $error = '';
     if($entityId <= 0){ $error = 'Invalid feed entity id.'; return false; }
 
-    $biltyStmt = $conn->prepare("SELECT bilty_no, COALESCE(original_freight, GREATEST((COALESCE(freight,0) - COALESCE(commission,0)),0)) AS freight_total FROM bilty WHERE id=? LIMIT 1");
+    $biltyStmt = $conn->prepare("SELECT bilty_no, COALESCE(NULLIF(LOWER(TRIM(freight_payment_type)), ''), 'to_pay') AS freight_payment_type, COALESCE(original_freight, GREATEST((COALESCE(freight,0) - COALESCE(commission,0)),0)) AS freight_total FROM bilty WHERE id=? LIMIT 1");
     $biltyStmt->bind_param("i", $entityId);
     $biltyStmt->execute();
     $biltyRow = $biltyStmt->get_result()->fetch_assoc();
     $biltyStmt->close();
     if(!$biltyRow){ $error = 'Linked feed bilty not found.'; return false; }
+
+    $paymentType = isset($biltyRow['freight_payment_type']) ? strtolower(trim((string)$biltyRow['freight_payment_type'])) : 'to_pay';
+    if(!in_array($paymentType, ['to_pay', 'paid'], true)) $paymentType = 'to_pay';
+    if($paymentType === 'to_pay'){
+        $error = 'To Pay bilty is company-settled and cannot create ledger payment.';
+        return false;
+    }
 
     $entryDate = isset($payload['entry_date']) ? (string)$payload['entry_date'] : date('Y-m-d');
     $category = isset($payload['category']) ? trim((string)$payload['category']) : 'feed';
@@ -365,12 +372,19 @@ function apply_haleeb_pay_local($conn, $entityId, $payload, &$error){
     $error = '';
     if($entityId <= 0){ $error = 'Invalid haleeb entity id.'; return false; }
 
-    $biltyStmt = $conn->prepare("SELECT token_no, GREATEST((COALESCE(freight,0) - COALESCE(commission,0)),0) AS freight_total FROM haleeb_bilty WHERE id=? LIMIT 1");
+    $biltyStmt = $conn->prepare("SELECT token_no, COALESCE(NULLIF(LOWER(TRIM(freight_payment_type)), ''), 'to_pay') AS freight_payment_type, GREATEST((COALESCE(freight,0) - COALESCE(commission,0)),0) AS freight_total FROM haleeb_bilty WHERE id=? LIMIT 1");
     $biltyStmt->bind_param("i", $entityId);
     $biltyStmt->execute();
     $biltyRow = $biltyStmt->get_result()->fetch_assoc();
     $biltyStmt->close();
     if(!$biltyRow){ $error = 'Linked haleeb bilty not found.'; return false; }
+
+    $paymentType = isset($biltyRow['freight_payment_type']) ? strtolower(trim((string)$biltyRow['freight_payment_type'])) : 'to_pay';
+    if(!in_array($paymentType, ['to_pay', 'paid'], true)) $paymentType = 'to_pay';
+    if($paymentType === 'to_pay'){
+        $error = 'To Pay bilty is company-settled and cannot create ledger payment.';
+        return false;
+    }
 
     $entryDate = isset($payload['entry_date']) ? (string)$payload['entry_date'] : date('Y-m-d');
     $category = isset($payload['category']) ? trim((string)$payload['category']) : 'haleeb';

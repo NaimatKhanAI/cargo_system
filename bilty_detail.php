@@ -47,7 +47,14 @@ if($type === 'feed'){
     $baseFreight = isset($row['original_freight']) && $row['original_freight'] !== null
         ? (float)$row['original_freight']
         : max(((float)($row['freight'] ?? 0) - $commission), 0);
-    $remaining = max(0, $baseFreight - $paidTotal);
+    $paymentTypeRaw = isset($row['freight_payment_type']) ? strtolower(trim((string)$row['freight_payment_type'])) : 'to_pay';
+    if(!in_array($paymentTypeRaw, ['to_pay', 'paid'], true)) $paymentTypeRaw = 'to_pay';
+    if($paymentTypeRaw === 'to_pay'){
+        $paidTotal = $baseFreight;
+        $remaining = 0.0;
+    } else {
+        $remaining = max(0, $baseFreight - $paidTotal);
+    }
     $titleRef = (string)($row['bilty_no'] ?? ('#' . $id));
 } else {
     $stmt = $conn->prepare("SELECT h.*, COALESCE(NULLIF(u.username, ''), CASE WHEN h.added_by_user_id IS NULL THEN '-' ELSE CONCAT('User#', h.added_by_user_id) END) AS added_by_name FROM haleeb_bilty h LEFT JOIN users u ON u.id=h.added_by_user_id WHERE h.id=? LIMIT 1");
@@ -69,7 +76,14 @@ if($type === 'feed'){
 
     $commission = isset($row['commission']) ? (float)$row['commission'] : 0.0;
     $baseFreight = max(((float)($row['freight'] ?? 0) - $commission), 0);
-    $remaining = max(0, $baseFreight - $paidTotal);
+    $paymentTypeRaw = isset($row['freight_payment_type']) ? strtolower(trim((string)$row['freight_payment_type'])) : 'to_pay';
+    if(!in_array($paymentTypeRaw, ['to_pay', 'paid'], true)) $paymentTypeRaw = 'to_pay';
+    if($paymentTypeRaw === 'to_pay'){
+        $paidTotal = $baseFreight;
+        $remaining = 0.0;
+    } else {
+        $remaining = max(0, $baseFreight - $paidTotal);
+    }
     $titleRef = (string)($row['token_no'] ?? ('#' . $id));
 }
 

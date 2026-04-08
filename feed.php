@@ -60,6 +60,12 @@ if(isset($_GET['confirm_driver_pay'])){
     $paidRow = $paidStmt->get_result()->fetch_assoc();
     $paidStmt->close();
 
+    $driverPaymentType = isset($driverRow['freight_payment_type']) ? strtolower(trim((string)$driverRow['freight_payment_type'])) : 'to_pay';
+    if(!in_array($driverPaymentType, ['to_pay', 'paid'], true)) $driverPaymentType = 'to_pay';
+    if($driverPaymentType === 'to_pay'){
+        header("location:feed.php?driver_pay=already");
+        exit();
+    }
     $baseFreight = isset($driverRow['base_freight']) ? (float)$driverRow['base_freight'] : 0.0;
     $paidTotal = $paidRow && isset($paidRow['paid_total']) ? (float)$paidRow['paid_total'] : 0.0;
     $remaining = max(0, $baseFreight - $paidTotal);
@@ -292,8 +298,14 @@ $sql = "SELECT b.*,
         COALESCE(NULLIF(u.username, ''), CASE WHEN b.added_by_user_id IS NULL THEN '-' ELSE CONCAT('User#', b.added_by_user_id) END) AS added_by_name,
         GREATEST((COALESCE(b.freight,0) - COALESCE(b.commission,0)), 0) AS total_cost,
         (COALESCE(b.tender,0) - GREATEST((COALESCE(b.freight,0) - COALESCE(b.commission,0)), 0)) AS calc_profit,
-        GREATEST(COALESCE(b.original_freight, GREATEST((COALESCE(b.freight,0) - COALESCE(b.commission,0)), 0)) - COALESCE(p.paid_total, 0), 0) AS remaining_balance,
-        COALESCE(p.paid_total, 0) AS paid_total
+        CASE
+          WHEN COALESCE(NULLIF(LOWER(TRIM(b.freight_payment_type)), ''), 'to_pay') = 'to_pay' THEN 0
+          ELSE GREATEST(COALESCE(b.original_freight, GREATEST((COALESCE(b.freight,0) - COALESCE(b.commission,0)), 0)) - COALESCE(p.paid_total, 0), 0)
+        END AS remaining_balance,
+        CASE
+          WHEN COALESCE(NULLIF(LOWER(TRIM(b.freight_payment_type)), ''), 'to_pay') = 'to_pay' THEN COALESCE(b.original_freight, GREATEST((COALESCE(b.freight,0) - COALESCE(b.commission,0)), 0))
+          ELSE COALESCE(p.paid_total, 0)
+        END AS paid_total
         FROM bilty b
         LEFT JOIN users u ON u.id = b.added_by_user_id
         LEFT JOIN (
@@ -347,12 +359,20 @@ while($result && $row = $result->fetch_assoc()){
             $commission = isset($row['commission']) ? (float)$row['commission'] : 0.0;
             $tender = isset($row['tender']) ? (float)$row['tender'] : 0.0;
             $totalCost = max(0, $freight - $commission);
-            $paidTotal = isset($row['paid_total']) ? (float)$row['paid_total'] : 0.0;
-            $remaining = max(0, $totalCost - $paidTotal);
+            $paymentTypePending = isset($row['freight_payment_type']) ? strtolower(trim((string)$row['freight_payment_type'])) : 'to_pay';
+            if(!in_array($paymentTypePending, ['to_pay', 'paid'], true)) $paymentTypePending = 'to_pay';
+            if($paymentTypePending === 'to_pay'){
+                $paidTotal = $totalCost;
+                $remaining = 0.0;
+            } else {
+                $paidTotal = isset($row['paid_total']) ? (float)$row['paid_total'] : 0.0;
+                $remaining = max(0, $totalCost - $paidTotal);
+            }
 
             $row['total_cost'] = $totalCost;
             $row['calc_profit'] = $tender - $totalCost;
             $row['remaining_balance'] = $remaining;
+            $row['paid_total'] = $paidTotal;
             $row['original_freight'] = $totalCost;
         }
     }
@@ -931,7 +951,9 @@ while($result && $row = $result->fetch_assoc()){
             <div class="action-cell">
               <a class="act-btn act-view" href="<?php echo htmlspecialchars($detailHref); ?>" title="View Details">&#128065;</a>
               <?php if(!$isViewer): ?>
+              <?php if($remaining > 0.0001): ?>
               <a class="act-btn act-pay" href="pay_now.php?id=<?php echo $row['id']; ?>" title="Pay">&#8377;</a>
+              <?php endif; ?>
               <a class="act-btn act-edit" href="edit.php?id=<?php echo $row['id']; ?>" title="Edit">&#9998;</a>
               <?php endif; ?>
               <a class="act-btn act-pdf" href="pdf.php?id=<?php echo $row['id']; ?>" target="_blank" title="PDF">&#128196;</a>

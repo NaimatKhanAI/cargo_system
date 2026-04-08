@@ -56,13 +56,19 @@ function payment_request_remaining_local($conn, $actionType, $entityId, &$error 
     }
 
     if($actionType === 'feed_pay'){
-        $freightStmt = $conn->prepare("SELECT COALESCE(original_freight, freight) AS freight_total FROM bilty WHERE id=? LIMIT 1");
+        $freightStmt = $conn->prepare("SELECT COALESCE(NULLIF(LOWER(TRIM(freight_payment_type)), ''), 'to_pay') AS freight_payment_type, COALESCE(original_freight, freight) AS freight_total FROM bilty WHERE id=? LIMIT 1");
         $freightStmt->bind_param("i", $entityId);
         $freightStmt->execute();
         $freightRow = $freightStmt->get_result()->fetch_assoc();
         $freightStmt->close();
         if(!$freightRow){
             $error = 'Linked feed bilty not found.';
+            return 0.0;
+        }
+        $paymentType = isset($freightRow['freight_payment_type']) ? strtolower(trim((string)$freightRow['freight_payment_type'])) : 'to_pay';
+        if(!in_array($paymentType, ['to_pay', 'paid'], true)) $paymentType = 'to_pay';
+        if($paymentType === 'to_pay'){
+            $cache[$cacheKey] = 0.0;
             return 0.0;
         }
 
@@ -77,13 +83,19 @@ function payment_request_remaining_local($conn, $actionType, $entityId, &$error 
     }
 
     if($actionType === 'haleeb_pay'){
-        $freightStmt = $conn->prepare("SELECT freight AS freight_total FROM haleeb_bilty WHERE id=? LIMIT 1");
+        $freightStmt = $conn->prepare("SELECT COALESCE(NULLIF(LOWER(TRIM(freight_payment_type)), ''), 'to_pay') AS freight_payment_type, freight AS freight_total FROM haleeb_bilty WHERE id=? LIMIT 1");
         $freightStmt->bind_param("i", $entityId);
         $freightStmt->execute();
         $freightRow = $freightStmt->get_result()->fetch_assoc();
         $freightStmt->close();
         if(!$freightRow){
             $error = 'Linked haleeb bilty not found.';
+            return 0.0;
+        }
+        $paymentType = isset($freightRow['freight_payment_type']) ? strtolower(trim((string)$freightRow['freight_payment_type'])) : 'to_pay';
+        if(!in_array($paymentType, ['to_pay', 'paid'], true)) $paymentType = 'to_pay';
+        if($paymentType === 'to_pay'){
+            $cache[$cacheKey] = 0.0;
             return 0.0;
         }
 
@@ -355,28 +367,40 @@ if(isset($_POST['update_entry'])){
 
         if($linkRes && isset($linkRes['bilty_id']) && (int)$linkRes['bilty_id'] > 0 && strtolower((string)$linkRes['entry_type']) === 'debit'){
             $biltyId = (int)$linkRes['bilty_id'];
-            $freightStmt = $conn->prepare("SELECT COALESCE(original_freight, freight) AS freight_total FROM bilty WHERE id=? LIMIT 1");
+            $freightStmt = $conn->prepare("SELECT COALESCE(NULLIF(LOWER(TRIM(freight_payment_type)), ''), 'to_pay') AS freight_payment_type, COALESCE(original_freight, freight) AS freight_total FROM bilty WHERE id=? LIMIT 1");
             $freightStmt->bind_param("i", $biltyId); $freightStmt->execute();
             $freightRes = $freightStmt->get_result()->fetch_assoc(); $freightStmt->close();
             if(!$freightRes){ $err = 'Linked bilty not found.'; $canUpdate = false; }
             else {
-                $paidStmt = $conn->prepare("SELECT COALESCE(SUM(amount),0) AS paid_total FROM account_entries WHERE bilty_id=? AND entry_type='debit' AND id<>?");
-                $paidStmt->bind_param("ii", $biltyId, $editingId); $paidStmt->execute();
-                $paidRes = $paidStmt->get_result()->fetch_assoc(); $paidStmt->close();
-                $maxAllowed = max(0, (float)$freightRes['freight_total'] - ($paidRes['paid_total'] ?? 0));
+                $paymentType = isset($freightRes['freight_payment_type']) ? strtolower(trim((string)$freightRes['freight_payment_type'])) : 'to_pay';
+                if(!in_array($paymentType, ['to_pay', 'paid'], true)) $paymentType = 'to_pay';
+                if($paymentType === 'to_pay'){
+                    $maxAllowed = 0.0;
+                } else {
+                    $paidStmt = $conn->prepare("SELECT COALESCE(SUM(amount),0) AS paid_total FROM account_entries WHERE bilty_id=? AND entry_type='debit' AND id<>?");
+                    $paidStmt->bind_param("ii", $biltyId, $editingId); $paidStmt->execute();
+                    $paidRes = $paidStmt->get_result()->fetch_assoc(); $paidStmt->close();
+                    $maxAllowed = max(0, (float)$freightRes['freight_total'] - ($paidRes['paid_total'] ?? 0));
+                }
                 if((float)$amount > $maxAllowed){ $err = 'Amount exceeds bilty remaining balance.'; $canUpdate = false; }
             }
         } elseif($linkRes && isset($linkRes['haleeb_bilty_id']) && (int)$linkRes['haleeb_bilty_id'] > 0 && strtolower((string)$linkRes['entry_type']) === 'debit'){
             $haleebBiltyId = (int)$linkRes['haleeb_bilty_id'];
-            $freightStmt = $conn->prepare("SELECT freight AS freight_total FROM haleeb_bilty WHERE id=? LIMIT 1");
+            $freightStmt = $conn->prepare("SELECT COALESCE(NULLIF(LOWER(TRIM(freight_payment_type)), ''), 'to_pay') AS freight_payment_type, freight AS freight_total FROM haleeb_bilty WHERE id=? LIMIT 1");
             $freightStmt->bind_param("i", $haleebBiltyId); $freightStmt->execute();
             $freightRes = $freightStmt->get_result()->fetch_assoc(); $freightStmt->close();
             if(!$freightRes){ $err = 'Linked haleeb bilty not found.'; $canUpdate = false; }
             else {
-                $paidStmt = $conn->prepare("SELECT COALESCE(SUM(amount),0) AS paid_total FROM account_entries WHERE haleeb_bilty_id=? AND entry_type='debit' AND id<>?");
-                $paidStmt->bind_param("ii", $haleebBiltyId, $editingId); $paidStmt->execute();
-                $paidRes = $paidStmt->get_result()->fetch_assoc(); $paidStmt->close();
-                $maxAllowed = max(0, (float)$freightRes['freight_total'] - ($paidRes['paid_total'] ?? 0));
+                $paymentType = isset($freightRes['freight_payment_type']) ? strtolower(trim((string)$freightRes['freight_payment_type'])) : 'to_pay';
+                if(!in_array($paymentType, ['to_pay', 'paid'], true)) $paymentType = 'to_pay';
+                if($paymentType === 'to_pay'){
+                    $maxAllowed = 0.0;
+                } else {
+                    $paidStmt = $conn->prepare("SELECT COALESCE(SUM(amount),0) AS paid_total FROM account_entries WHERE haleeb_bilty_id=? AND entry_type='debit' AND id<>?");
+                    $paidStmt->bind_param("ii", $haleebBiltyId, $editingId); $paidStmt->execute();
+                    $paidRes = $paidStmt->get_result()->fetch_assoc(); $paidStmt->close();
+                    $maxAllowed = max(0, (float)$freightRes['freight_total'] - ($paidRes['paid_total'] ?? 0));
+                }
                 if((float)$amount > $maxAllowed){ $err = 'Amount exceeds haleeb bilty remaining balance.'; $canUpdate = false; }
             }
         }
