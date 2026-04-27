@@ -1,4 +1,4 @@
-const STATIC_CACHE = "cargo-static-v2";
+const STATIC_CACHE = "cargo-static-v3";
 const STATIC_ASSETS = [
   "./assets/mobile.css",
   "./assets/pwa.js",
