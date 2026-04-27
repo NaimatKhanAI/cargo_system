@@ -434,6 +434,10 @@ function apply_change_request_local($conn, $requestRow, &$error){
         $bags = isset($payload['bags']) ? (int)$payload['bags'] : 0;
         $f = isset($payload['freight']) ? max(0, round((float)$payload['freight'], 3)) : 0.0;
         $commission = isset($payload['commission']) ? max(0, round((float)$payload['commission'], 3)) : 0.0;
+        $freightPaymentType = isset($payload['freight_payment_type']) ? strtolower(trim((string)$payload['freight_payment_type'])) : 'to_pay';
+        if(!in_array($freightPaymentType, ['to_pay', 'paid'], true)){
+            $freightPaymentType = 'to_pay';
+        }
         $t = isset($payload['tender']) ? max(0, round((float)$payload['tender'], 3)) : 0.0;
         if($f <= 0 || $t <= 0){
             $error = 'Tender and freight must be greater than zero.';
@@ -441,8 +445,8 @@ function apply_change_request_local($conn, $requestRow, &$error){
         }
         $totalFreight = max(0, $f - $commission);
         $p = $t - $totalFreight;
-        $stmt = $conn->prepare("UPDATE bilty SET sr_no=?, date=?, vehicle=?, bilty_no=?, party=?, location=?, bags=?, freight=?, commission=?, original_freight=?, tender=?, profit=? WHERE id=?");
-        $stmt->bind_param("ssssssidddddi", $sr, $d, $v, $b, $party, $l, $bags, $f, $commission, $totalFreight, $t, $p, $entityId);
+        $stmt = $conn->prepare("UPDATE bilty SET sr_no=?, date=?, vehicle=?, bilty_no=?, party=?, location=?, bags=?, freight=?, commission=?, freight_payment_type=?, original_freight=?, tender=?, profit=? WHERE id=?");
+        $stmt->bind_param("ssssssiddsdddi", $sr, $d, $v, $b, $party, $l, $bags, $f, $commission, $freightPaymentType, $totalFreight, $t, $p, $entityId);
         $ok = $stmt->execute();
         $stmt->close();
         return (bool)$ok;

@@ -81,12 +81,6 @@ if(isset($_POST['update'])){
     if(!in_array($freightPaymentType, ['to_pay', 'paid'], true)){
         $freightPaymentType = 'to_pay';
     }
-    if(!auth_can_direct_modify('feed')){
-        $freightPaymentType = isset($row['freight_payment_type']) ? (string)$row['freight_payment_type'] : 'to_pay';
-        if(!in_array($freightPaymentType, ['to_pay', 'paid'], true)){
-            $freightPaymentType = 'to_pay';
-        }
-    }
     $t = isset($_POST['tender']) ? max(0, round((float)$_POST['tender'], 3)) : 0.0;
     $totalFreight = max(0, $f - $commission);
     if($f <= 0 || $t <= 0){
@@ -185,7 +179,7 @@ if(isset($_POST['update'])){
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <?php include 'config/pwa_head.php'; ?>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/mobile.css">
+<link rel="stylesheet" href="assets/mobile.css?v=20260427">
 <style>
   :root {
     --bg: #0e0f11; --surface: #16181c; --surface2: #1e2128; --border: #2a2d35;
@@ -211,11 +205,13 @@ if(isset($_POST['update'])){
 
   .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px 20px; }
   .field label { display: block; font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
-  .field input {
+  .field input,
+  .field select {
     width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text);
     padding: 11px 14px; font-family: var(--font); font-size: 14px; transition: border-color 0.15s;
   }
-  .field input:focus { outline: none; border-color: var(--accent); }
+  .field input:focus,
+  .field select:focus { outline: none; border-color: var(--accent); }
   .field input::-webkit-calendar-picker-indicator { filter: invert(0.5); cursor: pointer; }
   .field input::placeholder { color: var(--muted); }
   .field-meta { margin-top: 5px; font-size: 11px; font-family: var(--mono); color: var(--muted); }
@@ -307,18 +303,14 @@ if(isset($_POST['update'])){
           <label for="commission">Commission</label>
           <input id="commission" type="number" name="commission" value="<?php echo htmlspecialchars(isset($row['commission']) ? $row['commission'] : 0); ?>" min="0" step="any" required>
         </div>
-        <?php if($isSuperAdmin): ?>
-          <div class="field">
-            <label for="freight_payment_type">Driver Payment</label>
-            <?php $currentPaymentType = isset($row['freight_payment_type']) ? strtolower((string)$row['freight_payment_type']) : 'to_pay'; if(!in_array($currentPaymentType, ['to_pay','paid'], true)) $currentPaymentType = 'to_pay'; ?>
-            <select id="freight_payment_type" name="freight_payment_type" required>
-              <option value="to_pay" <?php echo $currentPaymentType === 'to_pay' ? 'selected' : ''; ?>>To Pay</option>
-              <option value="paid" <?php echo $currentPaymentType === 'paid' ? 'selected' : ''; ?>>Paid</option>
-            </select>
-          </div>
-        <?php else: ?>
-          <input type="hidden" name="freight_payment_type" value="<?php echo htmlspecialchars(isset($row['freight_payment_type']) ? $row['freight_payment_type'] : 'to_pay'); ?>">
-        <?php endif; ?>
+        <div class="field">
+          <label for="freight_payment_type">Driver Payment</label>
+          <?php $currentPaymentType = isset($row['freight_payment_type']) ? strtolower((string)$row['freight_payment_type']) : 'to_pay'; if(!in_array($currentPaymentType, ['to_pay','paid'], true)) $currentPaymentType = 'to_pay'; ?>
+          <select id="freight_payment_type" name="freight_payment_type" required>
+            <option value="to_pay" <?php echo $currentPaymentType === 'to_pay' ? 'selected' : ''; ?>>To Pay</option>
+            <option value="paid" <?php echo $currentPaymentType === 'paid' ? 'selected' : ''; ?>>Paid</option>
+          </select>
+        </div>
         <?php if($isSuperAdmin): ?>
           <div class="field">
             <label for="tender">Tender</label>
