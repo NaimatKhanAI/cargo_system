@@ -3,7 +3,7 @@ require_once __DIR__ . '/session_bootstrap.php';
 require_once __DIR__ . '/feed_portions.php';
 
 function auth_get_user_by_id_local($conn, $userId){
-    $stmt = $conn->prepare("SELECT id, username, role, is_active, can_access_feed, feed_portion, can_access_haleeb, can_access_account, can_access_image_processing, can_manage_users, can_review_activity FROM users WHERE id=? LIMIT 1");
+    $stmt = $conn->prepare("SELECT id, username, role, is_active, can_access_feed, feed_portion, can_access_haleeb, can_access_account, can_access_image_processing, can_manage_users, can_review_activity, can_auto_approve_changes FROM users WHERE id=? LIMIT 1");
     $stmt->bind_param("i", $userId);
     $stmt->execute();
     $row = $stmt->get_result()->fetch_assoc();
@@ -12,7 +12,7 @@ function auth_get_user_by_id_local($conn, $userId){
 }
 
 function auth_get_user_by_username_local($conn, $username){
-    $stmt = $conn->prepare("SELECT id, username, role, is_active, can_access_feed, feed_portion, can_access_haleeb, can_access_account, can_access_image_processing, can_manage_users, can_review_activity FROM users WHERE username=? LIMIT 1");
+    $stmt = $conn->prepare("SELECT id, username, role, is_active, can_access_feed, feed_portion, can_access_haleeb, can_access_account, can_access_image_processing, can_manage_users, can_review_activity, can_auto_approve_changes FROM users WHERE username=? LIMIT 1");
     $stmt->bind_param("s", $username);
     $stmt->execute();
     $row = $stmt->get_result()->fetch_assoc();
@@ -34,6 +34,7 @@ function auth_store_session_local($row){
     $_SESSION['can_access_image_processing'] = isset($row['can_access_image_processing']) ? (int)$row['can_access_image_processing'] : 0;
     $_SESSION['can_manage_users'] = (int)$row['can_manage_users'];
     $_SESSION['can_review_activity'] = isset($row['can_review_activity']) ? (int)$row['can_review_activity'] : 0;
+    $_SESSION['can_auto_approve_changes'] = isset($row['can_auto_approve_changes']) ? (int)$row['can_auto_approve_changes'] : 0;
 }
 
 function auth_sync_session_user($conn){
@@ -103,9 +104,13 @@ function auth_can_manage_users(){
 }
 
 function auth_can_direct_modify($module = null){
-    if(!auth_is_super_admin()) return false;
+    if(!auth_is_super_admin() && !auth_can_auto_approve_changes()) return false;
     if($module === null || trim((string)$module) === '') return true;
     return auth_has_module_access((string)$module);
+}
+
+function auth_can_auto_approve_changes(){
+    return isset($_SESSION['can_auto_approve_changes']) && (int)$_SESSION['can_auto_approve_changes'] === 1;
 }
 
 function auth_can_review_activity(){

@@ -87,11 +87,11 @@ if(isset($_POST['create_user'])){
         $chk = $conn->prepare("SELECT id FROM users WHERE username=? LIMIT 1"); $chk->bind_param("s", $username); $chk->execute(); $exists = $chk->get_result()->num_rows > 0; $chk->close();
         if($exists){ $err = 'Username already exists.'; }
         else {
-            $af = bool_post_local('can_access_feed'); $ah = bool_post_local('can_access_haleeb'); $aa = bool_post_local('can_access_account'); $aip = bool_post_local('can_access_image_processing'); $cra = bool_post_local('can_review_activity'); $ia = bool_post_local('is_active'); $cmu = bool_post_local('can_manage_users');
+            $af = bool_post_local('can_access_feed'); $ah = bool_post_local('can_access_haleeb'); $aa = bool_post_local('can_access_account'); $aip = bool_post_local('can_access_image_processing'); $cra = bool_post_local('can_review_activity'); $aca = bool_post_local('can_auto_approve_changes'); $ia = bool_post_local('is_active'); $cmu = bool_post_local('can_manage_users');
             if($role !== 'super_admin'){ $cmu = 0; }
             $cb = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null;
-            $ins = $conn->prepare("INSERT INTO users(username, password, role, is_active, can_access_feed, feed_portion, can_access_haleeb, can_access_account, can_access_image_processing, can_manage_users, can_review_activity, created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)");
-            $ins->bind_param("sssissiiiiii", $username, $password, $role, $ia, $af, $feedPortion, $ah, $aa, $aip, $cmu, $cra, $cb); $ins->execute(); $ins->close();
+            $ins = $conn->prepare("INSERT INTO users(username, password, role, is_active, can_access_feed, feed_portion, can_access_haleeb, can_access_account, can_access_image_processing, can_manage_users, can_review_activity, can_auto_approve_changes, created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)");
+            $ins->bind_param("sssissiiiiiii", $username, $password, $role, $ia, $af, $feedPortion, $ah, $aa, $aip, $cmu, $cra, $aca, $cb); $ins->execute(); $ins->close();
             $msg = 'User created.';
         }
     }
@@ -101,7 +101,7 @@ if(isset($_POST['update_user'])){
     $selfId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
     $role = isset($_POST['role']) ? trim((string)$_POST['role']) : 'sub_admin';
     $feedPortion = feed_portion_post_local('feed_portion');
-    $ia = bool_post_local('is_active'); $af = bool_post_local('can_access_feed'); $ah = bool_post_local('can_access_haleeb'); $aa = bool_post_local('can_access_account'); $aip = bool_post_local('can_access_image_processing'); $cra = bool_post_local('can_review_activity'); $cmu = bool_post_local('can_manage_users');
+    $ia = bool_post_local('is_active'); $af = bool_post_local('can_access_feed'); $ah = bool_post_local('can_access_haleeb'); $aa = bool_post_local('can_access_account'); $aip = bool_post_local('can_access_image_processing'); $cra = bool_post_local('can_review_activity'); $aca = bool_post_local('can_auto_approve_changes'); $cmu = bool_post_local('can_manage_users');
     $password = isset($_POST['new_password']) ? trim((string)$_POST['new_password']) : '';
     if($userId <= 0){ $err = 'Invalid user.'; }
     elseif(!in_array($role, ['super_admin','sub_admin','viewer'], true)){ $err = 'Invalid role.'; }
@@ -135,8 +135,8 @@ if(isset($_POST['update_user'])){
             }
 
             if($err === ''){
-                $upd = $conn->prepare("UPDATE users SET role=?, is_active=?, can_access_feed=?, feed_portion=?, can_access_haleeb=?, can_access_account=?, can_access_image_processing=?, can_manage_users=?, can_review_activity=? WHERE id=?");
-                $upd->bind_param("siiisiiiii", $role, $ia, $af, $feedPortion, $ah, $aa, $aip, $cmu, $cra, $userId); $upd->execute(); $upd->close();
+                $upd = $conn->prepare("UPDATE users SET role=?, is_active=?, can_access_feed=?, feed_portion=?, can_access_haleeb=?, can_access_account=?, can_access_image_processing=?, can_manage_users=?, can_review_activity=?, can_auto_approve_changes=? WHERE id=?");
+                $upd->bind_param("siisiiiiiii", $role, $ia, $af, $feedPortion, $ah, $aa, $aip, $cmu, $cra, $aca, $userId); $upd->execute(); $upd->close();
                 if($password !== ''){ $pwd = $conn->prepare("UPDATE users SET password=? WHERE id=?"); $pwd->bind_param("si", $password, $userId); $pwd->execute(); $pwd->close(); }
                 $msg = 'User updated.';
             }
@@ -172,7 +172,7 @@ if(isset($_POST['approve_request']) || isset($_POST['reject_request'])){
     }
 }
 $users = [];
-$usersRes = $conn->query("SELECT id, username, role, is_active, can_access_feed, feed_portion, can_access_haleeb, can_access_account, can_access_image_processing, can_manage_users, can_review_activity, created_at FROM users ORDER BY id ASC");
+$usersRes = $conn->query("SELECT id, username, role, is_active, can_access_feed, feed_portion, can_access_haleeb, can_access_account, can_access_image_processing, can_manage_users, can_review_activity, can_auto_approve_changes, created_at FROM users ORDER BY id ASC");
 while($usersRes && $u = $usersRes->fetch_assoc()) $users[] = $u;
 $pendingRequests = fetch_pending_change_requests_local($conn);
 $selfId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
@@ -388,6 +388,7 @@ $feedPortionOptions = feed_portion_options_local();
               <label class="chk-label"><input type="checkbox" name="can_access_account"> Account</label>
               <label class="chk-label"><input type="checkbox" name="can_access_image_processing"> Image Processing</label>
               <label class="chk-label"><input type="checkbox" name="can_review_activity"> Activity Review</label>
+              <label class="chk-label"><input type="checkbox" name="can_auto_approve_changes"> Auto Permanent Changes</label>
               <label class="chk-label"><input type="checkbox" name="can_manage_users"> Manage Users</label>
             </div>
           </div>
@@ -416,6 +417,7 @@ $feedPortionOptions = feed_portion_options_local();
             <th>Account</th>
             <th>Image Proc</th>
             <th>Act Review</th>
+            <th>Auto Perm</th>
             <th>Users</th>
             <th>New Password</th>
             <th>Update</th>
@@ -468,6 +470,7 @@ $feedPortionOptions = feed_portion_options_local();
               <td><label class="chk-label"><input type="checkbox" name="can_access_account" <?php echo (int)$u['can_access_account'] ? 'checked' : ''; ?> <?php echo $isSelf ? 'disabled' : ''; ?>></label></td>
               <td><label class="chk-label"><input type="checkbox" name="can_access_image_processing" <?php echo (int)$u['can_access_image_processing'] ? 'checked' : ''; ?> <?php echo $isSelf ? 'disabled' : ''; ?>></label></td>
               <td><label class="chk-label"><input type="checkbox" name="can_review_activity" <?php echo (int)$u['can_review_activity'] ? 'checked' : ''; ?> <?php echo $isSelf ? 'disabled' : ''; ?>></label></td>
+              <td><label class="chk-label"><input type="checkbox" name="can_auto_approve_changes" <?php echo (int)$u['can_auto_approve_changes'] ? 'checked' : ''; ?> <?php echo $isSelf ? 'disabled' : ''; ?>></label></td>
               <td><label class="chk-label"><input type="checkbox" name="can_manage_users" <?php echo (int)$u['can_manage_users'] ? 'checked' : ''; ?> <?php echo $isSelf ? 'disabled' : ''; ?>></label></td>
               <td><input class="tbl-input" type="password" name="new_password" placeholder="keep same"></td>
               <td>
