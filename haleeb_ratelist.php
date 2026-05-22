@@ -433,7 +433,7 @@ if(isset($_POST['apply_haleeb_tender_sync'])){
     $missingRate = 0;
     $invalidRate = 0;
 
-    $fetchStmt = $conn->prepare("SELECT id, location, vehicle_type, freight, commission FROM haleeb_bilty WHERE date >= ? AND date <= ? ORDER BY id ASC");
+    $fetchStmt = $conn->prepare("SELECT id, location, vehicle_type, freight, commission FROM haleeb_bilty WHERE date >= ? AND date <= ? AND COALESCE(freight,0) > 0 ORDER BY id ASC");
     $fetchStmt->bind_param("ss", $tenderSyncDateFrom, $tenderSyncDateTo);
     $fetchStmt->execute();
     $rowsRes = $fetchStmt->get_result();
