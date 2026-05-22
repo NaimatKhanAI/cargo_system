@@ -41,22 +41,63 @@ function vehicle_bucket_local($vehicleType){
     return '';
 }
 
-function stop_tender_amount_local($vehicleType, $stopType){
+function get_setting_value_local($conn, $key, $default = ''){
+    $stmt = $conn->prepare("SELECT setting_value FROM app_settings WHERE setting_key=? LIMIT 1");
+    if(!$stmt) return (string)$default;
+    $stmt->bind_param("s", $key);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $row = $res ? $res->fetch_assoc() : null;
+    $stmt->close();
+    return ($row && isset($row['setting_value'])) ? (string)$row['setting_value'] : (string)$default;
+}
+
+function default_stop_tender_rates_local(){
+    return [
+        'same' => [
+            'mazda' => 3000.0,
+            '14ft' => 3000.0,
+            '20ft' => 5000.0,
+            '40ft' => 7000.0
+        ],
+        'out' => [
+            'mazda' => 4000.0,
+            '14ft' => 4000.0,
+            '20ft' => 8000.0,
+            '40ft' => 8000.0
+        ]
+    ];
+}
+
+function load_stop_tender_rates_local($conn){
+    $defaults = default_stop_tender_rates_local();
+    $raw = get_setting_value_local($conn, 'haleeb_stop_tender_rates', '');
+    if(trim($raw) === '') return $defaults;
+
+    $decoded = json_decode($raw, true);
+    if(!is_array($decoded)) return $defaults;
+
+    $groups = ['same', 'out'];
+    $buckets = ['mazda', '14ft', '20ft', '40ft'];
+    foreach($groups as $group){
+        foreach($buckets as $bucket){
+            $val = $decoded[$group][$bucket] ?? null;
+            if($val === null || !is_numeric($val) || (float)$val < 0){
+                $decoded[$group][$bucket] = (float)$defaults[$group][$bucket];
+            } else {
+                $decoded[$group][$bucket] = round((float)$val, 3);
+            }
+        }
+    }
+    return $decoded;
+}
+
+function stop_tender_amount_local($vehicleType, $stopType, $stopRates){
     $bucket = vehicle_bucket_local($vehicleType);
     if($bucket === '') return 0.0;
 
-    $sameCity = [
-        'mazda' => 3000.0,
-        '14ft' => 3000.0,
-        '20ft' => 5000.0,
-        '40ft' => 7000.0
-    ];
-    $outCity = [
-        'mazda' => 4000.0,
-        '14ft' => 4000.0,
-        '20ft' => 8000.0,
-        '40ft' => 8000.0
-    ];
+    $sameCity = (isset($stopRates['same']) && is_array($stopRates['same'])) ? $stopRates['same'] : [];
+    $outCity = (isset($stopRates['out']) && is_array($stopRates['out'])) ? $stopRates['out'] : [];
 
     if($stopType === 'same') return isset($sameCity[$bucket]) ? (float)$sameCity[$bucket] : 0.0;
     return isset($outCity[$bucket]) ? (float)$outCity[$bucket] : 0.0;
@@ -181,6 +222,7 @@ $l = isset($_POST['location']) ? trim((string)$_POST['location']) : '';
 $postedRateListName = normalize_rate_list_name_local(isset($_POST['rate_list_name']) ? (string)$_POST['rate_list_name'] : '');
 $postedSameCityCount = isset($_POST['same_city_count']) ? (int)$_POST['same_city_count'] : 0;
 $postedOutCityCount = isset($_POST['out_city_count']) ? (int)$_POST['out_city_count'] : 0;
+$stopTenderRates = load_stop_tender_rates_local($conn);
 
 $sameStops = decode_stop_rows_local(isset($_POST['same_stops_json']) ? $_POST['same_stops_json'] : '[]');
 $outStops = decode_stop_rows_local(isset($_POST['out_stops_json']) ? $_POST['out_stops_json'] : '[]');
@@ -288,7 +330,7 @@ try{
         if($stopLocation === '') $stopLocation = $l;
         if($stopParty === '') $stopParty = $party;
 
-        $stopTender = max(0, round(stop_tender_amount_local($vt, 'same'), 3));
+        $stopTender = max(0, round(stop_tender_amount_local($vt, 'same', $stopTenderRates), 3));
         $stopFreight = 0.0;
         $stopCommission = 0.0;
         $stopProfit = $stopTender;
@@ -311,7 +353,7 @@ try{
         if($stopLocation === '') $stopLocation = $l;
         if($stopParty === '') $stopParty = $party;
 
-        $stopTender = max(0, round(stop_tender_amount_local($vt, 'out'), 3));
+        $stopTender = max(0, round(stop_tender_amount_local($vt, 'out', $stopTenderRates), 3));
         $stopFreight = 0.0;
         $stopCommission = 0.0;
         $stopProfit = $stopTender;

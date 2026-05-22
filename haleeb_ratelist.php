@@ -92,11 +92,73 @@ function latest_haleeb_rate_list_name_local($conn){
   $row = $conn->query("SELECT COALESCE(NULLIF(rate_list_name,''), 'Base List') AS list_name FROM haleeb_image_processed_rates ORDER BY id DESC LIMIT 1")->fetch_assoc();
   return normalize_rate_list_name_local($row['list_name'] ?? 'Base List');
 }
+function get_setting_value_local($conn, $key, $default = ''){
+  $stmt = $conn->prepare("SELECT setting_value FROM app_settings WHERE setting_key=? LIMIT 1");
+  if(!$stmt) return (string)$default;
+  $stmt->bind_param("s", $key);
+  $stmt->execute();
+  $res = $stmt->get_result();
+  $row = $res ? $res->fetch_assoc() : null;
+  $stmt->close();
+  return ($row && isset($row['setting_value'])) ? (string)$row['setting_value'] : (string)$default;
+}
+function set_setting_value_local($conn, $key, $value){
+  $stmt = $conn->prepare("INSERT INTO app_settings(setting_key, setting_value) VALUES(?, ?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)");
+  if(!$stmt) return false;
+  $stmt->bind_param("ss", $key, $value);
+  $ok = $stmt->execute();
+  $stmt->close();
+  return $ok;
+}
+function default_stop_tender_rates_local(){
+  return [
+    'same' => [
+      'mazda' => 3000.0,
+      '14ft' => 3000.0,
+      '20ft' => 5000.0,
+      '40ft' => 7000.0
+    ],
+    'out' => [
+      'mazda' => 4000.0,
+      '14ft' => 4000.0,
+      '20ft' => 8000.0,
+      '40ft' => 8000.0
+    ]
+  ];
+}
+function load_stop_tender_rates_local($conn){
+  $defaults = default_stop_tender_rates_local();
+  $raw = get_setting_value_local($conn, 'haleeb_stop_tender_rates', '');
+  if(trim($raw) === '') return $defaults;
 
-$msg = ''; $err = ''; $editingId = 0; $openAddRow = false; $openRateChange = false; $openTenderSync = false; $rateChangeMode = 'increment'; $rateChangePercent = ''; $rateChangeLabel = ''; $rateChangePetrolOld = ''; $rateChangePetrolNew = ''; $rateChangeSourceList = ''; $tenderSyncDateFrom = ''; $tenderSyncDateTo = ''; $tenderSyncSourceList = '';
+  $decoded = json_decode($raw, true);
+  if(!is_array($decoded)) return $defaults;
+
+  $groups = ['same', 'out'];
+  $buckets = ['mazda', '14ft', '20ft', '40ft'];
+  foreach($groups as $group){
+    foreach($buckets as $bucket){
+      $val = $decoded[$group][$bucket] ?? null;
+      if($val === null || !is_numeric($val) || (float)$val < 0){
+        $decoded[$group][$bucket] = (float)$defaults[$group][$bucket];
+      } else {
+        $decoded[$group][$bucket] = round((float)$val, 3);
+      }
+    }
+  }
+  return $decoded;
+}
+function format_stop_rate_input_local($value){
+  $n = round((float)$value, 3);
+  if(abs($n - round($n)) < 0.0000001) return (string)round($n);
+  return rtrim(rtrim(number_format($n, 3, '.', ''), '0'), '.');
+}
+
+$msg = ''; $err = ''; $editingId = 0; $openAddRow = false; $openRateChange = false; $openTenderSync = false; $openStopAmounts = false; $rateChangeMode = 'increment'; $rateChangePercent = ''; $rateChangeLabel = ''; $rateChangePetrolOld = ''; $rateChangePetrolNew = ''; $rateChangeSourceList = ''; $tenderSyncDateFrom = ''; $tenderSyncDateTo = ''; $tenderSyncSourceList = '';
+$stopTenderRates = load_stop_tender_rates_local($conn);
 
 if(!$canDirectModify){
-  $blockedPostActions = ['add_column', 'apply_rate_change', 'apply_haleeb_tender_sync', 'save_columns', 'delete_column', 'delete_rate', 'update_rate', 'add_rate'];
+  $blockedPostActions = ['add_column', 'apply_rate_change', 'apply_haleeb_tender_sync', 'save_stop_amounts', 'save_columns', 'delete_column', 'delete_rate', 'update_rate', 'add_rate'];
   foreach($blockedPostActions as $blockedKey){
     if(isset($_POST[$blockedKey])){
       $err = 'Only super admin can modify rate list.';
@@ -114,9 +176,47 @@ if(isset($_GET['open']) && $_GET['open'] === 'tender_sync'){
 if(isset($_GET['open']) && $_GET['open'] === 'rate_change'){
   $openRateChange = true;
 }
+if(isset($_GET['open']) && $_GET['open'] === 'stop_amounts'){
+  $openStopAmounts = true;
+}
 
 if(isset($_GET['delete_all']) && $_GET['delete_all'] === '1'){ $conn->query("DELETE FROM haleeb_image_processed_rates"); $msg = 'Rate list cleared.'; }
 if(isset($_GET['import'])){ if($_GET['import'] === 'success'){ $ins = isset($_GET['ins']) ? (int)$_GET['ins'] : 0; $skip = isset($_GET['skip']) ? (int)$_GET['skip'] : 0; $msg = "Import completed. Inserted: $ins, Skipped: $skip"; } elseif($_GET['import'] === 'error'){ $reason = isset($_GET['reason']) ? trim((string)$_GET['reason']) : ''; $err = $reason === 'no_columns' ? 'Import failed. No active Rate List columns found.' : 'Import failed. Please upload a valid CSV file.'; } }
+
+if(isset($_POST['save_stop_amounts'])){
+  $openStopAmounts = true;
+  $groups = ['same', 'out'];
+  $buckets = ['mazda', '14ft', '20ft', '40ft'];
+  $updatedRates = default_stop_tender_rates_local();
+  $validationErr = '';
+
+  foreach($groups as $group){
+    foreach($buckets as $bucket){
+      $fieldKey = $group . '_' . $bucket;
+      $raw = isset($_POST[$fieldKey]) ? trim((string)$_POST[$fieldKey]) : '';
+      if($raw === '' || !is_numeric($raw) || (float)$raw < 0){
+        $validationErr = 'Stop Amounts: all values must be valid and greater than or equal to zero.';
+        break 2;
+      }
+      $updatedRates[$group][$bucket] = round((float)$raw, 3);
+    }
+  }
+
+  if($validationErr !== ''){
+    $err = $validationErr;
+  } else {
+    $payload = json_encode($updatedRates, JSON_UNESCAPED_UNICODE);
+    if($payload === false){
+      $err = 'Stop Amounts: could not encode values.';
+    } elseif(!set_setting_value_local($conn, 'haleeb_stop_tender_rates', $payload)){
+      $err = 'Stop Amounts: save failed. Try again.';
+    } else {
+      $stopTenderRates = $updatedRates;
+      $msg = 'Same City / Out City amounts updated.';
+      $openStopAmounts = false;
+    }
+  }
+}
 
 if(isset($_POST['apply_rate_change'])){
   $openRateChange = true;
@@ -607,6 +707,7 @@ while($rowsRes && $rateRow = $rowsRes->fetch_assoc()){
           <input class="menu-import-input" id="menu_import_file" type="file" name="csv_file" accept=".csv" required>
           <button class="menu-item" type="button" id="menu_import_btn">Import</button>
         </form>
+        <button class="menu-item" type="button" id="menu_stop_amounts_btn">Stop Amounts</button>
         <button class="menu-item" type="button" id="menu_rate_change_btn">Create New List</button>
         <button class="menu-item" type="button" id="menu_tender_sync_btn">Tender Sync</button>
         <a class="menu-item" href="export_haleeb_ratelist.php">Export</a>
@@ -671,6 +772,56 @@ while($rowsRes && $rateRow = $rowsRes->fetch_assoc()){
         </div>
         <input type="hidden" id="delete_col_key" name="column_key" value="">
         <button class="nav-btn primary" type="submit" name="save_columns">Save Columns</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- STOP AMOUNTS -->
+  <div class="panel">
+    <div class="panel-head" id="stop_head">
+      <span class="panel-title">Same City / Out City Amounts</span>
+      <span class="panel-toggle <?php echo $openStopAmounts ? 'open' : ''; ?>" id="stop_toggle">+</span>
+    </div>
+    <div class="panel-body <?php echo $openStopAmounts ? 'open' : ''; ?>" id="stop_body">
+      <form method="post">
+        <div class="col-grid">
+          <div class="col-item">
+            <div class="col-item-key">Same City - Mazda</div>
+            <input type="number" min="0" step="any" name="same_mazda" value="<?php echo htmlspecialchars(format_stop_rate_input_local($stopTenderRates['same']['mazda'] ?? 0)); ?>" required>
+          </div>
+          <div class="col-item">
+            <div class="col-item-key">Same City - 14ft</div>
+            <input type="number" min="0" step="any" name="same_14ft" value="<?php echo htmlspecialchars(format_stop_rate_input_local($stopTenderRates['same']['14ft'] ?? 0)); ?>" required>
+          </div>
+          <div class="col-item">
+            <div class="col-item-key">Same City - 20ft</div>
+            <input type="number" min="0" step="any" name="same_20ft" value="<?php echo htmlspecialchars(format_stop_rate_input_local($stopTenderRates['same']['20ft'] ?? 0)); ?>" required>
+          </div>
+          <div class="col-item">
+            <div class="col-item-key">Same City - 40ft</div>
+            <input type="number" min="0" step="any" name="same_40ft" value="<?php echo htmlspecialchars(format_stop_rate_input_local($stopTenderRates['same']['40ft'] ?? 0)); ?>" required>
+          </div>
+          <div class="col-item">
+            <div class="col-item-key">Out City - Mazda</div>
+            <input type="number" min="0" step="any" name="out_mazda" value="<?php echo htmlspecialchars(format_stop_rate_input_local($stopTenderRates['out']['mazda'] ?? 0)); ?>" required>
+          </div>
+          <div class="col-item">
+            <div class="col-item-key">Out City - 14ft</div>
+            <input type="number" min="0" step="any" name="out_14ft" value="<?php echo htmlspecialchars(format_stop_rate_input_local($stopTenderRates['out']['14ft'] ?? 0)); ?>" required>
+          </div>
+          <div class="col-item">
+            <div class="col-item-key">Out City - 20ft</div>
+            <input type="number" min="0" step="any" name="out_20ft" value="<?php echo htmlspecialchars(format_stop_rate_input_local($stopTenderRates['out']['20ft'] ?? 0)); ?>" required>
+          </div>
+          <div class="col-item">
+            <div class="col-item-key">Out City - 40ft</div>
+            <input type="number" min="0" step="any" name="out_40ft" value="<?php echo htmlspecialchars(format_stop_rate_input_local($stopTenderRates['out']['40ft'] ?? 0)); ?>" required>
+          </div>
+        </div>
+        <button class="nav-btn primary" type="submit" name="save_stop_amounts">Save Stop Amounts</button>
+        <div style="font-size:12px;color:var(--muted);margin-top:10px;">
+          Yeh values Add Haleeb Bilty mein stop rows ke tender amount (Same City / Out City) ke liye use hongi.
+        </div>
       </form>
     </div>
   </div>
@@ -863,6 +1014,7 @@ while($rowsRes && $rateRow = $rowsRes->fetch_assoc()){
     });
   }
   initToggle('col_head', 'col_toggle', 'col_body');
+  initToggle('stop_head', 'stop_toggle', 'stop_body');
   initToggle('rc_head', 'rc_toggle', 'rc_body');
   initToggle('ts_head', 'ts_toggle', 'ts_body');
   initToggle('add_head', 'add_toggle', 'add_body');
@@ -870,6 +1022,7 @@ while($rowsRes && $rateRow = $rowsRes->fetch_assoc()){
   var menuToggle = document.getElementById('menu_toggle');
   var menuDropdown = document.getElementById('menu_dropdown');
   var importBtn = document.getElementById('menu_import_btn');
+  var stopAmountsBtn = document.getElementById('menu_stop_amounts_btn');
   var rateChangeBtn = document.getElementById('menu_rate_change_btn');
   var tenderSyncBtn = document.getElementById('menu_tender_sync_btn');
   var importFile = document.getElementById('menu_import_file');
@@ -920,6 +1073,20 @@ while($rowsRes && $rateRow = $rowsRes->fetch_assoc()){
     rateChangeBtn.addEventListener('click', function(){
       var body = document.getElementById('rc_body');
       var toggle = document.getElementById('rc_toggle');
+      if(body){
+        body.classList.add('open');
+        if(toggle) toggle.classList.add('open');
+      }
+      if(menuDropdown){
+        menuDropdown.classList.remove('open');
+        if(menuToggle) menuToggle.setAttribute('aria-expanded', 'false');
+      }
+    });
+  }
+  if(stopAmountsBtn){
+    stopAmountsBtn.addEventListener('click', function(){
+      var body = document.getElementById('stop_body');
+      var toggle = document.getElementById('stop_toggle');
       if(body){
         body.classList.add('open');
         if(toggle) toggle.classList.add('open');
