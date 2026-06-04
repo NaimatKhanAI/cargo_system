@@ -1,0 +1,11 @@
+RewriteEngine On
+RewriteBase /cargo_system/
+
+RewriteCond %{THE_REQUEST} \s/+cargo_system/website/index\.html[?\s]
+RewriteRule ^website/index\.html$ index.html [R=302,L]
+
+RewriteCond %{THE_REQUEST} \s/+cargo_system/website/(about|services|join-us|contact|payment-policy|privacy-policy|payment-method|rates)\.html[?\s]
+RewriteRule ^website/(about|services|join-us|contact|payment-policy|privacy-policy|payment-method|rates)\.html$ $1.html [R=302,L]
+
+RewriteRule ^index\.html$ website/index.html [L]
+RewriteRule ^(about|services|join-us|contact|payment-policy|privacy-policy|payment-method|rates)\.html$ website/$1.html [L]

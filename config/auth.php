@@ -62,7 +62,7 @@ function auth_require_login($conn){
     if(!$row || (int)$row['is_active'] !== 1){
         session_unset();
         session_destroy();
-        header("location:index.php");
+        header("location:login.php");
         exit();
     }
     return $row;

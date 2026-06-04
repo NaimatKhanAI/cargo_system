@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Join Us | Ilyas Cargo Services</title>
+    <meta name="description" content="Join the Ilyas Cargo Services network. Register as a trucker or a company seeking truckers for reliable dispatch services.">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet">
+    <link rel="icon" href="website/assets/images/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="website/assets/css/styles.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav>
+        <a href="index.html" class="nav-logo"><span class="brand-mark">IC</span><span class="brand-text">Ilyas Cargo Services</span></a>
+        <div class="nav-links">
+            <a href="index.html">Home</a>
+            <a href="about.html">About Us</a>
+            <a href="services.html">Services</a>
+            <a href="join-us.html" class="active">Join Us</a>
+            <a href="contact.html">Contact Us</a>
+        </div>
+        <a href="tel:+17202392582" class="nav-phone">(720) 2392582</a>
+        <button class="nav-toggle" aria-label="Menu">
+            <span></span><span></span><span></span>
+        </button>
+    </nav>
+
+    <!-- Page Hero -->
+    <section class="page-hero">
+        <h1>Join Our Dispatch Network</h1>
+        <p>Whether you're a trucker looking to get dispatched or a company seeking reliable drivers to move loads, join our network.</p>
+    </section>
+
+    <!-- Form Section -->
+    <section class="section" style="background: var(--bg-light);">
+        <div class="container">
+            <div style="text-align: center; margin-bottom: 40px;">
+                <p style="color: var(--gray); font-size: 1.05rem; max-width: 650px; margin: 0 auto;">Complete the form below to connect and start dispatching. Select your role to see the relevant registration form.</p>
+            </div>
+
+            <div class="form-container">
+                <!-- Role Toggle -->
+                <div class="role-toggle">
+                    <button type="button" class="active" data-role="trucker">Trucker (Individual or Trucking Company)</button>
+                    <button type="button" data-role="company">Company Seeking Truckers</button>
+                </div>
+
+                <!-- TRUCKER FORM -->
+                <form id="trucker-form" action="https://formsubmit.co/hello@ilyascargo.com" method="POST" data-form="trucker">
+                    <input type="hidden" name="_cc" value="hello@ilyas-cargo.com">
+                    <input type="hidden" name="_captcha" value="true">
+                    <input type="hidden" name="_template" value="table">
+                    <input type="hidden" name="_next" value="join-us.html?submitted=true">
+                    <input type="hidden" name="role" id="selected-role" value="trucker">
+                    <input type="hidden" name="_subject" value="New Trucker Registration - Ilyas Cargo Services">
+
+                    <div class="form-group">
+                        <label>Are you a driver or a company? <span class="required">*</span></label>
+                        <select name="driver_or_company" required>
+                            <option value="">Select one...</option>
+                            <option value="Driver">Driver</option>
+                            <option value="Company">Company</option>
+                        </select>
+                        <div class="helper-text">Are you an individual truck driver or a company that owns and operates trucks?</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Name / Company Name <span class="required">*</span></label>
+                        <input type="text" name="name" required placeholder="Your name or company name">
+                        <div class="helper-text">Enter your name if you're an individual driver or your company name if you own a trucking business.</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Email <span class="required">*</span></label>
+                        <input type="email" name="email" required placeholder="your@email.com">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Phone Number <span class="required">*</span></label>
+                        <input type="tel" name="phone" required placeholder="+1 (___) ___-____">
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>City <span class="required">*</span></label>
+                            <input type="text" name="city" required placeholder="Your city">
+                            <div class="helper-text">Please provide your city of residence.</div>
+                        </div>
+                        <div class="form-group">
+                            <label>State <span class="required">*</span></label>
+                            <input type="text" name="state" required placeholder="Your state">
+                            <div class="helper-text">Please provide your state of residence.</div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Number of trucks in your fleet <span class="required">*</span></label>
+                        <input type="number" name="fleet_size" required placeholder="e.g. 1, 5, 10" min="1">
+                        <div class="helper-text">Provide the number of trucks you own/drive.</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>What kind of truck(s) do you own/drive? <span class="required">*</span></label>
+                        <div class="checkbox-group">
+                            <label><input type="checkbox" name="truck_types[]" value="Dry Vans"> Dry Vans</label>
+                            <label><input type="checkbox" name="truck_types[]" value="Reefer Trucks"> Reefer Trucks</label>
+                            <label><input type="checkbox" name="truck_types[]" value="Flatbeds"> Flatbeds</label>
+                            <label><input type="checkbox" name="truck_types[]" value="Box Trucks"> Box Trucks</label>
+                            <label><input type="checkbox" name="truck_types[]" value="Tanker Trucks"> Tanker Trucks</label>
+                            <label><input type="checkbox" name="truck_types[]" value="Other"> Other</label>
+                        </div>
+                        <div class="helper-text">Please select the trucks you own or drive.</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Provide Details <span class="required">*</span></label>
+                        <textarea name="details" required placeholder="Questions? Comments? Let us know what we can help you with."></textarea>
+                    </div>
+
+                    <button type="submit" class="btn-primary" style="width: 100%; text-align: center;">Submit Registration</button>
+                </form>
+
+                <!-- COMPANY FORM -->
+                <form id="company-form" action="https://formsubmit.co/hello@ilyascargo.com" method="POST" data-form="company" style="display: none;">
+                    <input type="hidden" name="_cc" value="hello@ilyas-cargo.com">
+                    <input type="hidden" name="_captcha" value="true">
+                    <input type="hidden" name="_template" value="table">
+                    <input type="hidden" name="_next" value="join-us.html?submitted=true">
+                    <input type="hidden" name="role" value="company">
+                    <input type="hidden" name="_subject" value="New Company Registration - Ilyas Cargo Services">
+
+                    <div class="form-group">
+                        <label>Company Name <span class="required">*</span></label>
+                        <input type="text" name="company_name" required placeholder="Your company name">
+                        <div class="helper-text">Enter your company's name as registered.</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Position / Role</label>
+                        <input type="text" name="position" placeholder="e.g., Dispatch Manager, Logistics Coordinator">
+                        <div class="helper-text">Specify the job title or role of the contact person.</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Email Address <span class="required">*</span></label>
+                        <input type="email" name="email" required placeholder="company@email.com">
+                        <div class="helper-text">Enter an email for dispatch inquiries and updates.</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Phone Number <span class="required">*</span></label>
+                        <input type="tel" name="phone" required placeholder="+1 (___) ___-____">
+                        <div class="helper-text">Provide a contact number for urgent dispatch communications.</div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>City <span class="required">*</span></label>
+                            <input type="text" name="city" required placeholder="Business city">
+                            <div class="helper-text">Enter the primary city of your business operations.</div>
+                        </div>
+                        <div class="form-group">
+                            <label>State <span class="required">*</span></label>
+                            <input type="text" name="state" required placeholder="Business state">
+                            <div class="helper-text">Select the state where your business is based.</div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Description of Dispatch Needs</label>
+                        <textarea name="dispatch_needs" placeholder="Provide a brief overview of your dispatch requirements, including any special considerations."></textarea>
+                    </div>
+
+                    <button type="submit" class="btn-primary" style="width: 100%; text-align: center;">Submit Registration</button>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="footer-grid">
+            <div class="footer-brand">
+                <div class="nav-logo footer-logo"><span class="brand-mark">IC</span><span class="brand-text">Ilyas Cargo Services</span></div>
+                <div class="footer-slogan">The Power Behind Your Wheels.</div>
+                <p>Ilyas Cargo Services provides reliable truck dispatching services with over 7 years of experience, ensuring efficient logistics and client satisfaction.</p>
+            </div>
+            <div>
+                <h4>Quick Links</h4>
+                <ul>
+                    <li><a href="index.html">Home</a></li>
+                    <li><a href="about.html">About Us</a></li>
+                    <li><a href="services.html">Services</a></li>
+                    <li><a href="join-us.html">Join Us</a></li>
+                    <li><a href="contact.html">Contact Us</a></li>
+                </ul>
+            </div>
+            <div>
+                <h4>Policies</h4>
+                <ul>
+                    <li><a href="payment-policy.html">Payment Policy</a></li>
+                    <li><a href="privacy-policy.html">Privacy Policy</a></li>
+                    <li><a href="payment-method.html">Payment Method</a></li>
+                    <li><a href="rates.html">Rates</a></li>
+                </ul>
+            </div>
+            <div>
+                <h4>Contact Us</h4>
+                <ul>
+                    <li><a href="mailto:hello@ilyascargo.com">hello@ilyascargo.com</a></li>
+                    <li><a href="tel:+17202392582">(720) 2392582</a></li>
+                    <li>Houston, Texas</li>
+                </ul>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            &copy; 2026 Ilyas Cargo Services. All rights reserved. | Designed &amp; Developed by <a href="https://digitalblock.ca/" target="_blank" rel="noopener noreferrer">Digital Block Enterprise</a>
+        </div>
+    </footer>
+
+    <script src="website/assets/js/main.js"></script>
+</body>
+
+</html>
